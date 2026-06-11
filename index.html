@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ソフトテニス ラリー</title>
+  <meta name="description" content="ラケットを動かしてラリーを続け、ポイントを重ねるソフトテニスのミニゲーム。PCはキーボード・マウス、スマホはタッチで操作できます。" />
+  <meta property="og:title" content="ソフトテニス ラリー" />
+  <meta property="og:description" content="ラケットを動かしてラリーを続け、ポイントを重ねるソフトテニスのミニゲーム。" />
+  <meta property="og:url" content="https://junkoma2.github.io/soft-tennis/" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#6366F1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="ソフトテニス" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <p class="kicker">SOFT TENNIS RALLY</p>
+      <h1>ソフトテニス ラリー</h1>
+    </header>
+
+    <main>
+      <div id="screen-ready" class="screen">
+        <p class="description">ラケットを左右に動かしてボールを打ち返そう。<br />先に4ポイント（2点差）取った方の勝ち。</p>
+        <div class="rules">
+          <p>PC: ← → キー または マウス移動</p>
+          <p>スマホ: 画面を左右にドラッグ</p>
+        </div>
+        <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
+      </div>
+
+      <div id="screen-game" class="screen" hidden>
+        <div class="scoreboard">
+          <div class="score-item">
+            <span class="score-label">あなた</span>
+            <strong id="player-score" class="score-value">0</strong>
+          </div>
+          <div class="score-sets">
+            <span id="player-games" class="games">0</span>
+            <span class="games-sep">-</span>
+            <span id="cpu-games" class="games">0</span>
+          </div>
+          <div class="score-item">
+            <span class="score-label">CPU</span>
+            <strong id="cpu-score" class="score-value">0</strong>
+          </div>
+        </div>
+
+        <div class="court-wrap">
+          <canvas id="court" width="360" height="540"></canvas>
+          <div id="message-overlay" class="message-overlay" hidden>
+            <p id="message-text"></p>
+          </div>
+        </div>
+
+        <p class="hint">タップ・ドラッグまたは矢印キーでラケットを操作</p>
+      </div>
+
+      <div id="screen-result" class="screen" hidden>
+        <p id="result-title" class="result-title"></p>
+        <p id="result-detail" class="result-detail"></p>
+        <button id="retry-btn" class="primary-btn" type="button">もう一度遊ぶ</button>
+      </div>
+    </main>
+
+    <footer>
+      <a href="https://nonsensicalnook.com/" target="_blank" rel="noreferrer">NNook</a>
+      <span id="app-version" class="app-version"></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="version.js"></script>
+</body>
+</html>
