@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ソフトテニス ダブルス</title>
-  <meta name="description" content="雁行陣のダブルスでラリーを組み立てるソフトテニスのミニゲーム。コース・球種・サーブを選び、相手前衛との駆け引きを楽しめます。" />
+  <meta name="description" content="ポジションと陣形を選んで戦うソフトテニスのダブルスミニゲーム。ため打ちと回転で球を打ち分けます。" />
   <meta property="og:title" content="ソフトテニス ダブルス" />
-  <meta property="og:description" content="雁行陣のダブルスでラリーを組み立てるソフトテニスのミニゲーム。" />
+  <meta property="og:description" content="ポジションと陣形を選んで戦うソフトテニスのダブルスミニゲーム。" />
   <meta property="og:url" content="https://junkoma2.github.io/soft-tennis/" />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#6366F1" />
@@ -25,21 +25,41 @@
     <main>
       <div id="screen-ready" class="screen">
         <p class="description">
-          雁行陣（後衛＋前衛）のダブルス対戦です。あなたは後衛を操作します。<br />
-          相手前衛のポジションを見て、コースと球種を選びましょう。
+          ダブルスのソフトテニス対戦です。ポジションと陣形を選び、ためて打ち分けましょう。<br />
+          操作しない相方はAIが動かします。
         </p>
-        <div class="rules">
-          <p>球種：シュート（低く速い）／ロブ（高く越える）</p>
-          <p>コース：クロス／ミドル／ストレート</p>
-          <p>サーブ：2本制。ベースライン後方からポイントごとに右／左交互、対角のサービスコートへ</p>
-          <p>アンダーカット（遅いが滑る）／オーバー（速いがフォルトのリスク）</p>
-          <p>フォア／バック：ボールが体のどちら側かで決まり、バック側は威力・精度が落ちる</p>
-          <p>カウント：0 → 1 → 2 → 3 → ゲーム（3-3はデュース、2点差で決着）</p>
-          <p>5ゲームマッチ・3ゲーム先取。2-2のファイナルゲームは7ポイント先取</p>
+        <div class="control-group" id="position-controls">
+          <span class="control-label">ポジション</span>
+          <button class="ctrl-btn is-active" data-position="back" type="button">後衛を操作</button>
+          <button class="ctrl-btn" data-position="front" type="button">前衛を操作</button>
+        </div>
+        <div class="control-group" id="formation-controls">
+          <span class="control-label">陣形</span>
+          <button class="ctrl-btn is-active" data-formation="ganko" type="button">雁行陣</button>
+          <button class="ctrl-btn" data-formation="double-back" type="button">ダブル後衛</button>
+          <button class="ctrl-btn" data-formation="double-front" type="button">ダブル前衛</button>
         </div>
         <div class="rules">
-          <p>PC：← →キーで移動／A・S・Dでコース／J・Kで球種／スペースで打つ</p>
-          <p>スマホ：ドラッグで移動／下部ボタンでコース・球種・サーブ／タップで打つ</p>
+          <p>移動：前後左右に自由に移動。前に詰めてボレー、下がってロブ処理ができる</p>
+          <p>ため打ち：スペースを押している間「ため」。長くためるほど球速アップ</p>
+          <p>　ため中に←/→を押した方向（クロス/ストレート）へ、押さなければミドルへ打つ</p>
+          <p>　ボールが打点に来ると自動でスイング。ため中は移動が遅くなる</p>
+          <p>球種：スペース＝シュート／Shift+スペース＝ロブ／Ctrl+スペース＝ドロップ</p>
+          <p>　シュートはドライブ回転で弾み、ドロップ・カットはバウンド後に止まって滑る</p>
+          <p>サーブ：スペース1回目でトス、トスの頂点付近でもう一度スペースを押して打つ</p>
+          <p>　トス中も左右に移動でき、立ち位置とタイミングでサービスコート内の左/中/右を狙える</p>
+          <p>　アンダーカット（遅いが止まる）／オーバー（速いがフォルトのリスク）</p>
+          <p>サーブ順：1ゲームごとに両チーム交互。同じゲーム内では2ポイントごとに</p>
+          <p>　ペアの2人が交代でサーブする（前衛もサーブを打つ・JSTA競技規則準拠）</p>
+          <p>　相方の番のサーブはAIが打つ。前衛は打った後にサービスダッシュで前へ詰める</p>
+          <p>フォア／バック：ボールが体のどちら側かで決まり、バック側は威力・精度が落ちる</p>
+          <p>カウント：0 → 1 → 2 → 3 → ゲーム（3-3はデュース、2点差で決着）</p>
+          <p>5ゲームマッチ・3ゲーム先取。2-2のファイナルゲームは7ポイント先取・2ポイントごとにサーブ交代</p>
+        </div>
+        <div class="rules">
+          <p>PC：矢印キー（またはWASD）で移動／スペース長押しでため・離して打つ</p>
+          <p>スマホ：左下のスティックで移動／右下のボタン長押しでため・離して打つ</p>
+          <p>　ため中はスティックの左右でコース指定</p>
           <p>リングが着地予定の目印。黄色いリングは自分側に来るボール</p>
         </div>
         <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
@@ -67,28 +87,26 @@
           <div id="message-overlay" class="message-overlay" hidden>
             <p id="message-text"></p>
           </div>
+          <div id="move-stick" class="move-stick">
+            <div id="move-stick-knob" class="move-stick-knob"></div>
+          </div>
         </div>
 
         <div class="controls">
-          <div class="control-group" id="course-controls">
-            <span class="control-label">コース</span>
-            <button class="ctrl-btn" data-course="cross" type="button">クロス</button>
-            <button class="ctrl-btn is-active" data-course="middle" type="button">ミドル</button>
-            <button class="ctrl-btn" data-course="straight" type="button">ストレート</button>
-          </div>
-          <div class="control-group" id="shot-controls">
-            <span class="control-label">球種</span>
-            <button class="ctrl-btn is-active" data-shot="drive" type="button">シュート</button>
-            <button class="ctrl-btn" data-shot="lob" type="button">ロブ</button>
-          </div>
           <div class="control-group" id="serve-controls" hidden>
             <span class="control-label">サーブ</span>
             <button class="ctrl-btn is-active" data-serve="cut" type="button">アンダーカット</button>
             <button class="ctrl-btn" data-serve="power" type="button">オーバー</button>
           </div>
+          <div class="control-group" id="shot-controls">
+            <span class="control-label">打球</span>
+            <button class="ctrl-btn" data-shot="drop" type="button">ドロップ</button>
+            <button class="ctrl-btn ctrl-btn-primary" data-shot="drive" type="button">打つ（長押しでため）</button>
+            <button class="ctrl-btn" data-shot="lob" type="button">ロブ</button>
+          </div>
         </div>
 
-        <p class="hint" id="hint-text">ドラッグまたは矢印キーで移動。タップ／スペースで打つ</p>
+        <p class="hint" id="hint-text">矢印キー/スティックで移動。スペース/ボタン長押しでため</p>
       </div>
 
       <div id="screen-result" class="screen" hidden>
