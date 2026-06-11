@@ -1,0 +1,5 @@
+.claude/
+.codex/
+AGENTS.md
+CLAUDE.md
+node_modules/
