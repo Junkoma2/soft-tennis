@@ -1,0 +1,329 @@
+:root {
+  --color-primary: #6366F1;
+  --color-primary-light: #EEF2FF;
+  --color-bg: #F0F2F5;
+  --color-surface: #FFFFFF;
+  --color-text: #1E1B4B;
+  --color-text-secondary: #6B7280;
+  --color-border: #E5E7EB;
+  --color-court: #34A853;
+  --color-court-line: #FFFFFF;
+  --color-ball: #DFFF4F;
+  font-family: "Helvetica Neue", "Hiragino Kaku Gothic ProN", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#app {
+  width: 100%;
+  max-width: 480px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.kicker {
+  font-size: 11px;
+  letter-spacing: .2em;
+  color: var(--color-primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: .03em;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.screen[hidden] { display: none; }
+
+.description {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.rules {
+  width: 100%;
+  background: var(--color-primary-light);
+  border-radius: 8px;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-primary);
+  line-height: 1.8;
+}
+
+.primary-btn {
+  width: 100%;
+  max-width: 280px;
+  padding: 16px 24px;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  cursor: pointer;
+  transition: transform .08s, opacity .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.primary-btn:active {
+  transform: scale(.97);
+  opacity: .9;
+}
+
+/* ---- スコアボード ---- */
+.scoreboard {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 10px 16px;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 64px;
+}
+
+.score-label {
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.score-value {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+}
+
+.score-sets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.games {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.games-sep { color: var(--color-border); }
+
+/* ---- コート ---- */
+.court-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(30, 27, 75, .12);
+  touch-action: none;
+}
+
+#court {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--color-court);
+}
+
+.message-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 27, 75, .45);
+  pointer-events: none;
+}
+
+.message-overlay[hidden] { display: none; }
+
+#message-text {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  white-space: pre-line;
+}
+
+/* ---- 操作パネル ---- */
+.controls {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.control-group[hidden] { display: none; }
+
+.control-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  letter-spacing: .05em;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.ctrl-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ctrl-btn.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.ctrl-btn:active {
+  transform: scale(.97);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  letter-spacing: .03em;
+}
+
+/* ---- 結果画面 ---- */
+.result-title {
+  font-size: 28px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.result-title.is-win { color: var(--color-primary); }
+.result-title.is-lose { color: var(--color-text-secondary); }
+
+.result-detail {
+  font-size: 15px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+footer {
+  text-align: center;
+  padding-top: 16px;
+}
+
+footer a {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-decoration: none;
+  letter-spacing: .1em;
+}
+
+footer a:hover { color: var(--color-text); }
+
+.app-version {
+  margin-left: 10px;
+  color: #9CA3AF;
+  font-size: .72rem;
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  #app {
+    max-width: 920px;
+    padding: 10px 16px;
+  }
+  header { margin-bottom: 6px; }
+  h1 { font-size: 16px; }
+  .kicker { margin-bottom: 2px; }
+  .description, .rules { display: none; }
+  .screen { gap: 8px; }
+  #screen-game {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 12px;
+  }
+  .scoreboard {
+    flex-direction: column;
+    width: auto;
+    min-width: 110px;
+    gap: 6px;
+  }
+  .score-sets { flex-direction: row; }
+  .court-wrap {
+    max-width: 260px;
+  }
+  .controls {
+    width: 220px;
+  }
+  .hint { display: none; }
+  footer { padding-top: 4px; }
+}

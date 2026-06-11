@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ソフトテニス ダブルス</title>
+  <meta name="description" content="雁行陣のダブルスでラリーを組み立てるソフトテニスのミニゲーム。コース・球種・サーブを選び、相手前衛との駆け引きを楽しめます。" />
+  <meta property="og:title" content="ソフトテニス ダブルス" />
+  <meta property="og:description" content="雁行陣のダブルスでラリーを組み立てるソフトテニスのミニゲーム。" />
+  <meta property="og:url" content="https://junkoma2.github.io/soft-tennis/" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#6366F1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="ソフトテニス" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <p class="kicker">SOFT TENNIS DOUBLES</p>
+      <h1>ソフトテニス ダブルス</h1>
+    </header>
+
+    <main>
+      <div id="screen-ready" class="screen">
+        <p class="description">
+          雁行陣（後衛＋前衛）のダブルス対戦です。あなたは後衛を操作します。<br />
+          相手前衛のポジションを見て、コースと球種を選びましょう。
+        </p>
+        <div class="rules">
+          <p>球種：シュート（低く速い）／ロブ（高く越える）</p>
+          <p>コース：クロス／ミドル／ストレート</p>
+          <p>サーブ：アンダーカット（安全）／オーバー（速いがフォルトあり）</p>
+          <p>カウント：0 → 1 → 2 → 3 → ゲーム（3-3はデュース、2点差で決着）</p>
+          <p>5ゲームマッチ・先に3ゲーム取った方が勝利</p>
+        </div>
+        <div class="rules">
+          <p>PC：← →キーで移動／A・S・Dでコース／J・Kで球種・サーブ</p>
+          <p>スマホ：ドラッグで移動／下部ボタンでコース・球種・サーブ</p>
+        </div>
+        <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
+      </div>
+
+      <div id="screen-game" class="screen" hidden>
+        <div class="scoreboard">
+          <div class="score-item">
+            <span class="score-label">あなた</span>
+            <strong id="player-score" class="score-value">0</strong>
+          </div>
+          <div class="score-sets">
+            <span id="player-games" class="games">0</span>
+            <span class="games-sep">-</span>
+            <span id="cpu-games" class="games">0</span>
+          </div>
+          <div class="score-item">
+            <span class="score-label">相手</span>
+            <strong id="cpu-score" class="score-value">0</strong>
+          </div>
+        </div>
+
+        <div class="court-wrap">
+          <canvas id="court" width="360" height="540"></canvas>
+          <div id="message-overlay" class="message-overlay" hidden>
+            <p id="message-text"></p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <div class="control-group" id="course-controls">
+            <span class="control-label">コース</span>
+            <button class="ctrl-btn" data-course="cross" type="button">クロス</button>
+            <button class="ctrl-btn is-active" data-course="middle" type="button">ミドル</button>
+            <button class="ctrl-btn" data-course="straight" type="button">ストレート</button>
+          </div>
+          <div class="control-group" id="shot-controls">
+            <span class="control-label">球種</span>
+            <button class="ctrl-btn is-active" data-shot="drive" type="button">シュート</button>
+            <button class="ctrl-btn" data-shot="lob" type="button">ロブ</button>
+          </div>
+          <div class="control-group" id="serve-controls" hidden>
+            <span class="control-label">サーブ</span>
+            <button class="ctrl-btn is-active" data-serve="cut" type="button">アンダーカット</button>
+            <button class="ctrl-btn" data-serve="power" type="button">オーバー</button>
+          </div>
+        </div>
+
+        <p class="hint" id="hint-text">ドラッグまたは矢印キーで移動。タップ／スペースで打つ</p>
+      </div>
+
+      <div id="screen-result" class="screen" hidden>
+        <p id="result-title" class="result-title"></p>
+        <p id="result-detail" class="result-detail"></p>
+        <button id="retry-btn" class="primary-btn" type="button">もう一度遊ぶ</button>
+      </div>
+    </main>
+
+    <footer>
+      <a href="https://nonsensicalnook.com/" target="_blank" rel="noreferrer">NNook</a>
+      <span id="app-version" class="app-version"></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="version.js"></script>
+</body>
+</html>
