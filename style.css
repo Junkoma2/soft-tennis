@@ -162,9 +162,12 @@ main {
 /* ---- コート ---- */
 .court-wrap {
   position: relative;
-  width: 100%;
+  width: auto;
   max-width: 360px;
   aspect-ratio: 2 / 3;
+  /* 縦持ちでも操作ボタンが画面内に収まるようcanvasの高さを制限する */
+  max-height: calc(100dvh - 350px);
+  min-height: 280px;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(30, 27, 75, .12);
@@ -319,7 +322,11 @@ footer a:hover { color: var(--color-text); }
   }
   .score-sets { flex-direction: row; }
   .court-wrap {
-    max-width: 260px;
+    width: auto;
+    max-width: none;
+    height: calc(100dvh - 110px);
+    max-height: 430px;
+    aspect-ratio: 2 / 3;
   }
   .controls {
     width: 220px;
