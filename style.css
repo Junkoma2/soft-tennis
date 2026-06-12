@@ -165,8 +165,8 @@ main {
   width: auto;
   max-width: 360px;
   aspect-ratio: 2 / 3;
-  /* 縦持ちでも操作ボタンが画面内に収まるようcanvasの高さを制限する */
-  max-height: calc(100dvh - 350px);
+  /* 縦持ちでも操作ボタン（サーブ設定3段を含む）が画面内に収まるよう制限する */
+  max-height: calc(100dvh - 410px);
   min-height: 280px;
   border-radius: 12px;
   overflow: hidden;
@@ -218,7 +218,7 @@ main {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
-  padding: 6px 8px;
+  padding: 4px 8px;
 }
 
 .control-group[hidden] { display: none; }
@@ -372,6 +372,28 @@ footer a:hover { color: var(--color-text); }
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
+}
+
+/* ---- 球種選択（5種・色分け） ---- */
+.ctrl-btn.shot-sel {
+  font-size: 10px;
+  padding: 7px 1px;
+  white-space: nowrap;
+}
+
+.shot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 2px;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, .15);
+}
+
+#serve-power-controls .ctrl-btn,
+#serve-spin-controls .ctrl-btn {
+  padding: 7px 2px;
 }
 
 /* ---- 開始画面のポジション・陣形セレクタ ---- */

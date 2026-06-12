@@ -40,27 +40,12 @@
           <button class="ctrl-btn" data-formation="double-front" type="button">ダブル前衛</button>
         </div>
         <div class="rules">
-          <p>移動：前後左右に自由に移動。前に詰めてボレー、下がってロブ処理ができる</p>
-          <p>ため打ち：スペースを押している間「ため」。長くためるほど球速アップ</p>
-          <p>　ため中に←/→を押した方向（クロス/ストレート）へ、押さなければミドルへ打つ</p>
-          <p>　ボールが打点に来ると自動でスイング。ため中は移動が遅くなる</p>
-          <p>球種：スペース＝シュート／Shift+スペース＝ロブ／Ctrl+スペース＝ドロップ</p>
-          <p>　シュートはドライブ回転で弾み、ドロップ・カットはバウンド後に止まって滑る</p>
-          <p>サーブ：スペース1回目でトス、トスの頂点付近でもう一度スペースを押して打つ</p>
-          <p>　トス中も左右に移動でき、立ち位置とタイミングでサービスコート内の左/中/右を狙える</p>
-          <p>　アンダーカット（遅いが止まる）／オーバー（速いがフォルトのリスク）</p>
-          <p>サーブ順：1ゲームごとに両チーム交互。同じゲーム内では2ポイントごとに</p>
-          <p>　ペアの2人が交代でサーブする（前衛もサーブを打つ・JSTA競技規則準拠）</p>
-          <p>　相方の番のサーブはAIが打つ。前衛は打った後にサービスダッシュで前へ詰める</p>
-          <p>フォア／バック：ボールが体のどちら側かで決まり、バック側は威力・精度が落ちる</p>
-          <p>カウント：0 → 1 → 2 → 3 → ゲーム（3-3はデュース、2点差で決着）</p>
-          <p>5ゲームマッチ・3ゲーム先取。2-2のファイナルゲームは7ポイント先取・2ポイントごとにサーブ交代</p>
-        </div>
-        <div class="rules">
-          <p>PC：矢印キー（またはWASD）で移動／スペース長押しでため・離して打つ</p>
-          <p>スマホ：左下のスティックで移動／右下のボタン長押しでため・離して打つ</p>
-          <p>　ため中はスティックの左右でコース指定</p>
-          <p>リングが着地予定の目印。黄色いリングは自分側に来るボール</p>
+          <p><strong>移動</strong>　矢印キー / WASD（スマホ：左下スティック）</p>
+          <p><strong>球種</strong>　1〜5キーかボタンで選ぶ：フラット/ドライブ/スライス/ドロップ/ロブ（Q/Eで切替）</p>
+          <p><strong>打つ</strong>　スペース長押しで「ため」→ ←/↑/→ でコース指定（<strong>指定しないと振らない</strong>）</p>
+          <p><strong>打点</strong>　体の横・少し前が適正。詰まると角度が出ず、球も弱くなる</p>
+          <p><strong>サーブ</strong>　種類・パワー・回転を選ぶ → スペースでトス → ゲージの緑の高さでもう一度スペース</p>
+          <p>カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ。細かい操作は試合中のヒントで案内します</p>
         </div>
         <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
       </div>
@@ -95,14 +80,32 @@
         <div class="controls">
           <div class="control-group" id="serve-controls" hidden>
             <span class="control-label">サーブ</span>
-            <button class="ctrl-btn is-active" data-serve="cut" type="button">アンダーカット</button>
-            <button class="ctrl-btn" data-serve="power" type="button">オーバー</button>
+            <button class="ctrl-btn is-active" data-serve="over" type="button">オーバー</button>
+            <button class="ctrl-btn" data-serve="cut" type="button">アンダーカット</button>
+          </div>
+          <div class="control-group" id="serve-power-controls" hidden>
+            <span class="control-label">パワー</span>
+            <button class="ctrl-btn" data-serve-power="weak" type="button">弱</button>
+            <button class="ctrl-btn is-active" data-serve-power="mid" type="button">中</button>
+            <button class="ctrl-btn" data-serve-power="strong" type="button">強</button>
+          </div>
+          <div class="control-group" id="serve-spin-controls" hidden>
+            <span class="control-label">回転</span>
+            <button class="ctrl-btn" data-serve-spin="weak" type="button">弱</button>
+            <button class="ctrl-btn is-active" data-serve-spin="mid" type="button">中</button>
+            <button class="ctrl-btn" data-serve-spin="strong" type="button">強</button>
+          </div>
+          <div class="control-group" id="shot-select-controls">
+            <span class="control-label">球種</span>
+            <button class="ctrl-btn shot-sel" data-shotsel="flat" type="button"><span class="shot-dot" style="background:#94A3B8"></span>フラット</button>
+            <button class="ctrl-btn shot-sel is-active" data-shotsel="drive" type="button"><span class="shot-dot" style="background:#FB923C"></span>ドライブ</button>
+            <button class="ctrl-btn shot-sel" data-shotsel="slice" type="button"><span class="shot-dot" style="background:#38BDF8"></span>スライス</button>
+            <button class="ctrl-btn shot-sel" data-shotsel="drop" type="button"><span class="shot-dot" style="background:#A78BFA"></span>ドロップ</button>
+            <button class="ctrl-btn shot-sel" data-shotsel="lob" type="button"><span class="shot-dot" style="background:#FACC15"></span>ロブ</button>
           </div>
           <div class="control-group" id="shot-controls">
             <span class="control-label">打球</span>
-            <button class="ctrl-btn" data-shot="drop" type="button">ドロップ</button>
-            <button class="ctrl-btn ctrl-btn-primary" data-shot="drive" type="button">打つ（長押しでため）</button>
-            <button class="ctrl-btn" data-shot="lob" type="button">ロブ</button>
+            <button class="ctrl-btn ctrl-btn-primary" id="charge-btn" type="button">打つ（長押しでため）</button>
           </div>
         </div>
 
