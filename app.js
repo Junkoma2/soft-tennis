@@ -11,12 +11,13 @@
  *
  * 操作方式:
  *   - 矢印キー/WASDで4方向に自由移動（ため中・トス中は矢印が
- *     コース/狙い指定になり、移動はWASDのみ）。
+ *     カーソル/狙い操作になり、移動はWASDのみ）。
  *   - 球種は選択式: 1〜5キー（またはQ/Eサイクル・画面のボタン）で
  *     フラット/ドライブ/スライス/ドロップ/ロブを選ぶ。
- *   - ため打ち: スペースを押している間「ため」、ボールが打点に来ると
- *     自動でスイング。ため中に ←/↑/→ でコースを指定する（必須。
- *     未指定だと空振り）。ためが長いほど鋭い角度を狙える。
+ *   - ため打ち: スペースか球種キー(1〜5)を押している間「ため」、
+ *     ボールが打点に来ると自動でスイング。ため中に矢印/スティックで
+ *     着地点カーソルを動かして狙う（未操作はミドル深めへ打つ）。
+ *     ためが長いほど鋭い角度を狙える。
  *   - 打点が大事: 体の横・少し前の適正打点ほど角度と球速が出る。
  *     詰まる/泳ぐと「選べる角度の幅」が段階的に狭くなる（方向自体は
  *     消えない）。
@@ -38,11 +39,11 @@ const TUNING = {
   //   speed: 基本球速(m/s) / depthMin+depthRange: 狙う深さ /
   //   spin: バウンド挙動 / spinMag: 回転の強さ / color: 軌道の色分け
   shots: {
-    flat:  { speed: 16.0, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
-    drive: { speed: 14.0, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
-    slice: { speed: 11.0, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
-    drop:  { speed: 6.2,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
-    lob:   { speed: 9.8,  depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
+    flat:  { speed: 20.0, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
+    drive: { speed: 17.0, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
+    slice: { speed: 13.5, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
+    drop:  { speed: 7.0,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
+    lob:   { speed: 11.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
   },
   cpuSpeedScale: 0.85, // CPU打球の球速倍率（難易度調整）
   // サーブ（打つ前にパワーと回転量を設定する方式）
@@ -67,6 +68,21 @@ const TUNING = {
     speedBonus: 0.1,  // 最大ための球速ボーナス（+10%）
     moveSlow: 0.4,    // ため中のWASD移動の速度倍率
   },
+  // 着地点カーソル（ため中に矢印/スティックで狙いを自由移動）
+  aim: {
+    cursorSpeed: 9.0,  // カーソル移動速度(m/s)
+    sideMargin: 0.5,   // サイドラインからの内側マージン（狙い自体はコート内）
+    depthMargin: 0.7,  // ベースラインからの内側マージン
+    minDepth: 1.0,     // ネットからの最小距離
+    defaultY: 9.0,     // 未操作時のデフォルト狙い: ミドル深め（ネットからの距離）
+  },
+  // サーブ前のレシーブ準備（準備が整うまでサーブを打てない）
+  serveReady: {
+    stillTime: 0.45, // レシーブ側プレイヤーがこの秒数静止したら準備完了
+    minShow: 1.6,    // 相手サーブの種類表示からトスまでの最低猶予(秒)
+    maxWait: 8.0,    // 準備を待つ最大秒数（過ぎたら相手は打ってくる）
+    aiReady: 1.2,    // AIレシーバーの準備時間（プレイヤーはこれを過ぎるまでトス不可）
+  },
   // 移動の速さ（m/s）
   move: {
     playerSpeed: 7.0,   // 操作キャラの足の速さ
@@ -86,9 +102,9 @@ const TUNING = {
     crampSpeedDrop: 0.3, // 完全詰まり時の球速低下（返すだけの球質）
     frontYIdeal: 0.35,   // 体より前(ネット寄り)この距離が適正
     yTolerance: 0.9,     // 前後ズレの許容幅
-    highZBonus: 0.18,    // 高い打点の球速ボーナス（速く低弾道に）
+    highZBonus: 0.25,    // 高い打点の球速ボーナス（トップ打ちフラットで25m/s程度）
     lowZLoft: 0.18,      // 低い打点の球速ダウン（すくい上げで弾道が上がる）
-    sigmaBase: 0.5,
+    sigmaBase: 0.35,     // 適正打点の散らばり（狙いがコート内ならほぼ収まる）
     sigmaBad: 1.6,       // 打点が悪いときに加算される散らばり（ミス率上昇）
     backhandPower: 0.88, // バック側の威力倍率
     // 泳ぎ（打点が体から遠すぎる）
@@ -277,14 +293,35 @@ const FORMATIONS = {
 };
 
 /* ---- ため（チャージ）状態 ----
- * 球種は selectedShot（選択式）を使う。コースはため中の←/↑/→で
- * 指定し、未指定（null）のままだとスイングしない。 */
+ * 球種は selectedShot（選択式）を使う。狙いはため中の矢印/スティックで
+ * 着地点カーソルを動かして決める。未操作ならデフォルト（ミドル深め）へ打つ。
+ * source: ため開始の入力（"Space"/"Digit1"〜"Digit5"/"pointer"）。
+ * 同じ入力を離したときだけスイングする（球種キー長押しのため対応）。 */
 const charge = {
   active: false,
   start: 0,      // ため開始時の matchTime
-  course: null,  // -1=画面左へ / 0=まっすぐ / +1=画面右へ / null=未指定
-  warned: false, // 「コース未指定」の警告を出したか
+  source: null,
 };
+
+/* ---- 着地点カーソル（ワールド座標・相手コート上） ---- */
+const aim = {
+  x: 0,
+  y: -9.0, // ため開始時に TUNING.aim.defaultY でリセットされる
+};
+
+/* ---- サーブ前のレシーブ準備状態 ---- */
+const serveReady = {
+  timer: 0,     // serve-stance 開始からの経過秒
+  still: 0,     // レシーブ側プレイヤーが静止している秒数
+  ready: false, // レシーバー準備完了（CPUはこれを待って打つ／プレイヤーはトス可能になる）
+};
+
+// サーブ後にレシーブ（最初の返球）が済んだか。
+// これが false の間、両チームの前衛はポジション移動・ポーチ判断をしない
+let receiveDone = true;
+
+// CPUサーブの事前プラン（種類を打つ前にプレイヤーへ表示するため先に抽選する）
+let cpuServePlan = null;
 
 function chargeAmount() {
   if (!charge.active) return 0;
@@ -580,10 +617,13 @@ function resetPlayersForPoint() {
   ball.trail = [];
   pendingSwing = 0;
   charge.active = false;
-  charge.course = null;
-  charge.warned = false;
+  charge.source = null;
   serveAim = 0;
   cpuFrontPlan = "base";
+  receiveDone = false;
+  serveReady.timer = 0;
+  serveReady.still = 0;
+  serveReady.ready = false;
   toss.active = false;
   toss.t = 0;
   [back, front, cpuBack, cpuFront].forEach((p) => { p.pose = "idle"; p.swingT = 0; });
@@ -617,25 +657,34 @@ function startServe(isFirstPointOfGame) {
   let who;
   state = "serve-stance";
   server.pose = "idle";
+  cpuServePlan = null;
   if (team === "player") {
     if (playerIsServer()) {
       who = "自分のサーブ";
       setControlMode("serve");
-      hintText.textContent = "種類・パワー・回転を選んで構え→スペース/ボタンでトス";
+      hintText.textContent = "種類・パワー・回転を選んで構え→レシーバー準備後にスペースでトス";
     } else {
       who = "相方のサーブ";
       setControlMode("rally");
       hintText.textContent = "相方がサーブする。自由に動いて構えよう";
-      setTimeout(function () {
-        if (state === "serve-stance" && serverTeamNow() === "player" && !playerIsServer()) {
-          aiStartToss("player");
-        }
-      }, 900);
     }
   } else {
     who = "相手のサーブ";
     setControlMode("rally");
-    hintText.textContent = "移動してレシーブ準備。1〜5キー/ボタンで球種を選べる";
+    // サーブの種類を打つ前に抽選してプレイヤーへ表示する
+    // （アンダーカットなら前へ詰める、という判断と移動の時間を確保する）
+    const first = serveFaults === 0;
+    const type = first && Math.random() < 0.65 ? "over" : "cut";
+    cpuServePlan = {
+      type: type,
+      power: first ? (Math.random() < 0.5 ? "strong" : "mid") : (Math.random() < 0.6 ? "weak" : "mid"),
+      spin: type === "cut"
+        ? (Math.random() < 0.5 ? "strong" : "mid")
+        : (Math.random() < 0.5 ? "mid" : "weak"),
+    };
+    hintText.textContent = (type === "cut")
+      ? "相手はアンダーカット！前に詰めて構え、静止すると打ってくる"
+      : "相手はオーバーサーブ。位置を決めて静止すると打ってくる";
   }
 
   let msg = who + "（" + sideText + "）";
@@ -644,12 +693,10 @@ function startServe(isFirstPointOfGame) {
     msg = "ファイナルゲーム\n7ポイント先取・2ポイントごとにサーブ交代\n" + msg;
   }
   showMessage(msg);
-
-  if (team === "cpu") {
-    setTimeout(function () {
-      if (state === "serve-stance" && serverTeamNow() === "cpu") aiStartToss("cpu");
-    }, 700);
-  }
+  // 準備待ちの間も移動・カーソルが見えるようにメッセージは自動で消す
+  setTimeout(function () {
+    if (state === "serve-stance" || state === "serve-toss") hideMessage();
+  }, 1400);
 }
 
 /* ===========================================================
@@ -727,6 +774,17 @@ function serveContactQuality(z, zone) {
 function playerServeAction() {
   if (!playerIsServer()) return;
   if (state === "serve-stance") {
+    // 相手レシーバーの準備が整うまでトスを上げられない
+    if (!serveReady.ready) {
+      const server = currentServer();
+      effects.push({
+        type: "text",
+        x: server.x, y: server.y - 1.0, t: 0, ttl: 0.8,
+        text: "レシーバー準備中…",
+        color: "#F59E0B",
+      });
+      return;
+    }
     startToss(currentServer(), serveType);
     return;
   }
@@ -754,7 +812,7 @@ function launchPlayerServe() {
   hideMessage();
   state = "rally";
   setControlMode("rally");
-  hintText.textContent = "スペース長押しでため→←/↑/→でコース指定（指定しないと振らない）";
+  hintText.textContent = "スペースか球種キー長押しでため→矢印でカーソルを動かして狙う";
 
   launchServeBall("player", server, server.stats, {
     type: serveType,
@@ -773,16 +831,18 @@ let aiServePlan = null;
 function aiStartToss(team) {
   if (state !== "serve-stance" || serverTeamNow() !== team) return;
   const server = currentServer();
-  // ファーストは強気（オーバー中心）、セカンドは安全（カット中心）
+  // CPUは事前抽選したプラン（プレイヤーに表示済み）をそのまま使う。
+  // 相方サーブはここで抽選（ファーストは強気、セカンドは安全寄り）
   const first = serveFaults === 0;
-  const type = first && Math.random() < 0.65 ? "over" : "cut";
-  aiServePlan = {
-    type: type,
+  const planType = first && Math.random() < 0.65 ? "over" : "cut";
+  aiServePlan = (team === "cpu" && cpuServePlan) ? cpuServePlan : {
+    type: planType,
     power: first ? (Math.random() < 0.5 ? "strong" : "mid") : (Math.random() < 0.6 ? "weak" : "mid"),
-    spin: type === "cut"
+    spin: planType === "cut"
       ? (Math.random() < 0.5 ? "strong" : "mid")
       : (Math.random() < 0.5 ? "mid" : "weak"),
   };
+  const type = aiServePlan.type;
   startToss(server, type);
   setTimeout(function () {
     if (state === "serve-toss" && serverTeamNow() === team) aiLaunchServe(team);
@@ -795,8 +855,8 @@ function aiLaunchServe(team) {
   toss.active = false;
   state = "rally";
   hintText.textContent = (team === "cpu")
-    ? "レシーブ！ スペース長押しでため、←/↑/→でコース指定"
-    : "ラリー再開。スペース長押しでため、←/↑/→でコース指定";
+    ? "レシーブ！ 長押しでため、矢印でカーソルを動かして狙う"
+    : "ラリー再開。長押しでため、矢印でカーソルを動かして狙う";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "cut", power: "mid", spin: "mid" };
@@ -862,6 +922,7 @@ function launchServeBall(team, server, stats, cfg) {
   ball.bounces = 0;
   ball.frontChecked = true;     // サーブには前衛は触らない
   ball.cpuFrontChecked = true;
+  receiveDone = false;          // レシーブが返るまで前衛はポジション移動しない
   launchBall(server.x, server.y, fromZ, tx, ty, speed);
 }
 
@@ -898,8 +959,8 @@ function netClearance(fromX, fromY, fromZ, tx, ty, speed) {
  * 打球（ストローク・ボレー共通）
  *
  * 球種は選択式の5種（TUNING.shots: flat/drive/slice/drop/lob）。
- * コースは「ため中の←/↑/→」で決める（未指定だとスイングしない）:
- *   - course = -1: 画面左へ / 0: まっすぐ / +1: 画面右へ
+ * プレイヤーの狙いは「着地点カーソル」（aimX/aimY・ワールド座標）で、
+ * AIの打球は course（-1..1）で決める。
  *
  * プレイヤーの打球は「実際の打点位置」で球質が決まる:
  *   - 体の横の距離: 詰まるほど引っ張り方向の角度がつかなくなり、
@@ -918,12 +979,12 @@ function isBackhandFor(side, hitterX, ballX) {
   return ballX > hitterX + 0.1;
 }
 
-// コース（-1/0/+1）とヒッターの立ち位置から表示用の呼び名を決める
-function courseLabelFor(hitterX, course) {
-  if (course == null) return "未指定";
-  if (course === 0) return "まっすぐ";
-  if (Math.abs(hitterX) < 0.6) return course < 0 ? "左へ！" : "右へ！";
-  const isCross = (hitterX > 0) === (course < 0); // 立ち位置と逆へ打つ=クロス
+// 狙い（ワールドx）とヒッターの立ち位置から表示用の呼び名を決める
+function courseLabelFor(hitterX, targetX) {
+  const dx = targetX - hitterX;
+  if (Math.abs(dx) < 1.2) return "まっすぐ";
+  if (Math.abs(hitterX) < 0.6) return dx < 0 ? "左へ！" : "右へ！";
+  const isCross = (hitterX > 0) === (dx < 0); // 立ち位置と逆へ打つ=クロス
   return isCross ? "クロス！" : "ストレート！";
 }
 
@@ -1013,21 +1074,25 @@ function hitBall(opts) {
   const depthDir = side === "player" ? -1 : 1;
   const fromZ = Math.max(0.3, Math.min(contactZ, 2.3));
 
-  let tx, speed, sigma;
+  let tx, ty, speed, sigma;
   let ev = null;
 
   if (opts.byPlayer) {
-    // プレイヤー操作: 実際の打点から角度幅・球速・精度を決める
+    // プレイヤー操作: 着地点カーソル（aimX/aimY）を狙う。
+    // ただし打点品質による角度幅制限がかかり、詰まったときに
+    // 鋭い角度を狙っても浅い角度（体の正面寄り）に補正される
     ev = evaluateContact(side, hitter, contactZ);
-    const dir = Math.max(-1, Math.min(1, opts.course || 0));
+    const aimX = opts.aimX != null ? opts.aimX : 0;
+    const desired = aimX - hitter.x;
     const angleSpan = TUNING.contact.maxAngle
       * (1 + TUNING.charge.angleBonus * chargeK); // ためが長いほど鋭い角度
-    if (dir === 0) {
-      tx = hitter.x * 0.8 + ev.driftX;
-    } else {
-      const mul = (dir === ev.pullSign) ? ev.pullMul : ev.flowMul;
-      tx = hitter.x + dir * angleSpan * mul + ev.driftX;
-    }
+    const dirSign = desired >= 0 ? 1 : -1;
+    const mul = (dirSign === ev.pullSign) ? ev.pullMul : ev.flowMul;
+    const maxOffset = angleSpan * mul;
+    tx = hitter.x + Math.max(-maxOffset, Math.min(maxOffset, desired)) + ev.driftX;
+    ty = opts.aimY != null
+      ? Math.max(-(COURT.halfL - 0.4), Math.min(-TUNING.aim.minDepth, opts.aimY))
+      : depthDir * (def.depthMin + Math.random() * def.depthRange);
     speed = def.speed * stats.power * ev.speedMul
       * (1 + TUNING.charge.speedBonus * chargeK);
     sigma = ev.sigma / Math.min(Math.max(stats.control, 0.5), 1.3);
@@ -1040,13 +1105,12 @@ function hitBall(opts) {
     speed = def.speed * stats.power * (backhand ? 0.9 : 1.0)
       * (1 + TUNING.charge.speedBonus * chargeK);
     if (side === "cpu") speed *= TUNING.cpuSpeedScale;
+    ty = depthDir * (def.depthMin + Math.random() * def.depthRange);
   }
 
-  let ty = depthDir * (def.depthMin + Math.random() * def.depthRange);
-
-  // ドロップは横へ散らさずネット際を狙う
+  // ドロップは横へ散らさずネット際を狙う（プレイヤーはカーソルを尊重）
   if (shotKey === "drop") {
-    tx = hitter.x + (tx - hitter.x) * 0.35;
+    if (!opts.byPlayer) tx = hitter.x + (tx - hitter.x) * 0.35;
     sigma *= 0.6;
   }
 
@@ -1085,6 +1149,7 @@ function hitBall(opts) {
   ball.serving = false;
   ball.frontChecked = (side === "cpu") ? false : true;
   ball.cpuFrontChecked = (side === "player") ? false : true;
+  receiveDone = true; // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
   launchBall(hitter.x, hitter.y, fromZ, tx, ty, speed);
 
   // プレイヤーチームの打球に対して相手前衛の作戦を抽選する
@@ -1103,6 +1168,8 @@ function hitBall(opts) {
 
   lastHitInfo = {
     side: side, shot: shotKey, course: opts.course != null ? opts.course : null,
+    aimX: opts.aimX != null ? opts.aimX : null,
+    aimY: opts.aimY != null ? opts.aimY : null,
     tx: tx, ty: ty, speed: speed, byPlayer: !!opts.byPlayer,
     contact: ev,
   };
@@ -1112,7 +1179,7 @@ function hitBall(opts) {
     effects.push({
       type: "text",
       x: hitter.x, y: hitter.y, t: 0, ttl: 0.7,
-      text: courseLabelFor(hitter.x, opts.course),
+      text: courseLabelFor(hitter.x, tx),
       color: "#10B981",
     });
     let qualityText = null;
@@ -1301,15 +1368,16 @@ function predictLanding() {
  * プレイヤー操作
  *
  * - 移動: 矢印キー / WASD で4方向に自由移動
- *   ・ため中とトス中は矢印キーがコース/狙い指定になり、移動はWASDのみ
+ *   ・ため中とトス中は矢印キーがカーソル/狙い操作になり、移動はWASDのみ
  * - 球種: 1〜5キー（またはQ/Eサイクル・画面のボタン）で選択式
- * - スペース押しっぱなし: ため（チャージ）。長いほど鋭い角度
- *   ・ため中に ←/↑/→ でコース指定（必須。未指定だとスイングしない）
+ * - スペースか球種キー(1〜5)押しっぱなし: ため（チャージ）。長いほど鋭い角度
+ *   ・ため中に矢印キーで着地点カーソル（ゴーストリング）を自由移動
+ *   ・未操作でもデフォルト位置（安全なミドル深め）へ打てる
  *   ・ボールが打点に来ると自動でスイング。途中で離してもスイング
  * - サーブ: 種類/パワー/回転を設定 → スペースでトス →
  *   適正打点の高さでもう一度スペース（トス中の←/→で狙い）
  * - スマホ: スティックで2軸移動、下部ボタン長押しでため
- *   （ため中はスティックの左/上/右でコース指定）
+ *   （ため中はスティックがカーソル移動）
  * =========================================================== */
 
 const keysArrow = { left: false, right: false, up: false, down: false };
@@ -1344,9 +1412,14 @@ document.addEventListener("keydown", function (e) {
   if (e.code === "KeyW") keysWasd.up = true;
   if (e.code === "KeyS") keysWasd.down = true;
 
-  // 球種選択: 1〜5キー / Q・Eでサイクル
+  // 球種選択: 1〜5キー / Q・Eでサイクル。
+  // 1〜5キーは長押し=その球種でため、離したら打つ（スペースと同じ挙動）
   const digit = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].indexOf(e.code);
-  if (digit >= 0) { selectShot(SHOT_ORDER[digit]); return; }
+  if (digit >= 0) {
+    selectShot(SHOT_ORDER[digit]);
+    if (!e.repeat) startCharge(e.code);
+    return;
+  }
   if (e.code === "KeyQ") { cycleShot(-1); return; }
   if (e.code === "KeyE") { cycleShot(1); return; }
 
@@ -1357,7 +1430,7 @@ document.addEventListener("keydown", function (e) {
       playerServeAction();
       return;
     }
-    startCharge();
+    startCharge("Space");
   }
 });
 
@@ -1370,7 +1443,10 @@ document.addEventListener("keyup", function (e) {
   if (e.code === "KeyD") keysWasd.right = false;
   if (e.code === "KeyW") keysWasd.up = false;
   if (e.code === "KeyS") keysWasd.down = false;
-  if (e.code === "Space") releaseCharge();
+  if (e.code === "Space") releaseCharge("Space");
+  if (["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].indexOf(e.code) >= 0) {
+    releaseCharge(e.code);
+  }
 });
 
 /* ---- 球種の選択（選択式・HUDと色分けに反映） ---- */
@@ -1393,44 +1469,57 @@ function cycleShot(dir) {
 
 /* ---- ため（チャージ）の開始・解放 ---- */
 
-function startCharge() {
+function startCharge(source) {
   if (state !== "rally" || charge.active) return;
   charge.active = true;
   charge.start = matchTime;
-  charge.course = null; // コースは←/↑/→で指定する（未指定だとスイングしない）
-  charge.warned = false;
+  charge.source = source || "pointer";
+  // カーソルは毎回安全なデフォルト（ミドル深め）から始める。
+  // 未操作のままでもこの位置へ打てる
+  aim.x = 0;
+  aim.y = -TUNING.aim.defaultY;
 }
 
-function releaseCharge() {
+function releaseCharge(source) {
   if (!charge.active) return;
+  // ため開始と同じ入力を離したときだけスイングする
+  // （球種キーとスペースの併用で誤発動しないように）
+  if (source && charge.source && source !== charge.source) return;
   const power = chargeAmount();
-  const course = charge.course;
   charge.active = false;
+  charge.source = null;
   if (state !== "rally") return;
-  if (course == null) return; // 方向キー未入力ならスイングしない
   if (canPlayerHit(rallyControlled)) {
-    playerHitBall(selectedShot, power, course);
+    playerHitBall(selectedShot, power, aim.x, aim.y);
   } else if (ballIncomingToPlayer() && distToBall(rallyControlled) < 6.0) {
     // 早めに離したときは「予約スイング」: 打点に届いた瞬間に自動で打つ
     pendingSwing = 0.35;
     pendingShot = selectedShot;
     pendingPower = power;
-    pendingCourse = course;
+    pendingAimX = aim.x;
+    pendingAimY = aim.y;
   }
 }
 
-// ため中の←/↑/→とトス中の←/→（スティック）を毎フレーム反映する
-function updateAimInputs() {
+// ため中の矢印/スティック=着地点カーソル移動、トス中の←/→=サーブ狙い
+function updateAimInputs(dt) {
   if (state === "rally" && charge.active) {
-    // 一度指定したコースは保持し、入力があれば上書きする
-    if (keysArrow.left && !keysArrow.right) charge.course = -1;
-    else if (keysArrow.right && !keysArrow.left) charge.course = 1;
-    else if (keysArrow.up) charge.course = 0;
-    if (stick.active) {
-      if (stick.dx < -0.35) charge.course = -1;
-      else if (stick.dx > 0.35) charge.course = 1;
-      else if (stick.dy < -0.35) charge.course = 0;
+    const c = TUNING.aim;
+    let dx = 0, dy = 0;
+    if (keysArrow.left) dx -= 1;
+    if (keysArrow.right) dx += 1;
+    if (keysArrow.up) dy -= 1;   // ↑=奥（深く）
+    if (keysArrow.down) dy += 1; // ↓=手前（浅く）
+    if (stick.active) { dx += stick.dx; dy += stick.dy; }
+    const len = Math.hypot(dx, dy);
+    if (len > 1) { dx /= len; dy /= len; }
+    if (dx !== 0 || dy !== 0) {
+      aim.x += dx * c.cursorSpeed * dt;
+      aim.y += dy * c.cursorSpeed * dt;
     }
+    // 狙いはコート内マージンに収める（アウトは打点の悪さ・散らばり由来のみ）
+    aim.x = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, aim.x));
+    aim.y = Math.max(-(COURT.halfL - c.depthMargin), Math.min(-c.minDepth, aim.y));
   } else if (state === "serve-toss" && playerIsServer()) {
     if (keysArrow.left && !keysArrow.right) serveAim = -1;
     else if (keysArrow.right && !keysArrow.left) serveAim = 1;
@@ -1450,13 +1539,13 @@ if (chargeBtn) {
       playerServeAction();
       return;
     }
-    startCharge();
+    startCharge("pointer");
   });
   chargeBtn.addEventListener("pointerup", function (e) {
     e.preventDefault();
-    releaseCharge();
+    releaseCharge("pointer");
   });
-  chargeBtn.addEventListener("pointercancel", function () { releaseCharge(); });
+  chargeBtn.addEventListener("pointercancel", function () { releaseCharge("pointer"); });
 }
 
 // 球種選択ボタン
@@ -1563,17 +1652,18 @@ canvas.addEventListener("pointerdown", function (e) {
     playerServeAction();
     return;
   }
-  startCharge();
+  startCharge("pointer");
 });
 
 window.addEventListener("pointerup", function () {
   pointerActive = false;
-  releaseCharge();
+  releaseCharge("pointer");
 });
 
 let pendingShot = "drive";
 let pendingPower = 0;
-let pendingCourse = 0;
+let pendingAimX = 0;
+let pendingAimY = -9.0;
 
 function ballIncomingToPlayer() {
   return ball.lastHitter === "cpu" && ball.bounces < 2;
@@ -1591,14 +1681,15 @@ function canPlayerHit(p) {
   return distToBall(cp) <= HIT_REACH * cp.stats.reach;
 }
 
-function playerHitBall(shot, chargePower, course) {
+function playerHitBall(shot, chargePower, aimX, aimY) {
   pendingSwing = 0;
   hitBall({
     hitter: rallyControlled,
     side: "player",
     shot: shot,
     charge: chargePower || 0,
-    course: course || 0,
+    aimX: aimX != null ? aimX : 0,
+    aimY: aimY != null ? aimY : -TUNING.aim.defaultY,
     contactZ: ball.z,
     byPlayer: true, // 実際の打点位置で角度幅・球速・ミス率を決める
   });
@@ -1642,6 +1733,16 @@ function updatePartner(dt) {
   // 相手サーブ中、AI後衛はレシーブ位置で待機する
   if ((state === "serve-stance" || state === "serve-toss") &&
       serverTeamNow() === "cpu" && partner === back) {
+    return;
+  }
+
+  // 前衛はレシーブが完了するまでポジション移動しない（定位置で待機）。
+  // ただし自分がサーブした直後のサービスダッシュは始めてよい
+  if (partner === front && !receiveDone) {
+    if (state === "rally" && pointJustServedByFront && formation !== "double-back") {
+      moveToward(front, front.homeX * (back.x > 0 ? -1 : 1), front.homeY, speed * 1.4 * dt);
+      front.x = Math.max(-4.6, Math.min(4.6, front.x));
+    }
     return;
   }
 
@@ -1731,6 +1832,14 @@ function updateCpuFront(dt) {
   // 自分のサーブを打つ前はベースライン後方に留まる（前へ出ない）
   if ((state === "serve-stance" || state === "serve-toss") &&
       serverTeamNow() === "cpu" && currentServer() === cpuFront) {
+    return;
+  }
+  // レシーブが完了するまでポジション移動しない（定位置で待機）。
+  // ただし自分がサーブした直後のサービスダッシュは始めてよい
+  if (!receiveDone) {
+    if (state === "rally" && cpuJustServedByFront) {
+      moveToward(cpuFront, cpuFront.homeX * (cpuBack.x > 0 ? -1 : 1), cpuFront.homeY, speed * 1.3 * dt);
+    }
     return;
   }
   if (state === "rally" && ball.lastHitter === "player" && !ball.serving) {
@@ -1883,8 +1992,47 @@ function inputVector() {
   return { dx: dx, dy: dy };
 }
 
+/* ---- サーブ前のレシーブ準備管理 ----
+ * CPUサーブ: プレイヤー（レシーブ側）が静止するまで打たない。
+ *   種類表示からの最低猶予（minShow）で移動時間を確保し、
+ *   maxWait を過ぎたら待ちすぎ防止で打ってくる。
+ * 相方サーブ / プレイヤーサーブ: AIレシーバーの準備時間（aiReady）を
+ *   置いてからトス（プレイヤーはそれまでトス不可）。 */
+function updateServeReady(dt) {
+  const cfg = TUNING.serveReady;
+  serveReady.timer += dt;
+  if (serveReady.ready) return;
+  const team = serverTeamNow();
+  if (team === "cpu") {
+    const v = inputVector();
+    const moving = v.dx !== 0 || v.dy !== 0 || stick.active;
+    serveReady.still = moving ? 0 : serveReady.still + dt;
+    if (serveReady.timer >= cfg.minShow &&
+        (serveReady.still >= cfg.stillTime || serveReady.timer >= cfg.maxWait)) {
+      serveReady.ready = true;
+      hintText.textContent = "レシーブ準備OK！相手がサーブを打つ";
+      aiStartToss("cpu");
+    }
+  } else if (!playerIsServer()) {
+    if (serveReady.timer >= cfg.aiReady) {
+      serveReady.ready = true;
+      aiStartToss("player");
+    }
+  } else {
+    if (serveReady.timer >= cfg.aiReady) {
+      serveReady.ready = true;
+      hintText.textContent = "レシーバー準備OK。スペース/ボタンでトス（←/→で打点調整）";
+    }
+  }
+}
+
 function update(dt) {
   matchTime += dt;
+
+  // サーブの構え中: レシーバーの準備が整ってからサーブが始まる
+  if (state === "serve-stance") {
+    updateServeReady(dt);
+  }
 
   // 移動操作: サーブの構え/トス中は自分がサーバーのときのみ、ラリー中は rallyControlled
   let mover = null;
@@ -1894,8 +2042,8 @@ function update(dt) {
     mover = rallyControlled;
   }
 
-  // ため中の←/↑/→（コース）とトス中の←/→（狙い）を反映
-  updateAimInputs();
+  // ため中の矢印/スティック（着地点カーソル）とトス中の←/→（狙い）を反映
+  updateAimInputs(dt);
 
   if (mover) {
     const v = inputVector();
@@ -1965,7 +2113,7 @@ function update(dt) {
   // 予約スイング（アシスト）: 早めに離した直後の猶予内にゾーンへ入れば打つ
   if (pendingSwing > 0) {
     pendingSwing -= dt;
-    if (canPlayerHit(rallyControlled)) playerHitBall(pendingShot, pendingPower, pendingCourse);
+    if (canPlayerHit(rallyControlled)) playerHitBall(pendingShot, pendingPower, pendingAimX, pendingAimY);
   }
 
   // 構え・打点タイミングの管理
@@ -1983,25 +2131,13 @@ function update(dt) {
   }
 
   // ため中: ボールが打点に来たら自動でスイング（押しっぱなしで打てる）。
-  // ただしコース未指定（方向キー未入力）の間はスイングしない
+  // カーソル未操作でもデフォルト位置（安全なミドル深め）へ打つ
   if (charge.active && hittable && ballHittableSince >= 0 &&
       matchTime - ballHittableSince >= IDEAL_HIT_DELAY) {
-    if (charge.course == null) {
-      if (!charge.warned) {
-        charge.warned = true;
-        effects.push({
-          type: "text",
-          x: cp.x, y: cp.y - 1.0, t: 0, ttl: 1.0,
-          text: "←/↑/→でコース！",
-          color: "#EF4444",
-        });
-      }
-    } else {
-      const power = chargeAmount();
-      const course = charge.course;
-      charge.active = false;
-      playerHitBall(selectedShot, power, course);
-    }
+    const power = chargeAmount();
+    charge.active = false;
+    charge.source = null;
+    playerHitBall(selectedShot, power, aim.x, aim.y);
   }
 
   partnerTryReturn();
@@ -2026,6 +2162,7 @@ function draw() {
   drawBackground();
   drawCourt();
   drawLandingMarker();
+  drawAimCursor();
   drawGroundEffects();
   drawBallShadow();
 
@@ -2041,8 +2178,31 @@ function draw() {
   items.forEach(function (it) { it.fn(); });
 
   drawTextEffects();
+  drawServeTypeBadge();
   drawTimingGauge();
   drawHud();
+}
+
+/* ---- 相手サーブの種類を打つ前に表示（サーバー頭上のバッジ） ---- */
+function drawServeTypeBadge() {
+  if (state !== "serve-stance" && state !== "serve-toss") return;
+  if (serverTeamNow() !== "cpu" || !cpuServePlan) return;
+  const server = currentServer();
+  const isCut = cpuServePlan.type === "cut";
+  const text = isCut ? "アンダーカット" : "オーバー";
+  const color = isCut ? "#38BDF8" : "#F8FAFC";
+  const p = project(server.x, server.y, 2.3);
+  ctx.font = "700 11px sans-serif";
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = "rgba(30,27,75,0.78)";
+  roundRect(p.x - tw / 2 - 7, p.y - 12, tw + 14, 18, 6);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.fillText(text, p.x, p.y + 1);
 }
 
 /* ---- HUD: 選択中の球種 / サーブ設定を常時表示 ---- */
@@ -2060,6 +2220,30 @@ function drawHud() {
     ctx.font = "700 10px sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(text, 14, 21);
+    // レシーバーの準備状態（準備が整うまでトス不可）
+    ctx.fillStyle = serveReady.ready ? "rgba(16,185,129,0.9)" : "rgba(255,255,255,0.7)";
+    ctx.font = "600 9px sans-serif";
+    ctx.fillText(serveReady.ready ? "レシーバー準備OK" : "レシーバー準備中…", 14, 40);
+    return;
+  }
+
+  // 相手サーブ: 種類を打つ前に表示（前へ詰める判断の時間を確保する）
+  if ((state === "serve-stance" || state === "serve-toss") &&
+      serverTeamNow() === "cpu" && cpuServePlan) {
+    const isCut = cpuServePlan.type === "cut";
+    const text = "相手サーブ: " + (isCut ? "アンダーカット" : "オーバー");
+    ctx.fillStyle = "rgba(30,27,75,0.55)";
+    roundRect(6, 6, 158, 22, 6);
+    ctx.fill();
+    ctx.fillStyle = isCut ? "#38BDF8" : "#F8FAFC";
+    ctx.font = "700 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(text, 14, 21);
+    if (state === "serve-stance" && !serveReady.ready) {
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.font = "600 9px sans-serif";
+      ctx.fillText("静止するとサーブが来る", 14, 40);
+    }
     return;
   }
 
@@ -2239,6 +2423,33 @@ function drawLandingMarker() {
   ctx.stroke();
 }
 
+/* ---- 着地点カーソル（ため中の狙い・ゴーストリング） ---- */
+function drawAimCursor() {
+  if (state !== "rally" || !charge.active) return;
+  const def = TUNING.shots[selectedShot];
+  const p = project(aim.x, aim.y, 0);
+  const pulse = 0.9 + 0.1 * Math.sin(performance.now() / 110);
+  const r = Math.max(6, 0.6 * p.s) * pulse;
+  const color = def ? def.color : "#FFFFFF";
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, r, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, r * 0.5, r * 0.22, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  // 中心の十字（位置が分かりやすいように）
+  ctx.beginPath();
+  ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
+  ctx.moveTo(p.x, p.y - 3); ctx.lineTo(p.x, p.y + 3);
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+}
+
 function drawGroundEffects() {
   effects.forEach(function (ef) {
     if (ef.type !== "ripple") return;
@@ -2331,16 +2542,9 @@ function drawTimingGauge() {
     const def = TUNING.shots[selectedShot];
     ctx.font = "700 11px sans-serif";
     ctx.textAlign = "center";
-    if (charge.course == null) {
-      // コース未指定の警告（点滅）
-      const blink = Math.sin(performance.now() / 120) > -0.2;
-      ctx.fillStyle = blink ? "#EF4444" : "rgba(239,68,68,0.4)";
-      ctx.fillText("←/↑/→ でコース指定！", gx + gw / 2, gy - 6);
-    } else {
-      const courseName = courseLabelFor(rallyControlled.x, charge.course).replace("！", "");
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.fillText("ため " + def.label + " / " + courseName + (k >= 1 ? " MAX" : ""), gx + gw / 2, gy - 6);
-    }
+    const courseName = courseLabelFor(rallyControlled.x, aim.x).replace("！", "");
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillText("ため " + def.label + " / " + courseName + (k >= 1 ? " MAX" : "") + "（矢印で狙い）", gx + gw / 2, gy - 6);
   }
 }
 
@@ -2607,7 +2811,11 @@ window.__softTennisDebug = {
       selectedShot: selectedShot,
       serveConfig: { type: serveType, power: servePower, spin: serveSpin, aim: serveAim },
       cpuFrontPlan: cpuFrontPlan,
-      charge: { active: charge.active, course: charge.course, amount: chargeAmount() },
+      cpuServePlan: cpuServePlan,
+      receiveDone: receiveDone,
+      serveReady: { timer: serveReady.timer, still: serveReady.still, ready: serveReady.ready },
+      charge: { active: charge.active, source: charge.source, amount: chargeAmount() },
+      aim: { x: aim.x, y: aim.y },
       ball: {
         x: ball.x, y: ball.y, z: ball.z,
         vx: ball.vx, vy: ball.vy, vz: ball.vz,
@@ -2645,29 +2853,36 @@ window.__softTennisDebug = {
   },
   // テスト用: 直近の打球情報（打点評価を含む）
   getLastHit: function () { return lastHitInfo; },
-  // テスト用: ため→打つ を一括で行う（chargeSec秒ためた扱い、courseは-1/0/1。
-  // course===null を渡すと「コース未指定」扱いでスイングしない）
-  action: function (shot, course, chargeSec) {
+  // テスト用: ため→打つ を一括で行う（chargeSec秒ためた扱い。
+  // aimX/aimY は着地点カーソルのワールド座標。省略時はデフォルト狙い）
+  action: function (shot, aimX, aimY, chargeSec) {
     if (state === "serve-stance" || state === "serve-toss") {
       playerServeAction();
       return;
     }
     if (state !== "rally") return;
     if (shot) selectShot(shot);
-    if (course === null) return; // コース未指定はスイングしない仕様
     const power = Math.max(0, Math.min(1, (chargeSec || 0) / TUNING.charge.maxTime));
+    const ax = aimX != null ? aimX : 0;
+    const ay = aimY != null ? aimY : -TUNING.aim.defaultY;
     if (canPlayerHit(rallyControlled)) {
-      playerHitBall(selectedShot, power, course || 0);
+      playerHitBall(selectedShot, power, ax, ay);
     } else if (ballIncomingToPlayer() && distToBall(rallyControlled) < 6.0) {
       pendingSwing = 0.4;
       pendingShot = selectedShot;
       pendingPower = power;
-      pendingCourse = course || 0;
+      pendingAimX = ax;
+      pendingAimY = ay;
     }
   },
   startCharge: startCharge,
   releaseCharge: releaseCharge,
-  setChargeCourse: function (c) { charge.course = c; },
+  setAim: function (x, y) {
+    if (x != null) aim.x = x;
+    if (y != null) aim.y = y;
+  },
+  // テスト用: レシーブ準備の待ちを飛ばす
+  forceServeReady: function () { serveReady.timer = 999; serveReady.still = 999; },
   // テスト用: トスのタイミングを直接指定して打つ
   forceServeTiming: function (tossT) {
     if (state === "serve-stance") playerServeAction();
