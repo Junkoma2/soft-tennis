@@ -41,7 +41,7 @@
         </div>
         <div class="rules">
           <p><strong>移動</strong>　矢印キー / WASD（スマホ：左下スティック）</p>
-          <p><strong>球種</strong>　専用キーで即選択 — 1=フラット 2=ドライブ 3=スライス 4=ドロップ 5=ロブ（スマホは5つのボタン。ため中でも押せば即その球種に切替）</p>
+          <p><strong>球種</strong>　専用キーで即選択 — <strong>1=シュート 2=カット 3=ロブ</strong>（スマホは3つのボタン。ため中でも押せば即切替）。シュートは<strong>打点が高いとフラット・低いとドライブ</strong>、カットは<strong>強くためるとスライス・弱いとドロップ</strong>に自動で変化</p>
           <p><strong>打つ</strong>　スペースか球種キーを<strong>長押しで「ため」</strong>→ 矢印キー/スティックで<strong>着地点カーソル</strong>を動かして狙う（未操作ならミドル深めへ）</p>
           <p><strong>打点</strong>　体の横・少し前が適正。詰まると狙った鋭い角度が浅く補正され、球も弱くなる</p>
           <p><strong>サーブ</strong>　種類・パワー・回転を選ぶ → スペースでトス → ゲージの緑の高さでもう一度スペース。相手のサーブは種類が打つ前に表示される</p>
@@ -97,11 +97,9 @@
           </div>
           <div class="control-group" id="shot-select-controls">
             <span class="control-label">球種</span>
-            <button class="ctrl-btn shot-sel" data-shotsel="flat" type="button"><span class="shot-key">1</span><span class="shot-dot" style="background:#94A3B8"></span>フラット</button>
-            <button class="ctrl-btn shot-sel is-active" data-shotsel="drive" type="button"><span class="shot-key">2</span><span class="shot-dot" style="background:#FB923C"></span>ドライブ</button>
-            <button class="ctrl-btn shot-sel" data-shotsel="slice" type="button"><span class="shot-key">3</span><span class="shot-dot" style="background:#38BDF8"></span>スライス</button>
-            <button class="ctrl-btn shot-sel" data-shotsel="drop" type="button"><span class="shot-key">4</span><span class="shot-dot" style="background:#A78BFA"></span>ドロップ</button>
-            <button class="ctrl-btn shot-sel" data-shotsel="lob" type="button"><span class="shot-key">5</span><span class="shot-dot" style="background:#FACC15"></span>ロブ</button>
+            <button class="ctrl-btn shot-sel shot-shoot is-active" data-shotsel="shoot" type="button"><span class="shot-key">1</span><span class="shot-dot" style="background:#FB923C"></span>シュート<span class="shot-note">高い=フラット/低い=ドライブ</span></button>
+            <button class="ctrl-btn shot-sel shot-cut" data-shotsel="cut" type="button"><span class="shot-key">2</span><span class="shot-dot" style="background:#38BDF8"></span>カット<span class="shot-note">強=スライス/弱=ドロップ</span></button>
+            <button class="ctrl-btn shot-sel shot-lob" data-shotsel="lob" type="button"><span class="shot-key">3</span><span class="shot-dot" style="background:#FACC15"></span>ロブ</button>
           </div>
           <div class="control-group" id="shot-controls">
             <span class="control-label">打球</span>

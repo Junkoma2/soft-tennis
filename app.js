@@ -12,9 +12,9 @@
  * 操作方式:
  *   - 矢印キー/WASDで4方向に自由移動（ため中・トス中は矢印が
  *     カーソル/狙い操作になり、移動はWASDのみ）。
- *   - 球種は選択式: 1〜5キー（またはQ/Eサイクル・画面のボタン）で
- *     フラット/ドライブ/スライス/ドロップ/ロブを選ぶ。
- *   - ため打ち: スペースか球種キー(1〜5)を押している間「ため」、
+ *   - 球種は3系統を選択（1=シュート/2=カット/3=ロブ・画面のボタン）。
+ *     打点高さ・ため量で内部の5種(flat/drive/slice/drop/lob)へ自動振り分け。
+ *   - ため打ち: スペースか球種キー(1〜3)を押している間「ため」、
  *     ボールが打点に来ると自動でスイング。ため中に矢印/スティックで
  *     着地点カーソルを動かして狙う（未操作はミドル深めへ打つ）。
  *     ためが長いほど鋭い角度を狙える。
@@ -287,9 +287,52 @@ let servePower = "mid";  // weak / mid / strong
 let serveSpin = "mid";   // weak / mid / strong
 let serveAim = 0;        // トス中の←/→で狙い（-1=センター寄り側 0=中央 +1=サイド寄り側）
 
-/* ---- ストロークの球種（選択式・5種） ---- */
-const SHOT_ORDER = ["flat", "drive", "slice", "drop", "lob"];
-let selectedShot = "drive";
+/* ---- ストロークの球種（選択UIは3系統に集約） ----
+ * プレイヤーが選ぶのは shoot / cut / lob の3つ。
+ * 内部の5種（flat/drive/slice/drop/lob）の物理はそのまま残し、
+ * 打つ瞬間に「打点の高さ」「ためのチャージ量」で自動的に振り分ける。
+ *   shoot: 高い打点=flat（速く低弾道） / 通常〜低い打点=drive（食い込む）
+ *   cut:   強いため=slice（食い込み深い） / 弱いため=drop（手前に落とす）
+ *   lob:   そのまま lob
+ * 1=シュート 2=カット 3=ロブ の3キー / スマホも3ボタン。 */
+const SHOT_FAMILY_ORDER = ["shoot", "cut", "lob"];
+let selectedShot = "shoot"; // 選択中の「系統」（shoot / cut / lob）
+
+// シュートで flat に切り替わる打点高さ(m)。標準打点上限(idealZHigh=1.3)付近を境に、
+// それより高ければ速いフラット、通常〜低ければ食い込むドライブ。
+const SHOOT_FLAT_Z = 1.25;
+// カットで slice に切り替わるチャージ量(0..1)。これ以上ためれば深いスライス、
+// 弱ければ手前に落とすドロップ。
+const CUT_SLICE_CHARGE = 0.45;
+
+// 選択中の系統と「打点高さ・チャージ量」から内部の5種キーを解決する
+function resolveShotKey(family, contactZ, chargeK) {
+  if (family === "shoot") {
+    return (contactZ != null && contactZ >= SHOOT_FLAT_Z) ? "flat" : "drive";
+  }
+  if (family === "cut") {
+    return (chargeK != null && chargeK >= CUT_SLICE_CHARGE) ? "slice" : "drop";
+  }
+  return "lob";
+}
+
+// 系統ごとの表示メタ（HUD・カーソルの色とラベル）。色はシュート系/カット系/ロブで分ける
+const SHOT_FAMILY_META = {
+  shoot: { label: "シュート", color: "#FB923C" }, // オレンジ系（flat/drive）
+  cut:   { label: "カット",   color: "#38BDF8" }, // ブルー系（slice/drop）
+  lob:   { label: "ロブ",     color: "#FACC15" }, // イエロー
+};
+
+// 描画プレビュー用: いま打ったら内部でどの5種になるかを、現在のボールの高さと
+// ためのチャージ量から推定して def を返す（HUD・カーソル色・ためゲージ表示に使う）
+function previewShotDef() {
+  const key = resolveShotKey(
+    selectedShot,
+    ball ? ball.z : null,
+    charge.active ? chargeAmount() : 0
+  );
+  return TUNING.shots[key] || TUNING.shots.drive;
+}
 
 /* ---- 相手前衛の作戦（プレイヤーが打つたびに抽選） ---- */
 // base（センターライン基準の定位置） / poach（邪魔しに行く） /
@@ -832,7 +875,7 @@ function launchPlayerServe() {
   hideMessage();
   state = "rally";
   setControlMode("rally");
-  hintText.textContent = "1-5キーで球種を即選択（ため中も切替可）。スペース長押しでため→矢印で狙う";
+  hintText.textContent = "1=シュート 2=カット 3=ロブ（ため中も切替可）。スペース長押しでため→矢印で狙う";
 
   launchServeBall("player", server, server.stats, {
     type: serveType,
@@ -875,8 +918,8 @@ function aiLaunchServe(team) {
   toss.active = false;
   state = "rally";
   hintText.textContent = (team === "cpu")
-    ? "レシーブ！ 1-5で球種を即選択、長押しでため、矢印で狙う"
-    : "ラリー再開。1-5で球種を即選択、長押しでため、矢印で狙う";
+    ? "レシーブ！ 1=シュート 2=カット 3=ロブ、長押しでため、矢印で狙う"
+    : "ラリー再開。1=シュート 2=カット 3=ロブ、長押しでため、矢印で狙う";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "cut", power: "mid", spin: "mid" };
@@ -1086,10 +1129,17 @@ function hitBall(opts) {
   const side = opts.side;
   const hitter = opts.hitter;
   const stats = hitter.stats;
-  const shotKey = TUNING.shots[opts.shot] ? opts.shot : "drive";
-  const def = TUNING.shots[shotKey];
   const chargeK = Math.max(0, Math.min(1, opts.charge || 0));
   const contactZ = opts.contactZ != null ? opts.contactZ : ball.z;
+  // 系統（shoot/cut/lob）が来たら打点高さ・チャージ量で内部の5種へ振り分ける。
+  // AIや旧来の直接指定（flat/drive/...）はそのまま使う。
+  let shotKey;
+  if (SHOT_FAMILY_ORDER.indexOf(opts.shot) >= 0) {
+    shotKey = resolveShotKey(opts.shot, contactZ, chargeK);
+  } else {
+    shotKey = TUNING.shots[opts.shot] ? opts.shot : "drive";
+  }
+  const def = TUNING.shots[shotKey];
   const backhand = isBackhandFor(side, hitter.x, ball.x);
   const depthDir = side === "player" ? -1 : 1;
   const fromZ = Math.max(0.3, Math.min(contactZ, 2.3));
@@ -1389,8 +1439,8 @@ function predictLanding() {
  *
  * - 移動: 矢印キー / WASD で4方向に自由移動
  *   ・ため中とトス中は矢印キーがカーソル/狙い操作になり、移動はWASDのみ
- * - 球種: 1〜5キー（またはQ/Eサイクル・画面のボタン）で選択式
- * - スペースか球種キー(1〜5)押しっぱなし: ため（チャージ）。長いほど鋭い角度
+ * - 球種: 1=シュート 2=カット 3=ロブ の3系統を選択（画面のボタンでも可）
+ * - スペースか球種キー(1〜3)押しっぱなし: ため（チャージ）。長いほど鋭い角度
  *   ・ため中に矢印キーで着地点カーソル（ゴーストリング）を自由移動
  *   ・未操作でもデフォルト位置（安全なミドル深め）へ打てる
  *   ・ボールが打点に来ると自動でスイング。途中で離してもスイング
@@ -1432,21 +1482,22 @@ document.addEventListener("keydown", function (e) {
   if (e.code === "KeyW") keysWasd.up = true;
   if (e.code === "KeyS") keysWasd.down = true;
 
-  // 球種選択: 1〜5キーが各球種の専用キー（ワンアクションで即確定）。
-  // ・押した瞬間に selectShot で即その球種へ切り替わる（HUD・ボタンも即更新）
-  // ・ため中・打つ直前に別の専用キーを押しても、ためは途切れず球種だけ
-  //   差し替わる（startCharge は charge.active 中は何もしない）。
-  //   スイング確定時に読まれる selectedShot が反映される
-  // ・まだためていない状態なら、その球種で長押しため開始も兼ねる
-  // Q/E は従来のサイクル切替（補助。専用キーが主）
-  const digit = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].indexOf(e.code);
+  // 球種選択: 1=シュート 2=カット 3=ロブ の3キー（ワンアクションで即確定）。
+  // ・押した瞬間に selectShot で即その系統へ切り替わる（HUD・ボタンも即更新）
+  // ・ため中・打つ直前に別のキーを押しても、ためは途切れず系統だけ差し替わる
+  //   （startCharge は charge.active 中は何もしない）。
+  //   スイング確定時に読まれる selectedShot（系統）が反映される
+  // ・まだためていない状態なら、その系統で長押しため開始も兼ねる
+  // ・旧4/5キー・Q/Eは廃止（無害化。押しても何も起きない）
+  const digit = ["Digit1", "Digit2", "Digit3"].indexOf(e.code);
   if (digit >= 0) {
-    selectShot(SHOT_ORDER[digit]);
+    selectShot(SHOT_FAMILY_ORDER[digit]);
     if (!e.repeat && !charge.active) startCharge(e.code);
     return;
   }
-  if (e.code === "KeyQ") { cycleShot(-1); return; }
-  if (e.code === "KeyE") { cycleShot(1); return; }
+  // 旧球種キーは無害化（ため開始もしない）
+  if (e.code === "Digit4" || e.code === "Digit5" ||
+      e.code === "KeyQ" || e.code === "KeyE") { return; }
 
   if (e.code === "Space") {
     e.preventDefault();
@@ -1469,27 +1520,21 @@ document.addEventListener("keyup", function (e) {
   if (e.code === "KeyW") keysWasd.up = false;
   if (e.code === "KeyS") keysWasd.down = false;
   if (e.code === "Space") releaseCharge("Space");
-  if (["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].indexOf(e.code) >= 0) {
+  if (["Digit1", "Digit2", "Digit3"].indexOf(e.code) >= 0) {
     releaseCharge(e.code);
   }
 });
 
 /* ---- 球種の選択（選択式・HUDと色分けに反映） ---- */
 
-function selectShot(key) {
-  if (!TUNING.shots[key]) return;
-  selectedShot = key;
+function selectShot(family) {
+  if (SHOT_FAMILY_ORDER.indexOf(family) < 0) return;
+  selectedShot = family;
   if (shotSelectControls) {
     shotSelectControls.querySelectorAll(".ctrl-btn").forEach(function (b) {
-      b.classList.toggle("is-active", b.dataset.shotsel === key);
+      b.classList.toggle("is-active", b.dataset.shotsel === family);
     });
   }
-}
-
-function cycleShot(dir) {
-  const i = SHOT_ORDER.indexOf(selectedShot);
-  const next = (i + dir + SHOT_ORDER.length) % SHOT_ORDER.length;
-  selectShot(SHOT_ORDER[next]);
 }
 
 /* ---- ため（チャージ）の開始・解放 ---- */
@@ -2273,12 +2318,11 @@ function drawHud() {
   }
 
   if (state === "rally" || state === "point") {
-    const def = TUNING.shots[selectedShot];
-    if (!def) return;
+    const meta = SHOT_FAMILY_META[selectedShot] || SHOT_FAMILY_META.shoot;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(6, 6, 128, 22, 6);
+    roundRect(6, 6, 132, 22, 6);
     ctx.fill();
-    ctx.fillStyle = def.color;
+    ctx.fillStyle = meta.color;
     ctx.beginPath();
     ctx.arc(18, 17, 5, 0, Math.PI * 2);
     ctx.fill();
@@ -2288,10 +2332,10 @@ function drawHud() {
     ctx.fillStyle = "#fff";
     ctx.font = "700 11px sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(def.label, 28, 21);
+    ctx.fillText(meta.label, 28, 21);
     ctx.fillStyle = "rgba(255,255,255,0.65)";
     ctx.font = "600 8px sans-serif";
-    ctx.fillText("1-5キーで即選択", 70, 21);
+    ctx.fillText("1-3キーで即選択", 76, 21);
   }
 }
 
@@ -2451,11 +2495,11 @@ function drawLandingMarker() {
 /* ---- 着地点カーソル（ため中の狙い・ゴーストリング） ---- */
 function drawAimCursor() {
   if (state !== "rally" || !charge.active) return;
-  const def = TUNING.shots[selectedShot];
+  const meta = SHOT_FAMILY_META[selectedShot];
   const p = project(aim.x, aim.y, 0);
   const pulse = 0.9 + 0.1 * Math.sin(performance.now() / 110);
   const r = Math.max(6, 0.6 * p.s) * pulse;
-  const color = def ? def.color : "#FFFFFF";
+  const color = meta ? meta.color : "#FFFFFF";
 
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.4;
@@ -2564,12 +2608,15 @@ function drawTimingGauge() {
     roundRect(gx, gy, Math.max(6, gw * k), gh, 4);
     ctx.fill();
 
-    const def = TUNING.shots[selectedShot];
+    // ため中はいま打ったら出る内部球種（カット=チャージ量でslice/drop）を表示
+    const meta = SHOT_FAMILY_META[selectedShot] || SHOT_FAMILY_META.shoot;
+    const def = previewShotDef();
+    const subLabel = (def && def.label && def.label !== meta.label) ? "・" + def.label : "";
     ctx.font = "700 11px sans-serif";
     ctx.textAlign = "center";
     const courseName = courseLabelFor(rallyControlled.x, aim.x).replace("！", "");
     ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fillText("ため " + def.label + " / " + courseName + (k >= 1 ? " MAX" : "") + "（矢印で狙い）", gx + gw / 2, gy - 6);
+    ctx.fillText("ため " + meta.label + subLabel + " / " + courseName + (k >= 1 ? " MAX" : "") + "（矢印で狙い）", gx + gw / 2, gy - 6);
   }
 }
 

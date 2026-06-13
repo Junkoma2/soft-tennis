@@ -374,17 +374,38 @@ footer a:hover { color: var(--color-text); }
   color: #fff;
 }
 
-/* ---- 球種選択（5種・色分け。各ボタンに専用キー番号を表示） ---- */
+/* ---- 球種選択（3系統・色分け。各ボタンに専用キー番号を表示） ----
+ * シュート(1)/カット(2)/ロブ(3)。内部の5種は打点高さ・ため量で自動振り分け。 */
 .ctrl-btn.shot-sel {
-  font-size: 10px;
-  padding: 7px 1px;
+  font-size: 11px;
+  padding: 7px 2px;
   white-space: nowrap;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  line-height: 1.15;
+}
+
+/* 各ボタン下の補足（高い=フラット 等）。詰め込みすぎない小さめ表示 */
+.shot-note {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: normal;
+  text-align: center;
   line-height: 1.1;
 }
+
+.ctrl-btn.shot-sel.is-active .shot-note { color: rgba(255, 255, 255, 0.85); }
+
+/* 3系統の色分け（非アクティブ時の縁取り。アクティブ時は系統色で塗る） */
+.ctrl-btn.shot-shoot { border-color: #FB923C; }
+.ctrl-btn.shot-cut   { border-color: #38BDF8; }
+.ctrl-btn.shot-lob   { border-color: #FACC15; }
+.ctrl-btn.shot-shoot.is-active { background: #FB923C; border-color: #FB923C; }
+.ctrl-btn.shot-cut.is-active   { background: #38BDF8; border-color: #38BDF8; }
+.ctrl-btn.shot-lob.is-active   { background: #EAB308; border-color: #EAB308; }
 
 /* 各球種ボタンの左上に出す「専用キー番号」のキーキャップ */
 .shot-key {
