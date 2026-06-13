@@ -832,7 +832,7 @@ function launchPlayerServe() {
   hideMessage();
   state = "rally";
   setControlMode("rally");
-  hintText.textContent = "スペースか球種キー長押しでため→矢印でカーソルを動かして狙う";
+  hintText.textContent = "1-5キーで球種を即選択（ため中も切替可）。スペース長押しでため→矢印で狙う";
 
   launchServeBall("player", server, server.stats, {
     type: serveType,
@@ -875,8 +875,8 @@ function aiLaunchServe(team) {
   toss.active = false;
   state = "rally";
   hintText.textContent = (team === "cpu")
-    ? "レシーブ！ 長押しでため、矢印でカーソルを動かして狙う"
-    : "ラリー再開。長押しでため、矢印でカーソルを動かして狙う";
+    ? "レシーブ！ 1-5で球種を即選択、長押しでため、矢印で狙う"
+    : "ラリー再開。1-5で球種を即選択、長押しでため、矢印で狙う";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "cut", power: "mid", spin: "mid" };
@@ -1432,12 +1432,17 @@ document.addEventListener("keydown", function (e) {
   if (e.code === "KeyW") keysWasd.up = true;
   if (e.code === "KeyS") keysWasd.down = true;
 
-  // 球種選択: 1〜5キー / Q・Eでサイクル。
-  // 1〜5キーは長押し=その球種でため、離したら打つ（スペースと同じ挙動）
+  // 球種選択: 1〜5キーが各球種の専用キー（ワンアクションで即確定）。
+  // ・押した瞬間に selectShot で即その球種へ切り替わる（HUD・ボタンも即更新）
+  // ・ため中・打つ直前に別の専用キーを押しても、ためは途切れず球種だけ
+  //   差し替わる（startCharge は charge.active 中は何もしない）。
+  //   スイング確定時に読まれる selectedShot が反映される
+  // ・まだためていない状態なら、その球種で長押しため開始も兼ねる
+  // Q/E は従来のサイクル切替（補助。専用キーが主）
   const digit = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].indexOf(e.code);
   if (digit >= 0) {
     selectShot(SHOT_ORDER[digit]);
-    if (!e.repeat) startCharge(e.code);
+    if (!e.repeat && !charge.active) startCharge(e.code);
     return;
   }
   if (e.code === "KeyQ") { cycleShot(-1); return; }
@@ -2286,7 +2291,7 @@ function drawHud() {
     ctx.fillText(def.label, 28, 21);
     ctx.fillStyle = "rgba(255,255,255,0.65)";
     ctx.font = "600 8px sans-serif";
-    ctx.fillText("1-5 / Q E", 86, 21);
+    ctx.fillText("1-5キーで即選択", 70, 21);
   }
 }
 

@@ -374,11 +374,36 @@ footer a:hover { color: var(--color-text); }
   color: #fff;
 }
 
-/* ---- 球種選択（5種・色分け） ---- */
+/* ---- 球種選択（5種・色分け。各ボタンに専用キー番号を表示） ---- */
 .ctrl-btn.shot-sel {
   font-size: 10px;
   padding: 7px 1px;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.1;
+}
+
+/* 各球種ボタンの左上に出す「専用キー番号」のキーキャップ */
+.shot-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  border-radius: 4px;
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.ctrl-btn.shot-sel.is-active .shot-key {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
 }
 
 .shot-dot {
