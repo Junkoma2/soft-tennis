@@ -49,7 +49,7 @@ const TUNING = {
   // サーブ（打つ前にパワーと回転量を設定する方式）
   //   zone: 打点の高さ(m)。max超は空振り、idealに近いほど速く正確
   serve: {
-    overSpeed: 16.5,  // オーバーサーブの基本球速
+    overSpeed: 18.5,  // オーバーサーブの基本球速（実戦的な速さ。カットとの差は維持）
     cutSpeed: 11.0,   // アンダーカットサーブの基本球速
     power: { weak: 0.8, mid: 1.0, strong: 1.2 },  // パワー設定→球速倍率
     spin:  { weak: 0.6, mid: 1.0, strong: 1.7 },  // 回転設定→回転量倍率
@@ -78,10 +78,28 @@ const TUNING = {
   },
   // サーブ前のレシーブ準備（準備が整うまでサーブを打てない）
   serveReady: {
-    stillTime: 0.45, // レシーブ側プレイヤーがこの秒数静止したら準備完了
-    minShow: 1.6,    // 相手サーブの種類表示からトスまでの最低猶予(秒)
-    maxWait: 8.0,    // 準備を待つ最大秒数（過ぎたら相手は打ってくる）
-    aiReady: 1.2,    // AIレシーバーの準備時間（プレイヤーはこれを過ぎるまでトス不可）
+    stillTime: 0.35, // レシーブ側プレイヤーがこの秒数静止したら準備完了
+    minShow: 0.9,    // 相手サーブの種類表示からトスまでの最低猶予(秒)
+    maxWait: 6.0,    // 準備を待つ最大秒数（過ぎたら相手は打ってくる）
+    aiReady: 0.7,    // AIレシーバーの準備時間（プレイヤーはこれを過ぎるまでトス不可）
+  },
+  // 雁行陣の定位置（コート座標m。後衛はベースライン後方、前衛はネット寄り）
+  //   ベースラインは ±11.885。後衛はその 0.4m 後方に立つのが自然。
+  pos: {
+    backY: 12.3,      // 後衛の定位置（ベースライン後方0.4m）
+    frontY: 2.6,      // 前衛の定位置（ネット前）
+    frontSideX: 1.8,  // 前衛が逆サイドに寄るときのx
+    serveBackY: 0.6,  // サーバーがベースラインの何m後方に立つか
+    serveSideX: 2.0,  // サーブ時のサイド寄りx（センターマーク〜サイドの間）
+    receiveBackY: 0.2, // レシーバーがベースラインの何m後方に立つか
+  },
+  // 局面間のテンポ（演出の待機時間。短いほど実戦的なテンポになる）
+  tempo: {
+    pointDelay: 900,   // ポイント表示→次サーブまで(ms)
+    gameDelay: 1100,   // ゲーム取得→次ゲームまで(ms)
+    faultDelay: 700,   // フォルト表示→打ち直しまで(ms)
+    serveMsgHide: 850, // サーブ告知メッセージの自動消去まで(ms)
+    rallyMsgHide: 500, // ポーチ/ボレー等のラリー中告知の表示時間(ms)
   },
   // 移動の速さ（m/s）
   move: {
@@ -287,9 +305,9 @@ let formation = "ganko";     // ganko / double-back / double-front
 
 // 陣形ごとの定位置（自チームのみ。相手は雁行陣固定）
 const FORMATIONS = {
-  "ganko":        { back: { x: 0,    y: 12.3 }, front: { x: 1.8, y: 2.6 } },
-  "double-back":  { back: { x: -2.2, y: 12.3 }, front: { x: 2.2, y: 11.6 } },
-  "double-front": { back: { x: -2.0, y: 4.2 },  front: { x: 2.0, y: 2.6 } },
+  "ganko":        { back: { x: 0,    y: TUNING.pos.backY }, front: { x: TUNING.pos.frontSideX, y: TUNING.pos.frontY } },
+  "double-back":  { back: { x: -2.2, y: TUNING.pos.backY }, front: { x: 2.2, y: TUNING.pos.backY } },
+  "double-front": { back: { x: -2.0, y: 4.2 },             front: { x: 2.0, y: TUNING.pos.frontY } },
 };
 
 /* ---- ため（チャージ）状態 ----
@@ -329,8 +347,8 @@ function chargeAmount() {
 }
 
 /* ---- サーブのトス管理 ---- */
-const TOSS_RISE_TIME = 0.62;  // トスが頂点に達するまでの時間
-const TOSS_HOLD_TIME = 0.95;  // 頂点付近で打てる猶予（これを過ぎると落下してフォルト）
+const TOSS_RISE_TIME = 0.48;  // トスが頂点に達するまでの時間
+const TOSS_HOLD_TIME = 0.85;  // 頂点付近で打てる猶予（これを過ぎると落下してフォルト）
 const toss = {
   active: false,
   t: 0,
@@ -358,19 +376,19 @@ function makePlayer(opts) {
 }
 
 const back = makePlayer({
-  homeX: 0, homeY: 12.3, color: "#6366F1", label: "あなた", facing: -1,
+  homeX: 0, homeY: TUNING.pos.backY, color: "#6366F1", label: "あなた", facing: -1,
   stats: playerStats.back,
 });
 const front = makePlayer({
-  homeX: 1.8, homeY: 2.6, color: "#A5B4FC", label: "前衛", facing: -1,
+  homeX: TUNING.pos.frontSideX, homeY: TUNING.pos.frontY, color: "#A5B4FC", label: "前衛", facing: -1,
   stats: playerStats.front,
 });
 const cpuBack = makePlayer({
-  homeX: 0, homeY: -11.6, color: "#1E1B4B", label: "相手後衛", facing: 1,
+  homeX: 0, homeY: -TUNING.pos.backY, color: "#1E1B4B", label: "相手後衛", facing: 1,
   stats: cpuStats.back,
 });
 const cpuFront = makePlayer({
-  homeX: -1.8, homeY: -2.6, color: "#4338CA", label: "相手前衛", facing: 1,
+  homeX: -TUNING.pos.frontSideX, homeY: -TUNING.pos.frontY, color: "#4338CA", label: "相手前衛", facing: 1,
   stats: cpuStats.front,
 });
 
@@ -508,12 +526,14 @@ function serveFromRight() {
 // サーバーの立ち位置（ベースライン後方0.6m、センターマーク〜サイドラインの間）
 function servePosition(team) {
   const right = serveFromRight();
+  const sx = TUNING.pos.serveSideX;
+  const y = COURT.halfL + TUNING.pos.serveBackY;
   if (team === "player") {
     // プレイヤー（奥向き）の右 = 画面右(x+)
-    return { x: right ? 2.0 : -2.0, y: COURT.halfL + 0.6 };
+    return { x: right ? sx : -sx, y: y };
   }
   // CPU（手前向き）の右 = 画面左(x-)
-  return { x: right ? -2.0 : 2.0, y: -(COURT.halfL + 0.6) };
+  return { x: right ? -sx : sx, y: -y };
 }
 
 // サーブが入るべき対角サービスコート（相手コート側）
@@ -534,10 +554,9 @@ function serviceBox(team) {
 function receivePosition(team) {
   const box = serviceBox(team === "player" ? "cpu" : "player");
   const cx = (box.x1 + box.x2) / 2;
-  if (team === "player") {
-    return { x: cx, y: COURT.halfL - 0.3 };
-  }
-  return { x: cx, y: -(COURT.halfL - 0.3) };
+  // 後衛レシーバーはベースライン後方（深いサーブに合わせて構える）
+  const y = COURT.halfL + TUNING.pos.receiveBackY;
+  return { x: cx, y: team === "player" ? y : -y };
 }
 
 /* ===========================================================
@@ -603,10 +622,11 @@ function resetPlayersForPoint() {
 
   // 前衛は逆サイドに寄る（雁行陣のみ）。サーブする本人はその限りでない
   const sideSign = serveFromRight() ? 1 : -1;
+  const fx = TUNING.pos.frontSideX;
   if (formation === "ganko" && !(team === "player" && frontServes)) {
-    front.x = -1.8 * sideSign;
+    front.x = -fx * sideSign;
   }
-  if (!(team === "cpu" && frontServes)) cpuFront.x = 1.8 * sideSign;
+  if (!(team === "cpu" && frontServes)) cpuFront.x = fx * sideSign;
 
   ball.vx = 0; ball.vy = 0; ball.vz = 0;
   ball.bounces = 0;
@@ -696,7 +716,7 @@ function startServe(isFirstPointOfGame) {
   // 準備待ちの間も移動・カーソルが見えるようにメッセージは自動で消す
   setTimeout(function () {
     if (state === "serve-stance" || state === "serve-toss") hideMessage();
-  }, 1400);
+  }, TUNING.tempo.serveMsgHide);
 }
 
 /* ===========================================================
@@ -1226,7 +1246,7 @@ function awardPoint(toPlayer, reason) {
   showMessage((toPlayer ? "ポイント！" : "相手のポイント") + (reason ? "\n" + reason : ""));
   setTimeout(function () {
     if (state === "point") startServe(false);
-  }, 1400);
+  }, TUNING.tempo.pointDelay);
 }
 
 function finishGame(playerWon) {
@@ -1241,7 +1261,7 @@ function finishGame(playerWon) {
     showMessage(playerWon ? "ゲーム獲得！" : "ゲームを落とした");
     setTimeout(function () {
       endMatch(player.games >= GAMES_TO_WIN_MATCH);
-    }, 1400);
+    }, TUNING.tempo.gameDelay);
     return;
   }
 
@@ -1249,7 +1269,7 @@ function finishGame(playerWon) {
   showMessage(playerWon ? "ゲーム獲得！" : "ゲームを落とした");
   setTimeout(function () {
     if (state === "gameset") startServe(true);
-  }, 1500);
+  }, TUNING.tempo.gameDelay);
 }
 
 function endMatch(playerWon) {
@@ -1283,7 +1303,7 @@ function serveFault(reason) {
   showMessage("フォルト\n" + reason);
   setTimeout(function () {
     if (state === "fault") startServe(false);
-  }, 1100);
+  }, TUNING.tempo.faultDelay);
 }
 
 /* ===========================================================
@@ -1896,7 +1916,7 @@ function cpuTryReturn() {
           contactZ: ball.z,
         });
         showMessage(poaching ? "相手前衛のポーチ！" : "相手前衛のカット！");
-        setTimeout(function () { if (state === "rally") hideMessage(); }, 700);
+        setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
         return;
       }
     }
@@ -1943,7 +1963,7 @@ function partnerTryReturn() {
         contactZ: ball.z,
       });
       showMessage("相方のボレー！");
-      setTimeout(function () { if (state === "rally") hideMessage(); }, 700);
+      setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
       return;
     }
   }
