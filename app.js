@@ -68,33 +68,38 @@ const TUNING = {
     sigmaSpin: 0.5,    // 回転強で増える散らばり
     qualitySpeedDrop: 0.35, // 打点品質が悪いときの球速低下
     qualitySigma: 0.6,      // 打点品質が悪いときの散らばり増加
+    // 4種とも、トス頂点〜やや落ち始めの「常用打点帯」(z ≈ 1.9〜3.35)では
+    // zone.max を超えずフォルトしない（トスの真の頂点は約3.35m、3.4で安全マージン）。
+    // 体感差は ideal（適正打点の高さ）・速度・回転・depthOffset・散らばりで表現する:
+    //   flat=頂点で最良（最速・最深） / slice=やや遅れて落ちる打点が適正 /
+    //   attackCut=さらに低め・速くて鋭い / underCut=低い打点が適正の安全球（広いゾーン）
     types: {
-      // フラット: トス頂点付近の高い打点で打つ。最速・最深（サービスライン際）。やや散らばりやすい。
+      // フラット: トス頂点付近の高い打点が適正。最速・最深（サービスライン際）。やや散らばりやすい。
       flat: {
-        speed: 25.0, zone: { min: 1.9, ideal: 2.6, max: 3.1 },
+        speed: 25.0, zone: { min: 1.9, ideal: 2.7, max: 3.4 },
         depthOffset: 0.8,  // サービスラインから手前への距離（小さい=深い）
         spinKind: "drive", spinMagBase: 0.8, color: "#F8FAFC", label: "フラット",
         sigmaExtra: 0.05,  // 速い分、散らばりはやや大きめ
       },
-      // スライス: フラットよりやや低い打点。フラットより遅れて落下する軌道。
+      // スライス: フラットよりやや低い打点が適正。フラットより遅れて落下する軌道。
       slice: {
-        speed: 19.0, zone: { min: 1.4, ideal: 1.95, max: 2.5 },
+        speed: 19.0, zone: { min: 1.4, ideal: 2.3, max: 3.4 },
         depthOffset: 1.6,
         spinKind: "slice", spinMagBase: 1.1, color: "#38BDF8", label: "スライス",
         sigmaExtra: 0.0,
       },
-      // アンダーカット（セカンド向け）: 低いトス位置で打つ。山なりで確実に入る安全球。
+      // アンダーカット（セカンド向け）: 低い打点が適正。山なりで確実に入る安全球。
       // ゾーンが広く・速度が遅く・散らばりも小さい＝最も浅く入りやすい。
       underCut: {
-        speed: 10.5, zone: { min: 0.45, ideal: 0.9, max: 1.55 },
+        speed: 10.5, zone: { min: 0.45, ideal: 1.0, max: 3.4 },
         depthOffset: 3.2,
         spinKind: "slice", spinMagBase: 1.3, color: "#A78BFA", label: "アンダーカット",
         sigmaExtra: -0.08, // 散らばりを抑えて入りやすくする
       },
-      // 攻撃的カット: フラットとアンダーカットの間の打点。速くて鋭く切れる/伸びる攻め球。
-      // ゾーンが狭く散らばりも大きい＝リスク高め。
+      // 攻撃的カット: フラットとアンダーカットの間の、やや低めの打点が適正。速くて鋭く切れる/伸びる攻め球。
+      // 適正ゾーンが狭く散らばりも大きい＝リスク高め。
       attackCut: {
-        speed: 21.0, zone: { min: 1.35, ideal: 1.7, max: 2.05 },
+        speed: 21.0, zone: { min: 1.35, ideal: 2.0, max: 3.4 },
         depthOffset: 2.0,
         spinKind: "slice", spinMagBase: 1.6, color: "#F43F5E", label: "攻撃カット",
         sigmaExtra: 0.12,  // 攻め球の分、散らばりが大きい
@@ -749,23 +754,35 @@ function serveComesShort(type) {
  * 「そのサーブが入る側を担当する1人」。ゲームをまたぐ（サーブ権交代）と
  * 受け持ちを再設定する。
  *
+ * 割り当てルール:「後衛は必ずクロス、前衛は必ず逆クロスでレシーブ」。
+ * 前衛の定位置x（front.homeX）の符号側＝逆クロス側を前衛が担当し、
+ * 後衛はその反対側（クロス側）を担当する。
+ *
  * 実装: レシーブ側チームの2人（back/front）に、自陣のx<0側/x>0側を
  * ゲーム単位で割り当てる（receiverSideAssign）。サーブが入る対角サービス
  * コートのx符号と一致する側の担当者がそのポイントのレシーバー。
  * =========================================================== */
 
 // チームごと: その担当者が受け持つ自陣サービスコートのx符号（+1=画面右側 / -1=左側）。
-// 後衛が右(+)・前衛が左(-)を既定とし、ゲーム開始時に再設定する。
+// 「後衛はクロス・前衛は逆クロス」でレシーブする（JSTA確定セオリー）。
+// 前衛の定位置x（front.homeX）の符号側＝逆クロス側を前衛が担当し、
+// 後衛はその反対側（クロス側）を担当する。ゲーム開始時に再設定する。
 const receiverSideAssign = {
-  player: { back: 1, front: -1 },
+  player: { back: -1, front: 1 },
   cpu:    { back: 1, front: -1 },
 };
 
 // レシーブ権の再設定（サーブ権が交代したゲーム開始時に呼ぶ）。
-// シンプルに「後衛=右コート / 前衛=左コート」をゲームを通して固定する。
+// 前衛の定位置x（陣形により左右どちらにもなり得る）の符号側を前衛の逆クロス側、
+// その反対側を後衛のクロス側として割り当てる。1ゲームを通して固定する。
 function assignReceiverSides() {
-  receiverSideAssign.player.back = 1;  receiverSideAssign.player.front = -1;
-  receiverSideAssign.cpu.back = 1;     receiverSideAssign.cpu.front = -1;
+  const playerFrontSign = front.homeX >= 0 ? 1 : -1;
+  receiverSideAssign.player.front = playerFrontSign;
+  receiverSideAssign.player.back = -playerFrontSign;
+
+  const cpuFrontSign = cpuFront.homeX >= 0 ? 1 : -1;
+  receiverSideAssign.cpu.front = cpuFrontSign;
+  receiverSideAssign.cpu.back = -cpuFrontSign;
 }
 
 // このポイントでレシーブするのは、サーブが入るサービスコートの側を
@@ -966,7 +983,7 @@ function startServe(isFirstPointOfGame) {
  * ・トスは統一トス。左右のコースはトス位置では決まらず、
  *   トス中もマウスで狙う場所（着地点カーソル）を指定する
  * ・各サーブ種類は専用の打点ゾーンを持つ。適正打点に近いほど速く正確、
- *   ゾーンを超える高すぎる打点は空振り（フォルト）
+ *   外れるほど球速・精度が落ちる。トス軌道を超える極端な打点だけ空振り（フォルト）
  * ・パワー・回転が強いほど散らばりが増えて狙ったコースに行きにくい
  * ・underCut（アンダーカット）はセカンド向けの安全球、attackCut（攻撃的カット）
  *   は速くて鋭いがリスクが高い。flat/sliceはその中間〜最速
