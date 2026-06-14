@@ -754,35 +754,32 @@ function serveComesShort(type) {
  * 「そのサーブが入る側を担当する1人」。ゲームをまたぐ（サーブ権交代）と
  * 受け持ちを再設定する。
  *
- * 割り当てルール:「後衛は必ずクロス、前衛は必ず逆クロスでレシーブ」。
- * 前衛の定位置x（front.homeX）の符号側＝逆クロス側を前衛が担当し、
- * 後衛はその反対側（クロス側）を担当する。
+ * 割り当てルール:「後衛は必ずクロス（自陣の右＝デュースサイド）、
+ * 前衛は必ず逆クロス（自陣の左＝アドサイド）でレシーブ」。
+ * 各チームの右サービスコートのx符号は player=+1(画面右) / cpu=-1(画面左)
+ * で固定なので、レシーバー割り当ても陣形に関係なく固定値とする。
  *
  * 実装: レシーブ側チームの2人（back/front）に、自陣のx<0側/x>0側を
- * ゲーム単位で割り当てる（receiverSideAssign）。サーブが入る対角サービス
+ * 固定で割り当てる（receiverSideAssign）。サーブが入る対角サービス
  * コートのx符号と一致する側の担当者がそのポイントのレシーバー。
  * =========================================================== */
 
 // チームごと: その担当者が受け持つ自陣サービスコートのx符号（+1=画面右側 / -1=左側）。
-// 「後衛はクロス・前衛は逆クロス」でレシーブする（JSTA確定セオリー）。
-// 前衛の定位置x（front.homeX）の符号側＝逆クロス側を前衛が担当し、
-// 後衛はその反対側（クロス側）を担当する。ゲーム開始時に再設定する。
+// 「後衛はクロス（自陣デュースサイド）・前衛は逆クロス（自陣アドサイド）」で固定。
 const receiverSideAssign = {
-  player: { back: -1, front: 1 },
-  cpu:    { back: 1, front: -1 },
+  player: { back: 1, front: -1 },
+  cpu:    { back: -1, front: 1 },
 };
 
 // レシーブ権の再設定（サーブ権が交代したゲーム開始時に呼ぶ）。
-// 前衛の定位置x（陣形により左右どちらにもなり得る）の符号側を前衛の逆クロス側、
-// その反対側を後衛のクロス側として割り当てる。1ゲームを通して固定する。
+// 「後衛=クロス/デュースサイド、前衛=逆クロス/アドサイド」で固定のため、
+// 陣形（front.homeX）に関係なく常に同じ値を再設定する。
 function assignReceiverSides() {
-  const playerFrontSign = front.homeX >= 0 ? 1 : -1;
-  receiverSideAssign.player.front = playerFrontSign;
-  receiverSideAssign.player.back = -playerFrontSign;
+  receiverSideAssign.player.back = 1;
+  receiverSideAssign.player.front = -1;
 
-  const cpuFrontSign = cpuFront.homeX >= 0 ? 1 : -1;
-  receiverSideAssign.cpu.front = cpuFrontSign;
-  receiverSideAssign.cpu.back = -cpuFrontSign;
+  receiverSideAssign.cpu.back = -1;
+  receiverSideAssign.cpu.front = 1;
 }
 
 // このポイントでレシーブするのは、サーブが入るサービスコートの側を
