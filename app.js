@@ -9,21 +9,20 @@
  * カメラは自陣ベースライン後方・やや上空からの透視投影
  * （「みんなのテニス」風の視点）。
  *
- * 操作方式:
- *   - 矢印キー/WASDで4方向に自由移動（ため中・トス中は矢印が
- *     カーソル/狙い操作になり、移動はWASDのみ）。
- *   - 球種は3系統を選択（1=シュート/2=カット/3=ロブ・画面のボタン）。
- *     打点高さ・着地カーソルの深さで内部の5種(flat/drive/slice/drop/lob)へ自動振り分け。
- *   - ため打ち: スペースか球種キー(1〜3)を押している間「ため」、
- *     ボールが打点に来ると自動でスイング。ため中に矢印/スティックで
- *     着地点カーソルを動かして狙う（未操作はミドル深めへ打つ）。
- *     ためが長いほど鋭い角度を狙える。
+ * 操作方式（PC確定形）:
+ *   - 移動 = WASD（左手）。矢印キーは移動に使わない。
+ *   - 狙い（着地カーソル）= 矢印キー（右手）。ストロークのため中もサーブ時も
+ *     矢印で狙う場所を動かす。スマホはスティック（ため/トス中は狙いへ切替）。
+ *   - 打球 = スペースに統一。ストロークはスペース長押しでため→離して打つ。
+ *     ボールが打点に来ると押しっぱなしでも自動スイング。
+ *   - 球種選択 = 1/2/3（シュート/カット/ロブ）のみ。打点高さ・着地カーソルの
+ *     深さで内部の5種(flat/drive/slice/drop/lob)へ自動振り分け。
+ *   - スマッシュ: ネット前で高い球（ロブ等）を捉えると自動でスマッシュ（速く鋭い決め球）。
  *   - 打点が大事: 体の横・少し前の適正打点ほど角度と球速が出る。
- *     詰まる/泳ぐと「選べる角度の幅」が段階的に狭くなる（方向自体は
- *     消えない）。
+ *     詰まる/泳ぐと「選べる角度の幅」が段階的に狭くなる（方向自体は消えない）。
  *   - サーブ: 打つ前にパワーと回転を設定 → スペースでトス →
- *     適正打点（ゲージの「適正」マーカー）でもう一度スペース。アンダーカットは
- *     サーブ専用ショット。高すぎる打点は空振りになる。
+ *     適正打点でもう一度スペース。矢印で対角サービスコート内の狙いを動かす。
+ *     アンダーカットはサーブ専用ショット。高すぎる打点は空振りになる。
  *   - 試合前にポジション（後衛/前衛）と陣形（雁行陣/ダブル後衛/
  *     ダブル前衛）を選べる。操作しない相方はAIが動かす。
  *
@@ -44,6 +43,7 @@ const TUNING = {
     slice: { speed: 20.0, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
     drop:  { speed: 8.0,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
     lob:   { speed: 14.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
+    smash: { speed: 30.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
   },
   cpuSpeedScale: 0.85, // CPU打球の球速倍率（難易度調整）
   // サーブ（打つ前にパワーと回転量を設定する方式）
@@ -99,6 +99,11 @@ const TUNING = {
     backCrossBias: 1.7,     // 後衛: 前衛が守るストレートレーンを捨て、空いたクロス側へ寄る量(m)。
                             //   コート中央ではなくクロス側に寄った“残り範囲の真ん中”に立つ。
     backLobCoverX: 2.3,     // 後衛: クロスへのロブで陣形が崩れたときカバーに動く横位置(m)
+    // ── クロス/ストレート展開の陣形（動的切替）パラメータ ──
+    crossFrontX: 1.9,       // クロス展開: 前衛が立つ「後衛がいない側」のネット前x（センターを空けすぎない量）
+    straightFrontX: 0.9,    // ストレート展開: 前衛が後衛と同サイドでセンターより内側に立つx（相手打点─自センター線上の内側）
+    straightBackX: 2.3,     // ストレート展開: 後衛がストレート側ラインを担当する横位置x
+    devHysteresis: 0.4,     // 展開判定のヒステリシス（小刻みな切替を防ぐ閾値m）
     receiveCutAdvanceY: 6.6, // アンダーカット告知時、レシーバーが前に出る到達ライン（ネットからの距離m≒サービスライン付近）
     receiveOverBackY: 12.3,  // オーバーサーブ告知時、レシーバーが下がって待つy（ベースライン付近）
   },
@@ -148,6 +153,17 @@ const TUNING = {
     backSpeedDrop: 0.18,   // 後ろ: 弱い球になりやすい
     driftFront: 0.6,     // 前すぎ打点で引っ張り側へ流れる量(m)
     driftBack: 0.5,      // 後ろ打点で流し側へ流れる量(m)
+  },
+  // スマッシュ（ネット前で高い球を上から叩き込む決め球）
+  //   ネット前（netDist以内）で打点が高い（contactZ>=minZ）と自動でスマッシュ判定。
+  //   通常ストロークより速く、角度が鋭く下向きに突き刺さる。
+  smash: {
+    minZ: 1.75,       // この打点高さ(m)以上でスマッシュ成立（高い球＝ロブ等）
+    netDist: 5.0,     // ネットからこの距離(m)以内（前衛域）でのみ成立
+    speed: 30.0,      // スマッシュの球速(m/s)。通常ストロークより速い決め球
+    depthMin: 3.0,    // 着地の最小深さ（ネット際〜サービスライン手前へ鋭く落とす）
+    depthRange: 3.5,  // 着地深さのばらつき幅
+    aiLobShallowY: 7.0, // AI前衛がスマッシュで決めにいく「相手ロブが浅い」着地深さ(ネットから, m)
   },
   // 回転によるバウンド後の挙動（spinMagで強調される）
   //   friction: バウンド時の前方速度の維持率（低い=止まる）
@@ -297,7 +313,9 @@ let matchTime = 0;       // 経過時間（タイミング計算用）
 let serveType = "over";  // over（オーバーハンド・デフォルト） / cut（アンダーカット・サーブ専用）
 let servePower = "mid";  // weak / mid / strong
 let serveSpin = "mid";   // weak / mid / strong
-let serveAim = 0;        // トス中の←/→で狙い（-1=センター寄り側 0=中央 +1=サイド寄り側）
+// サーブの狙い（着地点カーソル・ワールド座標）。矢印キーで対角サービスコート内を動かす。
+// 立ち位置＋この狙いで左/中/右を打ち分け、サービスコート外はフォルトになる。
+const serveAimCursor = { x: 0, y: 0, set: false };
 
 /* ---- ストロークの球種（選択UIは3系統に集約） ----
  * プレイヤーが選ぶのは shoot / cut / lob の3つ。
@@ -330,6 +348,15 @@ function resolveShotKey(family, contactZ, aimY) {
     return depth >= CUT_SLICE_DEPTH ? "slice" : "drop";
   }
   return "lob";
+}
+
+// スマッシュ成立判定: ネット前（前衛域）で打点が高いと、球種選択に関わらず
+// スマッシュ（速く鋭い下向きの決め球）になる。hitter のネットからの距離と
+// 打点高さ contactZ で判定する。
+function isSmashContact(hitter, contactZ) {
+  const sm = TUNING.smash;
+  const netDist = Math.abs(hitter.y); // ネット(y=0)からの距離
+  return contactZ >= sm.minZ && netDist <= sm.netDist;
 }
 
 // 系統ごとの表示メタ（HUD・カーソルの色とラベル）。色はシュート系/カット系/ロブで分ける
@@ -609,6 +636,23 @@ function serviceBox(team) {
   return { x1: x1, x2: x2, y1: 0, y2: COURT.serviceY };
 }
 
+// サーブ狙いカーソルを自陣サーバーの対角サービスコート中央へ初期化する
+function resetServeAimCursor() {
+  const box = serviceBox("player");
+  serveAimCursor.x = (box.x1 + box.x2) / 2;
+  serveAimCursor.y = (box.y1 + box.y2) / 2;
+  serveAimCursor.set = true;
+}
+
+// サーブ狙いカーソルをサービスコート内（わずかに外まで許容）にクランプする。
+// コート外まで動かせばフォルトになる（立ち位置＋狙いで左/中/右を打ち分ける）。
+function clampServeAimCursor() {
+  const box = serviceBox("player");
+  const m = 0.6; // サービスライン/センター/サイドから外へ少し出せる余地（フォルト判断の幅）
+  serveAimCursor.x = Math.max(box.x1 - m, Math.min(box.x2 + m, serveAimCursor.x));
+  serveAimCursor.y = Math.max(box.y1 - m, Math.min(box.y2 + m, serveAimCursor.y));
+}
+
 // 相手（サーバー側）のサーブ種類を返す。CPUサーブは事前抽選 cpuServePlan、
 // 自陣サーブ（自分/相方）は選択中の serveType。
 function incomingServeType(receiverTeam) {
@@ -616,6 +660,47 @@ function incomingServeType(receiverTeam) {
     return cpuServePlan ? cpuServePlan.type : "over";
   }
   return serveType; // CPUがレシーブする側＝プレイヤーチームのサーブ
+}
+
+/* ===========================================================
+ * レシーブ順（確定セオリー・JSTA競技規則）
+ *
+ * レシーバー2人は「1ゲームの間ずっと同じサービスコート（右/左）」を受け持つ。
+ * サーブは右→左と交互に入るので、各ポイントのレシーバーは
+ * 「そのサーブが入る側を担当する1人」。ゲームをまたぐ（サーブ権交代）と
+ * 受け持ちを再設定する。
+ *
+ * 実装: レシーブ側チームの2人（back/front）に、自陣のx<0側/x>0側を
+ * ゲーム単位で割り当てる（receiverSideAssign）。サーブが入る対角サービス
+ * コートのx符号と一致する側の担当者がそのポイントのレシーバー。
+ * =========================================================== */
+
+// チームごと: その担当者が受け持つ自陣サービスコートのx符号（+1=画面右側 / -1=左側）。
+// 後衛が右(+)・前衛が左(-)を既定とし、ゲーム開始時に再設定する。
+const receiverSideAssign = {
+  player: { back: 1, front: -1 },
+  cpu:    { back: 1, front: -1 },
+};
+
+// レシーブ権の再設定（サーブ権が交代したゲーム開始時に呼ぶ）。
+// シンプルに「後衛=右コート / 前衛=左コート」をゲームを通して固定する。
+function assignReceiverSides() {
+  receiverSideAssign.player.back = 1;  receiverSideAssign.player.front = -1;
+  receiverSideAssign.cpu.back = 1;     receiverSideAssign.cpu.front = -1;
+}
+
+// このポイントでレシーブするのは、サーブが入るサービスコートの側を
+// 受け持つプレイヤー（その側を1ゲーム通して固定で担当する）。
+function receiverPlayerFor(team) {
+  // team = レシーブ側チーム。サーブは serviceBox(servingTeam) に入る。
+  const servingTeam = team === "player" ? "cpu" : "player";
+  const box = serviceBox(servingTeam);
+  const cx = (box.x1 + box.x2) / 2;
+  const sideSign = cx >= 0 ? 1 : -1;
+  const assign = receiverSideAssign[team];
+  const useBack = (assign.back === sideSign);
+  if (team === "player") return useBack ? back : front;
+  return useBack ? cpuBack : cpuFront;
 }
 
 // レシーバーの定位置（確定セオリー）:
@@ -649,6 +734,7 @@ function startMatch() {
   cpu.points = 0; cpu.games = 0;
   serveFaults = 0;
   applyFormation();
+  assignReceiverSides();
   rallyControlled = (playerPosition === "front") ? front : back;
   back.label = (playerPosition === "back") ? "あなた" : "相方";
   front.label = (playerPosition === "front") ? "あなた" : "相方";
@@ -684,15 +770,17 @@ function resetPlayersForPoint() {
       // パートナー（後衛）はダブル後衛的にベースライン中央寄りへ
       back.x = -sp.x * 0.5; back.y = Math.max(back.homeY, 11.6);
     }
+    // レシーブは「そのサーブが入る側を1ゲーム担当するレシーバー」が受ける
     const rp = receivePosition("cpu");
-    cpuBack.x = rp.x; cpuBack.y = rp.y;
+    const receiver = receiverPlayerFor("cpu");
+    receiver.x = rp.x; receiver.y = rp.y;
   } else {
     const server = frontServes ? cpuFront : cpuBack;
     server.x = sp.x; server.y = sp.y;
     if (frontServes) { cpuBack.x = -sp.x * 0.6; cpuBack.y = -11.5; }
-    // レシーブはこのゲームでは後衛役が担当する（簡略化）
     const rp = receivePosition("player");
-    back.x = rp.x; back.y = rp.y;
+    const receiver = receiverPlayerFor("player");
+    receiver.x = rp.x; receiver.y = rp.y;
   }
 
   // 前衛は逆サイドに寄る（雁行陣のみ）。サーブする本人はその限りでない
@@ -713,7 +801,7 @@ function resetPlayersForPoint() {
   pendingSwing = 0;
   charge.active = false;
   charge.source = null;
-  serveAim = 0;
+  serveAimCursor.set = false; // サーブ狙いカーソルは初回参照時にサービスコート中央へ
   cpuFrontPlan = "base";
   receiveDone = false;
   serveReady.timer = 0;
@@ -757,7 +845,7 @@ function startServe(isFirstPointOfGame) {
     if (playerIsServer()) {
       who = "自分のサーブ";
       setControlMode("serve");
-      hintText.textContent = "種類・パワー・回転を選んで構え→レシーバー準備後にスペースでトス";
+      hintText.textContent = "種類・パワー・回転を選び、矢印キーで狙う場所を決める→準備後スペースでトス";
     } else {
       who = "相方のサーブ";
       setControlMode("rally");
@@ -823,7 +911,7 @@ function startToss(server, type) {
   server.pose = "toss";
   hideMessage(); // ゲージが見えるようにオーバーレイを消す
   if (playerIsServer()) {
-    hintText.textContent = "ゲージの「適正」マーカーの高さでもう一度スペース（←/→で狙い）";
+    hintText.textContent = "ゲージの「適正」マーカーの高さでスペース。矢印キーで狙う場所を移動（WASDで立ち位置）";
   }
 }
 
@@ -907,15 +995,16 @@ function launchPlayerServe() {
   hideMessage();
   state = "rally";
   setControlMode("rally");
-  hintText.textContent = "1=シュート 2=カット 3=ロブ（ため中も切替可）。スペース長押しでため→矢印で狙う";
+  hintText.textContent = "WASDで移動・矢印で狙い・スペース長押しでため→離して打つ。1〜3で球種";
 
+  if (!serveAimCursor.set) resetServeAimCursor();
   launchServeBall("player", server, server.stats, {
     type: serveType,
     power: servePower,
     spin: serveSpin,
     quality: serveContactQuality(z, zone),
     contactZ: Math.max(0.3, z),
-    aim: serveAim,
+    aimTarget: { x: serveAimCursor.x, y: serveAimCursor.y }, // 着地点カーソルの狙い
   });
 }
 
@@ -950,8 +1039,8 @@ function aiLaunchServe(team) {
   toss.active = false;
   state = "rally";
   hintText.textContent = (team === "cpu")
-    ? "レシーブ！ 1=シュート 2=カット 3=ロブ、長押しでため、矢印で狙う"
-    : "ラリー再開。1=シュート 2=カット 3=ロブ、長押しでため、矢印で狙う";
+    ? "レシーブ！ WASD移動・矢印で狙い・スペース長押しでため。1〜3で球種"
+    : "ラリー再開。WASD移動・矢印で狙い・スペース長押しでため。1〜3で球種";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "cut", power: "mid", spin: "mid" };
@@ -1003,13 +1092,21 @@ function launchServeBall(team, server, stats, cfg) {
   speed *= 1 - s.qualitySpeedDrop * (1 - q);
   if (team === "cpu") speed *= TUNING.cpuSpeedScale;
 
-  const boxMid = (box.x1 + box.x2) / 2;
-  const boxHalf = (box.x2 - box.x1) / 2;
-  let tx = boxMid + Math.max(-1, Math.min(1, cfg.aim || 0)) * boxHalf * 0.7;
+  let tx;
+  if (cfg.aimTarget) {
+    // プレイヤー: 着地点カーソルの狙いをそのまま使う（コート外ならフォルト）。
+    // 深さ(ty)もカーソルで指定できるが、回転による浅さ補正を残すため平均を取る。
+    tx = cfg.aimTarget.x;
+    ty = (ty + cfg.aimTarget.y) / 2;
+  } else {
+    const boxMid = (box.x1 + box.x2) / 2;
+    const boxHalf = (box.x2 - box.x1) / 2;
+    tx = boxMid + Math.max(-1, Math.min(1, cfg.aim || 0)) * boxHalf * 0.7;
+  }
   tx += (Math.random() - 0.5) * 2 * sigma;
   ty += (Math.random() - 0.5) * 2 * sigma;
   // 大外れだけ防ぐ（サイドのフォルトは起こり得る）
-  tx = Math.max(box.x1 - 0.5, Math.min(box.x2 + 0.5, tx));
+  tx = Math.max(box.x1 - 1.0, Math.min(box.x2 + 1.0, tx));
 
   const fromZ = Math.max(0.3, cfg.contactZ != null ? cfg.contactZ : 2.4);
   ball.lastHitter = team;
@@ -1172,6 +1269,10 @@ function hitBall(opts) {
   } else {
     shotKey = TUNING.shots[opts.shot] ? opts.shot : "drive";
   }
+  // スマッシュ自動判定: ネット前で高い球を捉えたら球種選択に関わらずスマッシュへ。
+  // ロブ選択は意図的な高弾道なので対象外（前衛が高い球をロブで逃がせる）。
+  const isSmash = opts.shot !== "lob" && isSmashContact(hitter, contactZ);
+  if (isSmash) shotKey = "smash";
   const def = TUNING.shots[shotKey];
   const backhand = isBackhandFor(side, hitter.x, ball.x);
   const depthDir = side === "player" ? -1 : 1;
@@ -1269,6 +1370,16 @@ function hitBall(opts) {
 
   startSwing(hitter, backhand ? "back" : "fore");
 
+  // スマッシュは決め球として大きく告知（プレイヤー・AI前衛とも）
+  if (isSmash) {
+    effects.push({
+      type: "text",
+      x: hitter.x, y: hitter.y - 0.6, t: 0, ttl: 0.8,
+      text: "スマッシュ！",
+      color: "#F43F5E",
+    });
+  }
+
   lastHitInfo = {
     side: side, shot: shotKey, course: opts.course != null ? opts.course : null,
     aimX: opts.aimX != null ? opts.aimX : null,
@@ -1349,6 +1460,8 @@ function finishGame(playerWon) {
   }
 
   state = "gameset";
+  // ゲームをまたぐ（サーブ権交代）→ レシーブ受け持ちを再設定
+  assignReceiverSides();
   showMessage(playerWon ? "ゲーム獲得！" : "ゲームを落とした");
   setTimeout(function () {
     if (state === "gameset") startServe(true);
@@ -1470,17 +1583,15 @@ function predictLanding() {
 /* ===========================================================
  * プレイヤー操作
  *
- * - 移動: 矢印キー / WASD で4方向に自由移動
- *   ・ため中とトス中は矢印キーがカーソル/狙い操作になり、移動はWASDのみ
- * - 球種: 1=シュート 2=カット 3=ロブ の3系統を選択（画面のボタンでも可）
- * - スペースか球種キー(1〜3)押しっぱなし: ため（チャージ）。長いほど鋭い角度
- *   ・ため中に矢印キーで着地点カーソル（ゴーストリング）を自由移動
- *   ・未操作でもデフォルト位置（安全なミドル深め）へ打てる
- *   ・ボールが打点に来ると自動でスイング。途中で離してもスイング
+ * 確定操作（PC）:
+ * - 移動: WASD（左手）専用。矢印キーは移動に使わない
+ * - 狙い: 矢印キー（右手）専用。ため中もトス/サーブ時も着地カーソルを動かす
+ * - 打球: スペースに統一。長押しでため（長いほど鋭い角度）→離して打つ。
+ *   ボールが打点に来ると押しっぱなしでも自動スイング。未操作でもミドル深めへ打てる
+ * - 球種: 1=シュート 2=カット 3=ロブ の3系統を選択（選択専用。ため/打球はしない）
  * - サーブ: 種類/パワー/回転を設定 → スペースでトス →
- *   適正打点の高さでもう一度スペース（トス中の←/→で狙い）
- * - スマホ: スティックで2軸移動、下部ボタン長押しでため
- *   （ため中はスティックがカーソル移動）
+ *   適正打点の高さでスペース。矢印で対角サービスコート内の狙いを動かす
+ * - スマホ: スティックで移動（ため/トス中はスティックが狙いへ切替）、下部ボタン長押しでため
  * =========================================================== */
 
 const keysArrow = { left: false, right: false, up: false, down: false };
@@ -1515,23 +1626,21 @@ document.addEventListener("keydown", function (e) {
   if (e.code === "KeyW") keysWasd.up = true;
   if (e.code === "KeyS") keysWasd.down = true;
 
-  // 球種選択: 1=シュート 2=カット 3=ロブ の3キー（ワンアクションで即確定）。
+  // 球種選択: 1=シュート 2=カット 3=ロブ の3キー（系統選択のみ）。
   // ・押した瞬間に selectShot で即その系統へ切り替わる（HUD・ボタンも即更新）
-  // ・ため中・打つ直前に別のキーを押しても、ためは途切れず系統だけ差し替わる
-  //   （startCharge は charge.active 中は何もしない）。
-  //   スイング確定時に読まれる selectedShot（系統）が反映される
-  // ・まだためていない状態なら、その系統で長押しため開始も兼ねる
-  // ・旧4/5キー・Q/Eは廃止（無害化。押しても何も起きない）
+  // ・ため中・打つ直前に押してもためは途切れず系統だけ差し替わる
+  // ・1〜3は「球種選択専用」。ため／打球はスペースに一本化（旧「球種キー長押しでため」は廃止）
+  // ・旧4/5キー・Q/Eは廃止（無害化）
   const digit = ["Digit1", "Digit2", "Digit3"].indexOf(e.code);
   if (digit >= 0) {
     selectShot(SHOT_FAMILY_ORDER[digit]);
-    if (!e.repeat && !charge.active) startCharge(e.code);
     return;
   }
-  // 旧球種キーは無害化（ため開始もしない）
+  // 旧球種キーは無害化
   if (e.code === "Digit4" || e.code === "Digit5" ||
       e.code === "KeyQ" || e.code === "KeyE") { return; }
 
+  // 打球／サーブはスペースに統一: ラリーは長押しでため→離して打つ、サーブはトス→打つ
   if (e.code === "Space") {
     e.preventDefault();
     if (e.repeat) return;
@@ -1553,9 +1662,6 @@ document.addEventListener("keyup", function (e) {
   if (e.code === "KeyW") keysWasd.up = false;
   if (e.code === "KeyS") keysWasd.down = false;
   if (e.code === "Space") releaseCharge("Space");
-  if (["Digit1", "Digit2", "Digit3"].indexOf(e.code) >= 0) {
-    releaseCharge(e.code);
-  }
 });
 
 /* ---- 球種の選択（選択式・HUDと色分けに反映） ---- */
@@ -1623,13 +1729,22 @@ function updateAimInputs(dt) {
     // 狙いはコート内マージンに収める（アウトは打点の悪さ・散らばり由来のみ）
     aim.x = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, aim.x));
     aim.y = Math.max(-(COURT.halfL - c.depthMargin), Math.min(-c.minDepth, aim.y));
-  } else if (state === "serve-toss" && playerIsServer()) {
-    if (keysArrow.left && !keysArrow.right) serveAim = -1;
-    else if (keysArrow.right && !keysArrow.left) serveAim = 1;
-    else if (keysArrow.down) serveAim = 0;
-    if (stick.active) {
-      if (stick.dx < -0.35) serveAim = -1;
-      else if (stick.dx > 0.35) serveAim = 1;
+  } else if ((state === "serve-toss" || state === "serve-stance") && playerIsServer()) {
+    // サーブの狙い: 矢印キー/スティックで対角サービスコート内の着地点カーソルを動かす
+    if (!serveAimCursor.set) resetServeAimCursor();
+    const c = TUNING.aim;
+    let dx = 0, dy = 0;
+    if (keysArrow.left) dx -= 1;
+    if (keysArrow.right) dx += 1;
+    if (keysArrow.up) dy -= 1;   // ↑=ネット寄り（浅く）
+    if (keysArrow.down) dy += 1; // ↓=サービスライン寄り（深く）
+    if (stick.active) { dx += stick.dx; dy += stick.dy; }
+    const len = Math.hypot(dx, dy);
+    if (len > 1) { dx /= len; dy /= len; }
+    if (dx !== 0 || dy !== 0) {
+      serveAimCursor.x += dx * c.cursorSpeed * dt;
+      serveAimCursor.y += dy * c.cursorSpeed * dt;
+      clampServeAimCursor();
     }
   }
 }
@@ -1833,12 +1948,15 @@ function updatePartner(dt) {
   // サーブを打つまでベースライン後方に留まる（前へ出ない）
   if (partnerIsServingNow(partner)) return;
 
-  // 相手サーブ中、AI後衛はレシーブ位置へ移動して待機する。
+  // 相手サーブ中、レシーバーに割り当てられたパートナーはレシーブ位置へ移動して待機。
   // サーブ種類（アンダーカット=前/オーバー=後ろ）に応じて前後位置を変える。
   if ((state === "serve-stance" || state === "serve-toss") &&
-      serverTeamNow() === "cpu" && partner === back) {
-    const rp = receivePosition("player");
-    moveToward(back, rp.x, rp.y, speed * 1.2 * dt);
+      serverTeamNow() === "cpu") {
+    if (partner === receiverPlayerFor("player")) {
+      const rp = receivePosition("player");
+      moveToward(partner, rp.x, rp.y, speed * 1.2 * dt);
+    }
+    // レシーバーでないパートナーは定位置で待機（移動しない）
     return;
   }
 
@@ -1863,8 +1981,8 @@ function updatePartner(dt) {
       const targetX = back.x > 0 ? -2.2 : 2.2;
       moveToward(front, targetX, front.homeY, speed * dt);
     } else if (state === "rally" && ball.lastHitter === "cpu") {
-      // 定位置: 線上＋一歩外側。前後は相手後衛の動きへ鏡対応
-      const targetX = Math.max(-4.6, Math.min(4.6, frontTheoryX("player", front.homeY)));
+      // 定位置: 展開（クロス/ストレート）に応じた前衛の立ち位置。前後は鏡対応
+      const targetX = Math.max(-4.6, Math.min(4.6, frontDevX("player")));
       moveToward(front, targetX, frontMirrorY("player", front.homeY), speed * dash * dt);
     } else {
       moveToward(front, front.homeX * (back.x > 0 ? -1 : 1), front.homeY, speed * dash * dt);
@@ -1874,8 +1992,8 @@ function updatePartner(dt) {
     // 後衛パートナー（前衛操作時）: ストローク役としてボールを追う
     if (state === "rally" && ball.lastHitter === "cpu") {
       const landing = predictLanding();
-      // 既定の戻り先＝クロス側の残り範囲の真ん中（前衛がストレート担当の前提）
-      let tx = backCrossX("player");
+      // 既定の戻り先＝展開に応じた後衛の担当範囲（クロス側の真ん中／ストレートライン）
+      let tx = backDevX("player");
       let ty = TUNING.pos.backY;
       if (ball.bounces >= 1) {
         tx = ball.x + ball.vx * 0.25;
@@ -1885,8 +2003,8 @@ function updatePartner(dt) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 && landing.y > COURT.serviceY;
         const toStraight = (landing.x >= 0 ? 1 : -1) === straightSign;
         if (isLob && toStraight) {
-          // ストレートロブは捨てる: クロス寄りの定位置を保つ
-          tx = backCrossX("player");
+          // ストレートロブは捨てる: 展開に応じた定位置を保つ
+          tx = backDevX("player");
           ty = TUNING.pos.backY;
         } else {
           tx = landing.x;
@@ -1896,8 +2014,8 @@ function updatePartner(dt) {
       }
       moveToward(back, tx, ty, speed * 1.2 * dt);
     } else {
-      // 自分側にボールがある間はクロス側の残り範囲の真ん中へ戻る
-      moveToward(back, backCrossX("player"), TUNING.pos.backY, speed * dt);
+      // 自分側にボールがある間は展開に応じた定位置へ戻る
+      moveToward(back, backDevX("player"), TUNING.pos.backY, speed * dt);
     }
     back.x = Math.max(-5.2, Math.min(5.2, back.x));
   }
@@ -1910,21 +2028,24 @@ function updateCpuBack(dt) {
       serverTeamNow() === "cpu" && currentServer() === cpuBack) {
     return;
   }
-  // 相手（プレイヤー）サーブ中、CPU後衛はレシーブ位置へ。
+  // 相手（プレイヤー）サーブ中、CPU後衛がレシーバー担当ならレシーブ位置へ。
   // サーブ種類に応じてアンダーカットなら前、オーバーなら後ろで構える。
+  // レシーバーでなければ定位置で待機（移動しない）。
   if ((state === "serve-stance" || state === "serve-toss") &&
       serverTeamNow() === "player") {
-    const rp = receivePosition("cpu");
-    moveToward(cpuBack, rp.x, rp.y, speed * 1.2 * dt);
-    cpuBack.x = Math.max(-5.2, Math.min(5.2, cpuBack.x));
+    if (receiverPlayerFor("cpu") === cpuBack) {
+      const rp = receivePosition("cpu");
+      moveToward(cpuBack, rp.x, rp.y, speed * 1.2 * dt);
+      cpuBack.x = Math.max(-5.2, Math.min(5.2, cpuBack.x));
+    }
     return;
   }
   if (state === "rally" && ball.lastHitter === "player") {
     // 反応遅延: 打球直後は動き出せない（良いコースは抜ける）
     if (matchTime - ball.lastHitTime < TUNING.ai.backReactionDelay) return;
     const landing = predictLanding();
-    // 既定の戻り先＝クロス側の残り範囲の真ん中（前衛がストレートを担当する前提）
-    let tx = backCrossX("cpu");
+    // 既定の戻り先＝展開に応じた後衛の担当範囲（クロス側の真ん中／ストレートライン）
+    let tx = backDevX("cpu");
     let ty = -TUNING.pos.backY;
     if (ball.bounces >= 1) {
       tx = ball.x + ball.vx * 0.25;
@@ -1935,8 +2056,8 @@ function updateCpuBack(dt) {
       const isLob = ball.spin === "flat" && ball.z > 2.0 && landing.y < -COURT.serviceY;
       const toStraight = (landing.x >= 0 ? 1 : -1) === straightSign;
       if (isLob && toStraight) {
-        // ストレートロブは捨てる: クロス寄りの定位置を保つ
-        tx = backCrossX("cpu");
+        // ストレートロブは捨てる: 展開に応じた定位置を保つ
+        tx = backDevX("cpu");
         ty = -TUNING.pos.backY;
       } else {
         tx = landing.x;
@@ -1950,8 +2071,8 @@ function updateCpuBack(dt) {
     const targetX = cpuFront.x > 0 ? -1.6 : 1.6;
     moveToward(cpuBack, targetX, -12.0, speed * dt);
   } else {
-    // 自分側にボールがある間はクロス側の残り範囲の真ん中へ戻る
-    moveToward(cpuBack, backCrossX("cpu"), -TUNING.pos.backY, speed * 0.55 * dt);
+    // 自分側にボールがある間は展開に応じた定位置へ戻る
+    moveToward(cpuBack, backDevX("cpu"), -TUNING.pos.backY, speed * 0.55 * dt);
   }
   cpuBack.x = Math.max(-5.2, Math.min(5.2, cpuBack.x));
 }
@@ -1968,6 +2089,91 @@ function opponentHitterPos(side) {
   const ax = (ball.lastHitter === "cpu") ? ball.originX : ball.x;
   const ay = (ball.lastHitter === "cpu") ? ball.originY : ball.y;
   return { x: ax, y: ay };
+}
+
+/* ===========================================================
+ * クロス/ストレート展開の判定（陣形の動的切替）
+ *
+ * ソフトテニスのセオリー（softtennis-zenei.com /position）:
+ *   クロス展開（後衛同士が対角でラリー）:
+ *     「後衛がいない方のサイドに前衛が立つ」。自後衛が右なら前衛は左ネット前。
+ *     前衛はサイドへ寄りすぎてセンターを空けない。
+ *   ストレート展開（ボールがストレート＝同サイドへ展開）:
+ *     前衛と後衛が同じサイドに並ぶ（サイドバイサイド）。前衛は
+ *     「相手後衛の打点─自センター」線上でセンターより内側、後衛はストレート側ラインを担当。
+ *
+ * 判定: 自陣後衛のいるサイド(ownBackSign)と、相手の打者がボールを送り込んでいる
+ *   サイド(incomingSign)を比べる。
+ *     同サイド = ストレート展開（自後衛のいる側へ来ている）
+ *     逆サイド = クロス展開（対角でラリーしている）
+ *   小刻みな切替を避けるためヒステリシスを持たせる。
+ * =========================================================== */
+
+// その展開判定で使う「自陣後衛」のx符号（操作キャラ/AIに関わらずコート上の後衛役）
+function ownBackPlayer(side) { return side === "cpu" ? cpuBack : back; }
+function ownFrontPlayer(side) { return side === "cpu" ? cpuFront : front; }
+
+// 相手の打球がこちらのどのサイドへ向かっているか（着地予測のx符号）。
+// 予測できないときは相手打点の符号で代用する。
+function incomingSideSign(side) {
+  const incoming = (side === "cpu") ? (ball.lastHitter === "player")
+                                    : (ball.lastHitter === "cpu");
+  if (incoming) {
+    const landing = predictLanding();
+    if (landing && Math.abs(landing.x) > 0.2) return landing.x >= 0 ? 1 : -1;
+    if (Math.abs(ball.x) > 0.2) return ball.x >= 0 ? 1 : -1;
+  }
+  const op = opponentHitterPos(side);
+  return op.x >= 0 ? 1 : -1;
+}
+
+// 展開状態（チームごと）。"cross" / "straight"。ヒステリシス付きで更新する。
+const development = { player: "cross", cpu: "cross" };
+
+function updateDevelopment(side) {
+  const backP = ownBackPlayer(side);
+  const ownBackSign = backP.x >= 0 ? 1 : -1;
+  const inSign = incomingSideSign(side);
+  // 自後衛のいる側へボールが来ている＝ストレート展開、逆側＝クロス展開
+  const raw = (ownBackSign === inSign) ? "straight" : "cross";
+  // ヒステリシス: ボールが中央付近(センター±devHysteresis)では切替を保留する
+  const op = opponentHitterPos(side);
+  if (Math.abs(op.x) < TUNING.pos.devHysteresis && Math.abs(ball.x) < TUNING.pos.devHysteresis) {
+    return development[side];
+  }
+  development[side] = raw;
+  return raw;
+}
+
+// 展開に応じた前衛のx定位置。
+//   クロス: 後衛がいない側（-ownBackSign）のネット前。センターを空けすぎない。
+//   ストレート: 後衛と同サイドでセンターより内側（線上の内側）。
+function frontDevX(side) {
+  const dev = updateDevelopment(side);
+  const ownBackSign = ownBackPlayer(side).x >= 0 ? 1 : -1;
+  if (dev === "straight") {
+    // 同サイドへ並ぶ。相手打点─自センター線上の内側に寄る
+    const lineX = frontTheoryX(side, ownFrontPlayer(side).homeY);
+    const inside = ownBackSign * TUNING.pos.straightFrontX;
+    // 線上の値と「同サイド内側」の中間。センターより内側を保つ
+    let x = (lineX + inside) / 2;
+    // センターを越えて逆サイドへ行き過ぎない（内側だが同サイド寄り）
+    return x;
+  }
+  // クロス展開: 後衛のいない側のネット前
+  return -ownBackSign * TUNING.pos.crossFrontX;
+}
+
+// 展開に応じた後衛のx定位置。
+//   クロス: クロス側の残り範囲の真ん中（既存セオリー）。
+//   ストレート: ストレート側ライン担当（同サイドのライン際寄り）。
+function backDevX(side) {
+  const dev = updateDevelopment(side);
+  if (dev === "straight") {
+    const ownBackSign = ownBackPlayer(side).x >= 0 ? 1 : -1;
+    return ownBackSign * TUNING.pos.straightBackX;
+  }
+  return backCrossX(side);
 }
 
 // 前衛の定位置（確定セオリー）:
@@ -2030,6 +2236,16 @@ function updateCpuFront(dt) {
       serverTeamNow() === "cpu" && currentServer() === cpuFront) {
     return;
   }
+  // 相手（プレイヤー）サーブ中、CPU前衛がレシーバー担当ならレシーブ位置へ。
+  // 担当でなければ定位置で待機（前へ出ない）。
+  if ((state === "serve-stance" || state === "serve-toss") &&
+      serverTeamNow() === "player") {
+    if (receiverPlayerFor("cpu") === cpuFront) {
+      const rp = receivePosition("cpu");
+      moveToward(cpuFront, rp.x, rp.y, speed * 1.2 * dt);
+    }
+    return;
+  }
   // レシーブが完了するまでポジション移動しない（定位置で待機）。
   // ただし自分がサーブした直後のサービスダッシュは始めてよい
   if (!receiveDone) {
@@ -2053,8 +2269,8 @@ function updateCpuFront(dt) {
     } else if (cpuFrontPlan === "middle") {
       targetX = 0;
     } else {
-      // 定位置: 線上＋一歩外側。前後は相手後衛の動きへ鏡対応
-      targetX = cpuFrontTheoryX();
+      // 定位置: 展開（クロス/ストレート）に応じた前衛の立ち位置。前後は鏡対応
+      targetX = frontDevX("cpu");
     }
     targetX = Math.max(-4.6, Math.min(4.6, targetX));
     const ty = (cpuFrontPlan === "base") ? frontMirrorY("cpu", cpuFront.homeY) : cpuFront.homeY;
@@ -2063,8 +2279,8 @@ function updateCpuFront(dt) {
     // サーブを打った後はサービスダッシュでネット前の定位置へ
     moveToward(cpuFront, cpuFront.homeX * (cpuBack.x > 0 ? -1 : 1), cpuFront.homeY, speed * 1.3 * dt);
   } else if (state === "rally") {
-    // 相手（自分側）にボールがある間はセオリー位置（線上＋外側）へ戻る
-    const tx = Math.max(-4.4, Math.min(4.4, cpuFrontTheoryX()));
+    // 相手（自分側）にボールがある間は展開に応じたセオリー位置へ戻る
+    const tx = Math.max(-4.4, Math.min(4.4, frontDevX("cpu")));
     moveToward(cpuFront, tx, frontMirrorY("cpu", cpuFront.homeY), speed * 0.8 * dt);
   } else {
     moveToward(cpuFront, cpuFront.homeX * (cpuBack.x > 0 ? -1 : 1), cpuFront.homeY, speed * 0.6 * dt);
@@ -2075,6 +2291,32 @@ function updateCpuFront(dt) {
 function cpuTryReturn() {
   if (ball.lastHitter !== "player" || state !== "rally") return;
   const ai = TUNING.ai;
+  const sm = TUNING.smash;
+
+  // 前衛のスマッシュ: 相手のロブが浅い（前衛域に高い球が来た）ときは
+  // ノーバウンドで上から叩き込んで決める。リーチを広めに取り、打点が高いうちに捉える。
+  if (!ball.cpuFrontChecked && ball.bounces === 0 &&
+      ball.lastHitter === "player" &&
+      ball.y < -0.6 && ball.y > -sm.netDist && ball.z >= sm.minZ && ball.z < 2.3) {
+    const landing = predictLanding();
+    const shallowLob = landing && landing.y < 0 && Math.abs(landing.y) <= sm.aiLobShallowY;
+    const reach = ai.poachReach * cpuFront.stats.reach;
+    if (shallowLob && Math.hypot(ball.x - cpuFront.x, ball.y - cpuFront.y) <= reach) {
+      ball.cpuFrontChecked = true;
+      if (Math.random() < 0.85 * cpuFront.stats.volley) {
+        hitBall({
+          hitter: cpuFront,
+          side: "cpu",
+          shot: "flat", // hitBall 内で高打点・ネット前のためスマッシュへ自動変換
+          course: (back.x > 0 ? -1 : 1) * (0.4 + Math.random() * 0.6),
+          contactZ: ball.z,
+        });
+        showMessage("相手前衛のスマッシュ！");
+        setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
+        return;
+      }
+    }
+  }
 
   // 前衛のボレー/ポーチ（ノーバウンドでカット）: 打球ごとに1回だけ判定。
   // ポーチに出ているときはリーチが広く決定力も高い
@@ -2125,6 +2367,27 @@ function cpuTryReturn() {
 function partnerTryReturn() {
   if (ball.lastHitter !== "cpu" || state !== "rally") return;
   const partner = (rallyControlled === back) ? front : back;
+  const sm = TUNING.smash;
+
+  // 味方前衛のスマッシュ: ネット前に高い球（浅いロブ等）が来たら上から叩き込む
+  if (!ball.frontChecked && ball.bounces === 0 &&
+      partner.y < sm.netDist && partner.y > 0.4 &&
+      ball.y > 0.6 && ball.y < sm.netDist && ball.z >= sm.minZ && ball.z < 2.3 &&
+      Math.hypot(ball.x - partner.x, ball.y - partner.y) <= TUNING.ai.poachReach * partner.stats.reach) {
+    ball.frontChecked = true;
+    if (Math.random() < 0.8 * partner.stats.volley) {
+      hitBall({
+        hitter: partner,
+        side: "player",
+        shot: "flat", // hitBall 内でスマッシュへ自動変換
+        course: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6),
+        contactZ: ball.z,
+      });
+      showMessage("相方のスマッシュ！");
+      setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
+      return;
+    }
+  }
 
   // ノーバウンドのボレー: ネット付近にいるときだけ、打球ごとに1回判定
   if (!ball.frontChecked && ball.bounces === 0 &&
@@ -2166,8 +2429,9 @@ function partnerTryReturn() {
  * メインループ
  * =========================================================== */
 
-// 現在の入力（キーボード+スティック）から移動ベクトルを得る。
-// ため中・トス中は矢印キー/スティックが狙い入力になるため移動はWASDのみ
+// 現在の移動入力を得る。確定操作: 移動=WASD（左手）専用。
+// 矢印キー（右手）は常に狙い（着地カーソル/サーブ狙い）専用で移動には使わない。
+// スマホはスティックで移動（ため中/トス中はスティックが狙いへ切り替わる）。
 function inputVector() {
   const aiming = (charge.active && state === "rally") || state === "serve-toss";
   let dx = 0, dy = 0;
@@ -2175,15 +2439,9 @@ function inputVector() {
   if (keysWasd.right) dx += 1;
   if (keysWasd.up) dy -= 1;   // 上/Wはネット方向（yが減る）
   if (keysWasd.down) dy += 1; // 下/Sは自陣ベースライン方向（yが増える）
-  if (!aiming) {
-    if (keysArrow.left) dx -= 1;
-    if (keysArrow.right) dx += 1;
-    if (keysArrow.up) dy -= 1;
-    if (keysArrow.down) dy += 1;
-    if (stick.active) {
-      dx += stick.dx;
-      dy += stick.dy; // スティック下方向 = 自陣ベースライン方向
-    }
+  if (!aiming && stick.active) {
+    dx += stick.dx;
+    dy += stick.dy; // スティック下方向 = 自陣ベースライン方向
   }
   const len = Math.hypot(dx, dy);
   if (len > 1) { dx /= len; dy /= len; }
@@ -2202,16 +2460,14 @@ function nonServerPlayersInPosition() {
   const sideSign = serveFromRight() ? 1 : -1;
   const fx = TUNING.pos.frontSideX;
   const skip = function (p) { return p === server || p === rallyControlled; };
-  if (!skip(front))    targets.push({ p: front,    x: -fx * sideSign, y: front.homeY });
-  if (!skip(cpuFront)) targets.push({ p: cpuFront, x: fx * sideSign,  y: cpuFront.homeY });
-  // レシーバー（サーバーの対角に構える後衛）
-  if (serverTeamNow() === "player") {
-    const rp = receivePosition("cpu");
-    if (!skip(cpuBack)) targets.push({ p: cpuBack, x: rp.x, y: rp.y });
-  } else {
-    const rp = receivePosition("player");
-    if (!skip(back)) targets.push({ p: back, x: rp.x, y: rp.y });
-  }
+  // レシーブ側のレシーバー（割り当てられた1人）は受け持ち側のレシーブ位置で待つ。
+  const recvTeam = serverTeamNow() === "player" ? "cpu" : "player";
+  const receiver = receiverPlayerFor(recvTeam);
+  const rp = receivePosition(recvTeam);
+  if (!skip(receiver)) targets.push({ p: receiver, x: rp.x, y: rp.y });
+  // 前衛（レシーバーでなければ）逆サイド寄りの定位置
+  if (front !== receiver && !skip(front))       targets.push({ p: front,    x: -fx * sideSign, y: front.homeY });
+  if (cpuFront !== receiver && !skip(cpuFront))  targets.push({ p: cpuFront, x: fx * sideSign,  y: cpuFront.homeY });
   return targets.every(function (t) {
     return Math.hypot(t.p.x - t.x, t.p.y - t.y) <= tol;
   });
@@ -2250,7 +2506,7 @@ function updateServeReady(dt) {
   } else {
     if ((serveReady.timer >= cfg.aiReady && allInPosition) || timedOut) {
       serveReady.ready = true;
-      hintText.textContent = "全員準備OK。スペース/ボタンでトス（←/→で打点調整）";
+      hintText.textContent = "全員準備OK。スペースでトス。矢印キーで狙う場所を移動";
     }
   }
 }
@@ -2660,6 +2916,11 @@ function drawLandingMarker() {
 
 /* ---- 着地点カーソル（ため中の狙い・ゴーストリング） ---- */
 function drawAimCursor() {
+  // サーブの構え/トス中（自分がサーバー）は、対角サービスコート上に狙いカーソルを表示
+  if ((state === "serve-stance" || state === "serve-toss") && playerIsServer() && serveAimCursor.set) {
+    drawServeAimCursor();
+    return;
+  }
   if (state !== "rally" || !charge.active) return;
   const meta = SHOT_FAMILY_META[selectedShot];
   const p = project(aim.x, aim.y, 0);
@@ -2678,6 +2939,27 @@ function drawAimCursor() {
   ctx.stroke();
   ctx.globalAlpha = 1;
   // 中心の十字（位置が分かりやすいように）
+  ctx.beginPath();
+  ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
+  ctx.moveTo(p.x, p.y - 3); ctx.lineTo(p.x, p.y + 3);
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+}
+
+/* ---- サーブの狙いカーソル（対角サービスコート上） ---- */
+function drawServeAimCursor() {
+  const box = serviceBox("player");
+  const inBox = serveAimCursor.x >= box.x1 && serveAimCursor.x <= box.x2 &&
+    serveAimCursor.y >= box.y1 && serveAimCursor.y <= box.y2;
+  const color = inBox ? "#10B981" : "rgba(220,80,80,0.95)"; // 外ならフォルト色
+  const p = project(serveAimCursor.x, serveAimCursor.y, 0);
+  const pulse = 0.9 + 0.1 * Math.sin(performance.now() / 110);
+  const r = Math.max(6, 0.55 * p.s) * pulse;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, r, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
   ctx.moveTo(p.x, p.y - 3); ctx.lineTo(p.x, p.y + 3);
@@ -2748,12 +3030,11 @@ function drawTimingGauge() {
     ctx.textAlign = "right";
     ctx.fillText("適正", gx - 4, zToY(zone.ideal) + 3);
 
-    // 狙い（←/→）の表示
-    const aimText = serveAim < 0 ? "◀ 狙い" : serveAim > 0 ? "狙い ▶" : "狙い 中央";
+    // 狙い（矢印キーで動かす着地点カーソル）の案内
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.font = "700 10px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(aimText, W / 2, H - 10);
+    ctx.fillText("矢印キーで狙う場所を移動（コート外はフォルト）", W / 2, H - 10);
     return;
   }
 
