@@ -25,11 +25,17 @@ body {
 
 #app {
   width: 100%;
-  max-width: 480px;
-  padding: 20px 16px;
+  max-width: 980px;
+  padding: 16px 16px;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+}
+
+/* 開始/結果画面は読み物中心なので幅を抑えて中央寄せのままにする */
+body:has(#screen-ready:not([hidden])) #app,
+body:has(#screen-result:not([hidden])) #app {
+  max-width: 480px;
 }
 
 header {
@@ -110,6 +116,7 @@ main {
 /* ---- スコアボード ---- */
 .scoreboard {
   width: 100%;
+  max-width: 960px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -159,15 +166,14 @@ main {
 
 .games-sep { color: var(--color-border); }
 
-/* ---- コート ---- */
+/* ---- コート（PC・横画面primary: 16:9のワイド中継ビュー） ----
+ * 16:9を必ず保つため、高さ上限とビューポート幅の両方を尊重して自動サイズする。
+ * （width:100%固定だと高さ制限時に横へ間延びして台形が歪むため使わない） */
 .court-wrap {
   position: relative;
-  width: auto;
-  max-width: 360px;
-  aspect-ratio: 2 / 3;
-  /* 縦持ちでも操作ボタン（サーブ設定3段を含む）が画面内に収まるよう制限する */
-  max-height: calc(100dvh - 410px);
-  min-height: 280px;
+  /* 利用可能な高さから幅を逆算（16/9倍）し、画面幅も超えない範囲で最大化 */
+  width: min(960px, 100%, calc((100dvh - 240px) * 16 / 9));
+  aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(30, 27, 75, .12);
@@ -203,13 +209,24 @@ main {
   white-space: pre-line;
 }
 
-/* ---- 操作パネル ---- */
+/* ---- 操作パネル（横画面: コート下に横並びで配置） ---- */
 .controls {
   width: 100%;
+  max-width: 960px;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: center;
   gap: 8px;
 }
+
+/* 各操作グループは横並び。球種・打球は広めに取る */
+.controls .control-group {
+  flex: 1 1 auto;
+  min-width: 160px;
+}
+#shot-select-controls { flex: 2 1 320px; }
+#shot-controls { flex: 1 1 200px; }
 
 .control-group {
   display: flex;
@@ -298,41 +315,29 @@ footer a:hover { color: var(--color-text); }
   font-size: .72rem;
 }
 
-@media (orientation: landscape) and (max-height: 600px) {
-  #app {
-    max-width: 920px;
-    padding: 10px 16px;
-  }
-  header { margin-bottom: 6px; }
+/* 横画面で縦が低い時（ノートPCの小ウィンドウ等）はヘッダ等を畳んでコートを優先 */
+@media (orientation: landscape) and (max-height: 640px) {
+  #app { padding: 8px 16px; }
+  header { margin-bottom: 4px; }
   h1 { font-size: 16px; }
   .kicker { margin-bottom: 2px; }
-  .description, .rules { display: none; }
   .screen { gap: 8px; }
-  #screen-game {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 12px;
-  }
-  .scoreboard {
-    flex-direction: column;
-    width: auto;
-    min-width: 110px;
-    gap: 6px;
-  }
-  .score-sets { flex-direction: row; }
-  .court-wrap {
-    width: auto;
-    max-width: none;
-    height: calc(100dvh - 110px);
-    max-height: 430px;
-    aspect-ratio: 2 / 3;
-  }
-  .controls {
-    width: 220px;
-  }
-  .hint { display: none; }
+  .court-wrap { width: min(960px, 100%, calc((100dvh - 180px) * 16 / 9)); }
   footer { padding-top: 4px; }
+}
+
+/* 縦画面（スマホ）は当面fallback。崩れない最低限の調整のみ。
+ * canvasは16:9固定なので、縦持ちでもwrapは16:9を保ち（潰さない）、操作系は縦積みに戻す。 */
+@media (orientation: portrait) {
+  #app { max-width: 480px; }
+  .court-wrap {
+    aspect-ratio: 16 / 9;
+    max-height: none;
+  }
+  .controls { flex-direction: column; flex-wrap: nowrap; }
+  .controls .control-group,
+  #shot-select-controls,
+  #shot-controls { flex: 1 1 auto; min-width: 0; }
 }
 
 /* ---- バーチャルスティック（スマホの移動操作） ---- */

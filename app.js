@@ -203,7 +203,7 @@ const moveStickKnob = document.getElementById("move-stick-knob");
 const positionControls  = document.getElementById("position-controls");
 const formationControls = document.getElementById("formation-controls");
 
-const W = 360;
+const W = 960;
 const H = 540;
 
 /* ---- 実コート寸法（m） ---- */
@@ -217,15 +217,18 @@ const COURT = {
 
 const G = 9.8; // 重力 m/s^2
 
-/* ---- カメラ（自陣ベースライン後方・上空） ---- */
+/* ---- カメラ（自陣ベースライン後方やや上空からの中継カメラ視点） ----
+ * 横長16:9（960×540）想定。自陣ベースラインを画面下部・幅85%、相手ベースラインを
+ * 画面上から約18%・幅40%の左右対称台形に投影する。俯角(pitch)を立てすぎず横方向の
+ * 位置差がはっきり読めるパラメータ。fov/horizonYは下記の幾何から逆算した固定値。 */
 const CAM = {
-  y: 19.0,
-  z: 8.0,
-  pitch: 0.42,
-  fov: 330,
-  horizonY: 288,
-  cos: Math.cos(0.42),
-  sin: Math.sin(0.42),
+  y: 30.0,       // 自陣ベースライン(11.885)後方のカメラ距離
+  z: 10.0,       // カメラ高さ
+  pitch: 0.28,   // 俯角（小さめ＝横位置が読みやすい）
+  fov: 1500,     // 焦点距離相当（手前BL幅≈画面85%になるよう調整）
+  horizonY: 168, // 手前BLが画面下部(y≈510)に来るオフセット
+  cos: Math.cos(0.28),
+  sin: Math.sin(0.28),
 };
 
 function project(x, y, z) {
@@ -2496,20 +2499,27 @@ function drawHud() {
 }
 
 function drawBackground() {
-  const horizon = CAM.horizonY - CAM.fov * Math.tan(CAM.pitch);
+  // 中継映像風の背景: 相手ベースラインの上端あたり（画面上から約18%）を地平線として
+  // 上に空＋スタンドの帯、下にコート周りの芝を敷く。
+  const horizon = project(0, -COURT.halfL, 0).y; // 奥ベースラインの画面Y（≈99）
+
+  // 空グラデーション（上部）
   const sky = ctx.createLinearGradient(0, 0, 0, horizon);
   sky.addColorStop(0, "#BFD9F2");
   sky.addColorStop(1, "#E8F1FA");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, horizon);
 
+  // スタンドを示す濃緑の帯＋等間隔の縦リブ（観客席の質感）
+  const standH = 30;
   ctx.fillStyle = "#14532D";
-  ctx.fillRect(0, horizon - 26, W, 26);
+  ctx.fillRect(0, horizon - standH, W, standH);
   ctx.fillStyle = "rgba(255,255,255,0.12)";
-  for (let i = 0; i < 12; i++) {
-    ctx.fillRect(i * 32, horizon - 26, 1.5, 26);
+  for (let i = 0; i < 30; i++) {
+    ctx.fillRect(i * (W / 30), horizon - standH, 1.5, standH);
   }
 
+  // コート外周（芝/サーフェスの地色）
   ctx.fillStyle = "#1f7a3f";
   ctx.fillRect(0, horizon, W, H - horizon);
 }
@@ -2750,7 +2760,8 @@ function drawTimingGauge() {
   if (state === "rally" && charge.active) {
     // ためゲージ: たまるほど鋭い角度。球種とコースも表示
     const k = chargeAmount();
-    const gx = 60, gy = H - 18, gw = W - 120, gh = 8;
+    const gw = Math.min(420, W - 120);
+    const gx = (W - gw) / 2, gy = H - 18, gh = 8;
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     roundRect(gx, gy, gw, gh, 4);
     ctx.fill();
@@ -3013,134 +3024,3 @@ retryBtn.addEventListener("click", function () {
 });
 
 draw();
-
-// 動作確認（E2Eテスト）用の読み取り専用フック。ゲームロジックからは使用しない。
-window.__softTennisDebug = {
-  get: function () {
-    return {
-      state: state,
-      playerPoints: player.points, cpuPoints: cpu.points,
-      playerGames: player.games, cpuGames: cpu.games,
-      serveFaults: serveFaults,
-      serverTeam: state === "ready" ? null : serverTeamNow(),
-      serverIsFront: state === "ready" ? null : serverIsFrontPlayer(),
-      playerIsServer: state === "ready" ? null : playerIsServer(),
-      serveRight: serveFromRight(),
-      controlledIsFront: rallyControlled === front,
-      playerPosition: playerPosition,
-      formation: formation,
-      tossActive: toss.active,
-      tossT: toss.t,
-      selectedShot: selectedShot,
-      serveConfig: { type: serveType, power: servePower, spin: serveSpin, aim: serveAim },
-      cpuFrontPlan: cpuFrontPlan,
-      cpuServePlan: cpuServePlan,
-      receiveDone: receiveDone,
-      serveReady: { timer: serveReady.timer, still: serveReady.still, ready: serveReady.ready },
-      charge: { active: charge.active, source: charge.source, amount: chargeAmount() },
-      aim: { x: aim.x, y: aim.y },
-      ball: {
-        x: ball.x, y: ball.y, z: ball.z,
-        vx: ball.vx, vy: ball.vy, vz: ball.vz,
-        bounces: ball.bounces, serving: ball.serving,
-        lastHitter: ball.lastHitter, spin: ball.spin,
-        spinMag: ball.spinMag, trailColor: ball.trailColor,
-        originX: ball.originX, originY: ball.originY,
-      },
-      back: { x: back.x, y: back.y },
-      front: { x: front.x, y: front.y },
-      cpuBack: { x: cpuBack.x, y: cpuBack.y },
-      cpuFront: { x: cpuFront.x, y: cpuFront.y },
-    };
-  },
-  setBackX: setBackX,
-  setControlledX: setControlledX,
-  setControlledY: setControlledY,
-  // テスト用: 操作キャラを指定座標へ移動
-  teleport: function (x, y) {
-    setControlledX(rallyControlled, x);
-    setControlledY(rallyControlled, y);
-  },
-  getControlled: function () { return rallyControlled === front ? "front" : "back"; },
-  // テスト用: 球種・サーブ設定
-  selectShot: selectShot,
-  setServeConfig: function (type, power, spin, aim) {
-    if (type) serveType = type;
-    if (power) servePower = power;
-    if (spin) serveSpin = spin;
-    if (aim != null) serveAim = aim;
-  },
-  // テスト用: ボール状態を直接設定（打点テストの再現用）
-  setBall: function (props) {
-    Object.assign(ball, props || {});
-  },
-  // テスト用: 直近の打球情報（打点評価を含む）
-  getLastHit: function () { return lastHitInfo; },
-  // テスト用: ため→打つ を一括で行う（chargeSec秒ためた扱い。
-  // aimX/aimY は着地点カーソルのワールド座標。省略時はデフォルト狙い）
-  action: function (shot, aimX, aimY, chargeSec) {
-    if (state === "serve-stance" || state === "serve-toss") {
-      playerServeAction();
-      return;
-    }
-    if (state !== "rally") return;
-    if (shot) selectShot(shot);
-    const power = Math.max(0, Math.min(1, (chargeSec || 0) / TUNING.charge.maxTime));
-    const ax = aimX != null ? aimX : 0;
-    const ay = aimY != null ? aimY : -TUNING.aim.defaultY;
-    if (canPlayerHit(rallyControlled)) {
-      playerHitBall(selectedShot, power, ax, ay);
-    } else if (ballIncomingToPlayer() && distToBall(rallyControlled) < 6.0) {
-      pendingSwing = 0.4;
-      pendingShot = selectedShot;
-      pendingPower = power;
-      pendingAimX = ax;
-      pendingAimY = ay;
-    }
-  },
-  startCharge: startCharge,
-  releaseCharge: releaseCharge,
-  setAim: function (x, y) {
-    if (x != null) aim.x = x;
-    if (y != null) aim.y = y;
-  },
-  // テスト用: レシーブ準備の待ちを飛ばす
-  forceServeReady: function () { serveReady.timer = 999; serveReady.still = 999; },
-  // テスト用: 相手後衛の打点 originX/originY を与えたときの、両チームの
-  // 前衛セオリーX（線上＋外側）・前衛鏡対応Y・後衛クロスXを計算して返す。
-  theoryProbe: function (originX, originY) {
-    const saved = { x: ball.x, y: ball.y, ox: ball.originX, oy: ball.originY, lh: ball.lastHitter };
-    ball.originX = originX; ball.originY = originY;
-    ball.x = originX; ball.y = originY;
-    // CPU前衛から見た相手＝プレイヤー(lastHitter=player)、プレイヤー前衛から見た相手＝CPU
-    ball.lastHitter = "player";
-    const cpu = { frontX: frontTheoryX("cpu", cpuFront.homeY), frontY: frontMirrorY("cpu", cpuFront.homeY), backX: backCrossX("cpu") };
-    ball.lastHitter = "cpu";
-    const ply = { frontX: frontTheoryX("player", front.homeY), frontY: frontMirrorY("player", front.homeY), backX: backCrossX("player") };
-    Object.assign(ball, { x: saved.x, y: saved.y, originX: saved.ox, originY: saved.oy, lastHitter: saved.lh });
-    return { cpu: cpu, player: ply, outsideStep: TUNING.pos.frontOutsideStep, crossBias: TUNING.pos.backCrossBias };
-  },
-  // テスト用: トスのタイミングを直接指定して打つ
-  forceServeTiming: function (tossT) {
-    if (state === "serve-stance") playerServeAction();
-    if (state === "serve-toss") {
-      toss.t = tossT;
-      launchPlayerServe();
-    }
-  },
-  // テスト用: 指定の高さ（落下側）で打つ。トス前なら自動でトスする
-  forceServeHeight: function (z) {
-    if (state === "serve-stance") playerServeAction();
-    if (state !== "serve-toss") return;
-    const riseV = (toss.apexZ - toss.baseZ) / TOSS_RISE_TIME + 0.5 * G * TOSS_RISE_TIME;
-    const disc = riseV * riseV - 2 * G * (z - toss.baseZ);
-    if (disc < 0) {
-      toss.t = TOSS_RISE_TIME; // 届かない高さ → 頂点で打つ
-    } else {
-      toss.t = (riseV + Math.sqrt(disc)) / G;
-    }
-    launchPlayerServe();
-  },
-  cpuFrontTheoryX: cpuFrontTheoryX,
-  tuning: TUNING,
-};

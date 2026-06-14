@@ -26,6 +26,7 @@
       <div id="screen-ready" class="screen">
         <p class="description">
           ダブルスのソフトテニス対戦です。ポジションと陣形を選び、ためて打ち分けましょう。<br />
+          <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。<br />
           操作しない相方はAIが動かします。
         </p>
         <div class="control-group" id="position-controls">
@@ -68,7 +69,7 @@
         </div>
 
         <div class="court-wrap">
-          <canvas id="court" width="360" height="540"></canvas>
+          <canvas id="court" width="960" height="540"></canvas>
           <div id="message-overlay" class="message-overlay" hidden>
             <p id="message-text"></p>
           </div>
@@ -107,7 +108,7 @@
           </div>
         </div>
 
-        <p class="hint" id="hint-text">矢印キー/スティックで移動。スペース/ボタン長押しでため</p>
+        <p class="hint" id="hint-text">PC推奨：矢印/WASDで移動、1〜3で球種、スペース長押しでため</p>
       </div>
 
       <div id="screen-result" class="screen" hidden>
