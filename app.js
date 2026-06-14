@@ -10,18 +10,18 @@
  * （「みんなのテニス」風の視点）。
  *
  * 操作方式（PC確定形）:
- *   - 移動 = WASD（左手）。矢印キーは移動に使わない。
- *   - 狙い（着地カーソル）= 矢印キー（右手）。ストロークのため中もサーブ時も
- *     矢印で狙う場所を動かす。スマホはスティック（ため/トス中は狙いへ切替）。
- *   - 打球 = スペースに統一。ストロークはスペース長押しでため→離して打つ。
+ *   - 移動 = WASD（左手）。矢印キーは廃止（移動にも狙いにも使わない）。
+ *   - 狙い（着地カーソル）= マウス。マウスが指すコート地点へ着地リングが追従する。
+ *     スクリーン座標→地面(z=0)の逆投影 unproject() で求める。スマホはスティック。
+ *   - 打球 = マウス左ボタン。長押しでため→離した瞬間に現在の狙い地点へ打つ。
  *     ボールが打点に来ると押しっぱなしでも自動スイング。
  *   - 球種選択 = 1/2/3（シュート/カット/ロブ）のみ。打点高さ・着地カーソルの
  *     深さで内部の5種(flat/drive/slice/drop/lob)へ自動振り分け。
  *   - スマッシュ: ネット前で高い球（ロブ等）を捉えると自動でスマッシュ（速く鋭い決め球）。
  *   - 打点が大事: 体の横・少し前の適正打点ほど角度と球速が出る。
  *     詰まる/泳ぐと「選べる角度の幅」が段階的に狭くなる（方向自体は消えない）。
- *   - サーブ: 打つ前にパワーと回転を設定 → スペースでトス →
- *     適正打点でもう一度スペース。矢印で対角サービスコート内の狙いを動かす。
+ *   - サーブ: 打つ前にパワーと回転を設定 → 左クリックでトス →
+ *     適正打点でもう一度左クリック。マウスで対角サービスコート内の狙いを指す。
  *     アンダーカットはサーブ専用ショット。高すぎる打点は空振りになる。
  *   - 試合前にポジション（後衛/前衛）と陣形（雁行陣/ダブル後衛/
  *     ダブル前衛）を選べる。操作しない相方はAIが動かす。
@@ -68,7 +68,7 @@ const TUNING = {
     speedBonus: 0.1,  // 最大ための球速ボーナス（+10%）
     moveSlow: 0.4,    // ため中のWASD移動の速度倍率
   },
-  // 着地点カーソル（ため中に矢印/スティックで狙いを自由移動）
+  // 着地点カーソル（ため中にマウス/スティックで狙いを自由移動）
   aim: {
     cursorSpeed: 9.0,  // カーソル移動速度(m/s)
     sideMargin: 0.5,   // サイドラインからの内側マージン（狙い自体はコート内）
@@ -261,6 +261,42 @@ function project(x, y, z) {
   };
 }
 
+/* 内部解像度(960×540)のスクリーン点 → 地面(z=0)のワールド座標へ逆投影する。
+ * project() の幾何を z=0 で解いたもの。マウスが指すコート地点を求めるのに使う。
+ *   depth = dy*cos + CAM.z*sin,  up = dy*sin - CAM.z*cos   （dy = CAM.y - y）
+ *   sy = horizonY - up*(fov/depth)  を dy について解く。
+ * 地平線より上（depth<=0）など解が手前に来ない場合は null を返す。 */
+function unproject(sx, sy) {
+  const k = (CAM.horizonY - sy) / CAM.fov;
+  const denom = CAM.sin - k * CAM.cos;
+  if (Math.abs(denom) < 1e-6) return null; // 地平線方向（交点が無限遠）
+  const dy = CAM.z * (CAM.cos + k * CAM.sin) / denom;
+  const depth = dy * CAM.cos + CAM.z * CAM.sin;
+  if (depth <= 0.5) return null;           // カメラ後方／地平線より上
+  const s = CAM.fov / depth;
+  return { x: (sx - W / 2) / s, y: CAM.y - dy };
+}
+
+/* マウスのクライアント座標(イベントの clientX/Y) を内部解像度のスクリーン座標へ。
+ * canvas の実表示サイズと内部960×540のスケール差を換算する。 */
+function clientToCanvas(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return { sx: W / 2, sy: H / 2 };
+  return {
+    sx: (clientX - rect.left) / rect.width * W,
+    sy: (clientY - rect.top) / rect.height * H,
+  };
+}
+
+// マウスが最後に指していたコート地面のワールド座標（canvas外でも直前値を保持）
+const mouseAim = { x: 0, y: -TUNING.aim.defaultY, valid: false };
+
+function updateMouseAimFromEvent(e) {
+  const c = clientToCanvas(e.clientX, e.clientY);
+  const w = unproject(c.sx, c.sy);
+  if (w) { mouseAim.x = w.x; mouseAim.y = w.y; mouseAim.valid = true; }
+}
+
 /* ---- ステータス（育成要素の拡張ポイント） ----
  * 将来の育成システムはこの値を書き換えるだけで効く。
  *   power:   ストロークの球速
@@ -313,7 +349,7 @@ let matchTime = 0;       // 経過時間（タイミング計算用）
 let serveType = "over";  // over（オーバーハンド・デフォルト） / cut（アンダーカット・サーブ専用）
 let servePower = "mid";  // weak / mid / strong
 let serveSpin = "mid";   // weak / mid / strong
-// サーブの狙い（着地点カーソル・ワールド座標）。矢印キーで対角サービスコート内を動かす。
+// サーブの狙い（着地点カーソル・ワールド座標）。マウスで対角サービスコート内を指す。
 // 立ち位置＋この狙いで左/中/右を打ち分け、サービスコート外はフォルトになる。
 const serveAimCursor = { x: 0, y: 0, set: false };
 
@@ -397,7 +433,7 @@ const FORMATIONS = {
 };
 
 /* ---- ため（チャージ）状態 ----
- * 球種は selectedShot（選択式）を使う。狙いはため中の矢印/スティックで
+ * 球種は selectedShot（選択式）を使う。狙いはため中のマウス/スティックで
  * 着地点カーソルを動かして決める。未操作ならデフォルト（ミドル深め）へ打つ。
  * source: ため開始の入力（"Space"/"Digit1"〜"Digit5"/"pointer"）。
  * 同じ入力を離したときだけスイングする（球種キー長押しのため対応）。 */
@@ -845,7 +881,7 @@ function startServe(isFirstPointOfGame) {
     if (playerIsServer()) {
       who = "自分のサーブ";
       setControlMode("serve");
-      hintText.textContent = "種類・パワー・回転を選び、矢印キーで狙う場所を決める→準備後スペースでトス";
+      hintText.textContent = "種類・パワー・回転を選び、マウスで狙う場所を指す→準備後クリックでトス";
     } else {
       who = "相方のサーブ";
       setControlMode("rally");
@@ -911,7 +947,7 @@ function startToss(server, type) {
   server.pose = "toss";
   hideMessage(); // ゲージが見えるようにオーバーレイを消す
   if (playerIsServer()) {
-    hintText.textContent = "ゲージの「適正」マーカーの高さでスペース。矢印キーで狙う場所を移動（WASDで立ち位置）";
+    hintText.textContent = "ゲージの「適正」マーカーの高さでクリック。マウスで狙う場所を指す（WASDで立ち位置）";
   }
 }
 
@@ -995,7 +1031,7 @@ function launchPlayerServe() {
   hideMessage();
   state = "rally";
   setControlMode("rally");
-  hintText.textContent = "WASDで移動・矢印で狙い・スペース長押しでため→離して打つ。1〜3で球種";
+  hintText.textContent = "WASDで移動・マウスで狙い・左ボタン長押しでため→離して打つ。1〜3で球種";
 
   if (!serveAimCursor.set) resetServeAimCursor();
   launchServeBall("player", server, server.stats, {
@@ -1039,8 +1075,8 @@ function aiLaunchServe(team) {
   toss.active = false;
   state = "rally";
   hintText.textContent = (team === "cpu")
-    ? "レシーブ！ WASD移動・矢印で狙い・スペース長押しでため。1〜3で球種"
-    : "ラリー再開。WASD移動・矢印で狙い・スペース長押しでため。1〜3で球種";
+    ? "レシーブ！ WASD移動・マウスで狙い・左ボタン長押しでため。1〜3で球種"
+    : "ラリー再開。WASD移動・マウスで狙い・左ボタン長押しでため。1〜3で球種";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "cut", power: "mid", spin: "mid" };
@@ -1584,17 +1620,16 @@ function predictLanding() {
  * プレイヤー操作
  *
  * 確定操作（PC）:
- * - 移動: WASD（左手）専用。矢印キーは移動に使わない
- * - 狙い: 矢印キー（右手）専用。ため中もトス/サーブ時も着地カーソルを動かす
- * - 打球: スペースに統一。長押しでため（長いほど鋭い角度）→離して打つ。
+ * - 移動: WASD（左手）専用。矢印キーは廃止
+ * - 狙い: マウス。マウスが指すコート地点へ着地カーソルが追従（ため中もトス/サーブ時も）
+ * - 打球: マウス左ボタン。長押しでため（長いほど鋭い角度）→離して打つ。
  *   ボールが打点に来ると押しっぱなしでも自動スイング。未操作でもミドル深めへ打てる
  * - 球種: 1=シュート 2=カット 3=ロブ の3系統を選択（選択専用。ため/打球はしない）
- * - サーブ: 種類/パワー/回転を設定 → スペースでトス →
- *   適正打点の高さでスペース。矢印で対角サービスコート内の狙いを動かす
+ * - サーブ: 種類/パワー/回転を設定 → 左クリックでトス →
+ *   適正打点の高さで左クリック。マウスで対角サービスコート内の狙いを指す
  * - スマホ: スティックで移動（ため/トス中はスティックが狙いへ切替）、下部ボタン長押しでため
  * =========================================================== */
 
-const keysArrow = { left: false, right: false, up: false, down: false };
 const keysWasd  = { left: false, right: false, up: false, down: false };
 const stick = { active: false, dx: 0, dy: 0 }; // dx,dy は -1..1（dy: 正=自陣ベースライン方向）
 
@@ -1617,10 +1652,9 @@ function setControlledY(p, y) {
 function setBackX(x) { setControlledX(back, x); }
 
 document.addEventListener("keydown", function (e) {
-  if (e.code === "ArrowLeft") { keysArrow.left = true; e.preventDefault(); }
-  if (e.code === "ArrowRight") { keysArrow.right = true; e.preventDefault(); }
-  if (e.code === "ArrowUp") { keysArrow.up = true; e.preventDefault(); }
-  if (e.code === "ArrowDown") { keysArrow.down = true; e.preventDefault(); }
+  // 矢印キーは廃止（移動=WASD・狙い=マウスへ移行）。誤スクロール防止のため無害化のみ。
+  if (e.code === "ArrowLeft" || e.code === "ArrowRight" ||
+      e.code === "ArrowUp" || e.code === "ArrowDown") { e.preventDefault(); return; }
   if (e.code === "KeyA") keysWasd.left = true;
   if (e.code === "KeyD") keysWasd.right = true;
   if (e.code === "KeyW") keysWasd.up = true;
@@ -1653,10 +1687,6 @@ document.addEventListener("keydown", function (e) {
 });
 
 document.addEventListener("keyup", function (e) {
-  if (e.code === "ArrowLeft") keysArrow.left = false;
-  if (e.code === "ArrowRight") keysArrow.right = false;
-  if (e.code === "ArrowUp") keysArrow.up = false;
-  if (e.code === "ArrowDown") keysArrow.down = false;
   if (e.code === "KeyA") keysWasd.left = false;
   if (e.code === "KeyD") keysWasd.right = false;
   if (e.code === "KeyW") keysWasd.up = false;
@@ -1710,42 +1740,36 @@ function releaseCharge(source) {
   }
 }
 
-// ため中の矢印/スティック=着地点カーソル移動、トス中の←/→=サーブ狙い
+// 狙いの更新: PCはマウスが指すコート地点へ着地カーソルを追従、スマホはスティック。
+//   ラリーのため中 → aim（相手コート内にクランプ）
+//   サーブのトス前/トス中 → serveAimCursor（対角サービスコート±わずかにクランプ）
 function updateAimInputs(dt) {
   if (state === "rally" && charge.active) {
     const c = TUNING.aim;
-    let dx = 0, dy = 0;
-    if (keysArrow.left) dx -= 1;
-    if (keysArrow.right) dx += 1;
-    if (keysArrow.up) dy -= 1;   // ↑=奥（深く）
-    if (keysArrow.down) dy += 1; // ↓=手前（浅く）
-    if (stick.active) { dx += stick.dx; dy += stick.dy; }
-    const len = Math.hypot(dx, dy);
-    if (len > 1) { dx /= len; dy /= len; }
-    if (dx !== 0 || dy !== 0) {
-      aim.x += dx * c.cursorSpeed * dt;
-      aim.y += dy * c.cursorSpeed * dt;
+    if (mouseAim.valid) {
+      // マウスが指すコート地点をそのまま狙いに（相手コート＝負のy側へ）
+      aim.x = mouseAim.x;
+      aim.y = mouseAim.y;
+    } else if (stick.active) {
+      // スマホ: スティックで着地カーソルを相対移動
+      aim.x += stick.dx * c.cursorSpeed * dt;
+      aim.y += stick.dy * c.cursorSpeed * dt;
     }
     // 狙いはコート内マージンに収める（アウトは打点の悪さ・散らばり由来のみ）
     aim.x = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, aim.x));
     aim.y = Math.max(-(COURT.halfL - c.depthMargin), Math.min(-c.minDepth, aim.y));
   } else if ((state === "serve-toss" || state === "serve-stance") && playerIsServer()) {
-    // サーブの狙い: 矢印キー/スティックで対角サービスコート内の着地点カーソルを動かす
+    // サーブの狙い: マウスで対角サービスコート内の着地点を指す（スマホはスティック）
     if (!serveAimCursor.set) resetServeAimCursor();
     const c = TUNING.aim;
-    let dx = 0, dy = 0;
-    if (keysArrow.left) dx -= 1;
-    if (keysArrow.right) dx += 1;
-    if (keysArrow.up) dy -= 1;   // ↑=ネット寄り（浅く）
-    if (keysArrow.down) dy += 1; // ↓=サービスライン寄り（深く）
-    if (stick.active) { dx += stick.dx; dy += stick.dy; }
-    const len = Math.hypot(dx, dy);
-    if (len > 1) { dx /= len; dy /= len; }
-    if (dx !== 0 || dy !== 0) {
-      serveAimCursor.x += dx * c.cursorSpeed * dt;
-      serveAimCursor.y += dy * c.cursorSpeed * dt;
-      clampServeAimCursor();
+    if (mouseAim.valid) {
+      serveAimCursor.x = mouseAim.x;
+      serveAimCursor.y = mouseAim.y;
+    } else if (stick.active) {
+      serveAimCursor.x += stick.dx * c.cursorSpeed * dt;
+      serveAimCursor.y += stick.dy * c.cursorSpeed * dt;
     }
+    clampServeAimCursor();
   }
 }
 
@@ -1863,8 +1887,21 @@ if (moveStick) {
   });
 }
 
-// コートをタップ/クリック: サーブ操作、ラリー中は長押し=ため
+// PC: マウス移動で狙い（着地カーソル）をマウスが指すコート地点へ追従させる。
+// canvas外へ出たら直前の狙いを保持（mouseAim.valid は維持）。
+canvas.addEventListener("mousemove", function (e) {
+  updateMouseAimFromEvent(e);
+});
+// 右クリックのコンテキストメニューは邪魔なので抑止（操作は左ボタン主体）
+canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+// コートをタップ/クリック: サーブ操作、ラリー中は長押し=ため。
+// マウスは左ボタン(button 0)のみ。タッチ/ペンは従来どおり。
 canvas.addEventListener("pointerdown", function (e) {
+  if (e.pointerType === "mouse") {
+    if (e.button !== 0) return;        // 左ボタン以外は無視
+    updateMouseAimFromEvent(e);        // 押した瞬間の地点を即狙いへ反映
+  }
   pointerActive = true;
   if (state === "serve-stance" || state === "serve-toss") {
     playerServeAction();
@@ -1873,7 +1910,8 @@ canvas.addEventListener("pointerdown", function (e) {
   startCharge("pointer");
 });
 
-window.addEventListener("pointerup", function () {
+window.addEventListener("pointerup", function (e) {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
   pointerActive = false;
   releaseCharge("pointer");
 });
@@ -2430,7 +2468,7 @@ function partnerTryReturn() {
  * =========================================================== */
 
 // 現在の移動入力を得る。確定操作: 移動=WASD（左手）専用。
-// 矢印キー（右手）は常に狙い（着地カーソル/サーブ狙い）専用で移動には使わない。
+// 狙い（着地カーソル/サーブ狙い）はマウスが担当し、移動とは独立。
 // スマホはスティックで移動（ため中/トス中はスティックが狙いへ切り替わる）。
 function inputVector() {
   const aiming = (charge.active && state === "rally") || state === "serve-toss";
@@ -2506,7 +2544,7 @@ function updateServeReady(dt) {
   } else {
     if ((serveReady.timer >= cfg.aiReady && allInPosition) || timedOut) {
       serveReady.ready = true;
-      hintText.textContent = "全員準備OK。スペースでトス。矢印キーで狙う場所を移動";
+      hintText.textContent = "全員準備OK。クリックでトス。マウスで狙う場所を指す";
     }
   }
 }
@@ -2527,7 +2565,7 @@ function update(dt) {
     mover = rallyControlled;
   }
 
-  // ため中の矢印/スティック（着地点カーソル）とトス中の←/→（狙い）を反映
+  // ため中のマウス/スティック（着地点カーソル）とトス中のマウス（狙い）を反映
   updateAimInputs(dt);
 
   if (mover) {
@@ -3030,11 +3068,11 @@ function drawTimingGauge() {
     ctx.textAlign = "right";
     ctx.fillText("適正", gx - 4, zToY(zone.ideal) + 3);
 
-    // 狙い（矢印キーで動かす着地点カーソル）の案内
+    // 狙い（マウスで指す着地点カーソル）の案内
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.font = "700 10px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("矢印キーで狙う場所を移動（コート外はフォルト）", W / 2, H - 10);
+    ctx.fillText("マウスで狙う場所を指す（コート外はフォルト）", W / 2, H - 10);
     return;
   }
 
@@ -3059,7 +3097,7 @@ function drawTimingGauge() {
     ctx.textAlign = "center";
     const courseName = courseLabelFor(rallyControlled.x, aim.x).replace("！", "");
     ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fillText("ため " + meta.label + subLabel + " / " + courseName + (k >= 1 ? " MAX" : "") + "（矢印で狙い）", gx + gw / 2, gy - 6);
+    ctx.fillText("ため " + meta.label + subLabel + " / " + courseName + (k >= 1 ? " MAX" : "") + "（マウスで狙い）", gx + gw / 2, gy - 6);
   }
 }
 
