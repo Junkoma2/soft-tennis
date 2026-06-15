@@ -27,7 +27,7 @@
         <p class="description">
           ダブルスのソフトテニス対戦です。ポジションと陣形を選び、ためて打ち分けましょう。<br />
           <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。<br />
-          操作しない相方はAIが動かします。
+          操作しない相方はAIが動かします。「観戦: AI対AI に切替」を選ぶと4人全員AIが操作し、観戦だけで試合が進みます。
         </p>
         <div class="control-group" id="position-controls">
           <span class="control-label">ポジション</span>
@@ -39,6 +39,10 @@
           <button class="ctrl-btn is-active" data-formation="ganko" type="button">雁行陣</button>
           <button class="ctrl-btn" data-formation="double-back" type="button">ダブル後衛</button>
           <button class="ctrl-btn" data-formation="double-front" type="button">ダブル前衛</button>
+        </div>
+        <div class="control-group" id="spectator-controls">
+          <span class="control-label">モード</span>
+          <button class="ctrl-btn" id="spectator-toggle" data-spectator="off" type="button">観戦: AI対AI に切替</button>
         </div>
         <div class="rules">
           <p><strong>移動</strong>　<strong>WASD（左手）</strong>（スマホ：左下スティック）。打点ゾーン中も移動できます</p>
@@ -79,7 +83,7 @@
           </div>
         </div>
 
-        <div class="controls">
+        <div class="controls" id="controls">
           <div class="control-group" id="serve-power-controls" hidden>
             <span class="control-label">パワー</span>
             <button class="ctrl-btn" data-serve-power="weak" type="button">弱</button>
