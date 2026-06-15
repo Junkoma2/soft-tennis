@@ -888,6 +888,19 @@ function resetPlayersForPoint() {
   }
   if (cpuFront !== recv && !(team === "cpu" && frontServes)) cpuFront.x = fx * sideSign;
 
+  // レシーブ側チームで、後衛が「そのポイントのレシーバーでない」場合
+  // （＝前衛が受ける番）、後衛をホームのセンター(x=0)に残さず、
+  // 自分のクロス側（receiverSideAssignのback符号）の後方に構えさせる。
+  const halfWX = COURT.singlesHalfW / 2;
+  if (receivingTeam === "player" && back !== recv) {
+    back.x = receiverSideAssign.player.back * halfWX;
+    back.y = TUNING.pos.receiveOverBackY;
+  }
+  if (receivingTeam === "cpu" && cpuBack !== recv) {
+    cpuBack.x = receiverSideAssign.cpu.back * halfWX;
+    cpuBack.y = -TUNING.pos.receiveOverBackY;
+  }
+
   ball.vx = 0; ball.vy = 0; ball.vz = 0;
   ball.bounces = 0;
   ball.serving = false;
