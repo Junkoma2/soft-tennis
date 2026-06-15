@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ソフトテニス ダブルス</title>
+  <meta name="description" content="ポジションと陣形を選んで戦うソフトテニスのダブルスミニゲーム。ため打ちと回転で球を打ち分けます。" />
+  <meta property="og:title" content="ソフトテニス ダブルス" />
+  <meta property="og:description" content="ポジションと陣形を選んで戦うソフトテニスのダブルスミニゲーム。" />
+  <meta property="og:url" content="https://junkoma2.github.io/soft-tennis/" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#6366F1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="ソフトテニス" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <p class="kicker">SOFT TENNIS DOUBLES</p>
+      <h1>ソフトテニス ダブルス</h1>
+    </header>
+
+    <main>
+      <div id="screen-ready" class="screen">
+        <p class="description">
+          ダブルスのソフトテニス対戦です。ポジションと陣形を選び、ためて打ち分けましょう。<br />
+          <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。<br />
+          操作しない相方はAIが動かします。
+        </p>
+        <div class="control-group" id="position-controls">
+          <span class="control-label">ポジション</span>
+          <button class="ctrl-btn is-active" data-position="back" type="button">後衛を操作</button>
+          <button class="ctrl-btn" data-position="front" type="button">前衛を操作</button>
+        </div>
+        <div class="control-group" id="formation-controls">
+          <span class="control-label">陣形</span>
+          <button class="ctrl-btn is-active" data-formation="ganko" type="button">雁行陣</button>
+          <button class="ctrl-btn" data-formation="double-back" type="button">ダブル後衛</button>
+          <button class="ctrl-btn" data-formation="double-front" type="button">ダブル前衛</button>
+        </div>
+        <div class="rules">
+          <p><strong>移動</strong>　<strong>WASD（左手）</strong>（スマホ：左下スティック）。打点ゾーン中も移動できます</p>
+          <p><strong>狙い</strong>　<strong>マウス（右手）</strong>。コート上でマウスを動かすと、マウスが指す地点へ着地点カーソルが追従します。ため中もサーブ時もマウスで狙います</p>
+          <p><strong>打つ</strong>　ボールが打点ゾーンに入ると自動で「ため」が始まります。<strong>左クリック=シュート（フラット/ドライブ）、右クリック=カット（スライス/ドロップ）、Spaceを押しながらクリック=ロブ</strong>でその場でスイング（未操作ならミドル深めへ自動で打つ）</p>
+          <p><strong>球種</strong>　シュートは<strong>高いとフラット・低いとドライブ</strong>、カットは<strong>深いとスライス・浅いとドロップ</strong>に変化</p>
+          <p><strong>スマッシュ</strong>　ネット前で高い球（ロブ等）を捉えると<strong>自動でスマッシュ</strong>（速く鋭く叩き込む決め球）になります</p>
+          <p><strong>サーブ</strong>　パワー・回転を選ぶ → <strong>マウスで対角サービスコート内の狙う場所</strong>を指す → 左クリックでトス → 適正打点で<strong>左クリック=フラット、右クリック=スライス、Space+左クリック=アンダーカット（セカンド向け安全球）、Space+右クリック=攻撃的カット（速くて鋭いが難しい）</strong>。コート外狙いはフォルト。相手のサーブは種類が打つ前に表示されます</p>
+          <p>カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ。細かい操作は試合中のヒントで案内します</p>
+        </div>
+        <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
+      </div>
+
+      <div id="screen-game" class="screen" hidden>
+        <div class="scoreboard">
+          <div class="score-item">
+            <span class="score-label">あなた</span>
+            <strong id="player-score" class="score-value">0</strong>
+          </div>
+          <div class="score-sets">
+            <span id="player-games" class="games">0</span>
+            <span class="games-sep">-</span>
+            <span id="cpu-games" class="games">0</span>
+          </div>
+          <div class="score-item">
+            <span class="score-label">相手</span>
+            <strong id="cpu-score" class="score-value">0</strong>
+          </div>
+        </div>
+
+        <div class="court-wrap">
+          <canvas id="court" width="960" height="540"></canvas>
+          <div id="message-overlay" class="message-overlay" hidden>
+            <p id="message-text"></p>
+          </div>
+          <div id="move-stick" class="move-stick">
+            <div id="move-stick-knob" class="move-stick-knob"></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <div class="control-group" id="serve-power-controls" hidden>
+            <span class="control-label">パワー</span>
+            <button class="ctrl-btn" data-serve-power="weak" type="button">弱</button>
+            <button class="ctrl-btn is-active" data-serve-power="mid" type="button">中</button>
+            <button class="ctrl-btn" data-serve-power="strong" type="button">強</button>
+          </div>
+          <div class="control-group" id="serve-spin-controls" hidden>
+            <span class="control-label">回転</span>
+            <button class="ctrl-btn" data-serve-spin="weak" type="button">弱</button>
+            <button class="ctrl-btn is-active" data-serve-spin="mid" type="button">中</button>
+            <button class="ctrl-btn" data-serve-spin="strong" type="button">強</button>
+          </div>
+          <div class="control-group" id="shot-select-controls">
+            <span class="control-label">球種（スマホ）</span>
+            <button class="ctrl-btn shot-sel shot-shoot is-active" data-shotsel="shoot" type="button"><span class="shot-dot" style="background:#FB923C"></span>シュート<span class="shot-note">高い=フラット/低い=ドライブ</span></button>
+            <button class="ctrl-btn shot-sel shot-cut" data-shotsel="cut" type="button"><span class="shot-dot" style="background:#38BDF8"></span>カット<span class="shot-note">深い=スライス/浅い=ドロップ</span></button>
+            <button class="ctrl-btn shot-sel shot-lob" data-shotsel="lob" type="button"><span class="shot-dot" style="background:#FACC15"></span>ロブ</button>
+          </div>
+          <div class="control-group" id="shot-controls">
+            <span class="control-label">打球（スマホ）</span>
+            <button class="ctrl-btn ctrl-btn-primary" id="charge-btn" type="button">打つ</button>
+          </div>
+        </div>
+
+        <p class="hint" id="hint-text">PC推奨：WASDで移動・マウスで狙い・打点ゾーンで左クリック=シュート/右クリック=カット/Space+クリック=ロブ</p>
+      </div>
+
+      <div id="screen-result" class="screen" hidden>
+        <p id="result-title" class="result-title"></p>
+        <p id="result-detail" class="result-detail"></p>
+        <button id="retry-btn" class="primary-btn" type="button">もう一度遊ぶ</button>
+      </div>
+    </main>
+
+    <footer>
+      <a href="https://nonsensicalnook.com/" target="_blank" rel="noreferrer">NNook</a>
+      <span id="app-version" class="app-version"></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="version.js"></script>
+</body>
+</html>
