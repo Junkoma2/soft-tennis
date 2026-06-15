@@ -877,13 +877,16 @@ function resetPlayersForPoint() {
     receiver.x = rp.x; receiver.y = rp.y;
   }
 
-  // 前衛は逆サイドに寄る（雁行陣のみ）。サーブする本人はその限りでない
+  // 前衛は逆サイドに寄る（雁行陣のみ）。サーブする本人はその限りでない。
+  // レシーブ役の前衛にはこのサイド寄せを適用しない（レシーブ位置を上書きしてしまうため）。
   const sideSign = serveFromRight() ? 1 : -1;
   const fx = TUNING.pos.frontSideX;
-  if (formation === "ganko" && !(team === "player" && frontServes)) {
+  const receivingTeam = team === "player" ? "cpu" : "player";
+  const recv = receiverPlayerFor(receivingTeam);
+  if (formation === "ganko" && front !== recv && !(team === "player" && frontServes)) {
     front.x = -fx * sideSign;
   }
-  if (!(team === "cpu" && frontServes)) cpuFront.x = fx * sideSign;
+  if (cpuFront !== recv && !(team === "cpu" && frontServes)) cpuFront.x = fx * sideSign;
 
   ball.vx = 0; ball.vy = 0; ball.vz = 0;
   ball.bounces = 0;
