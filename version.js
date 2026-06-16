@@ -1,3 +1,3 @@
-const APP_VERSION = "20260616-04";
+const APP_VERSION = "20260616-05";
 
 document.querySelector("#app-version").textContent = APP_VERSION;

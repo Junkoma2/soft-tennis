@@ -2140,33 +2140,21 @@ function moveAutoAI(p, side, dt) {
       const targetX = myBack.x > 0 ? -2.2 : 2.2;
       moveToward(myFront, targetX, myFront.homeY, speed * dt);
     } else if (state === "rally" && ball.lastHitter === opponentTeam && !ball.serving) {
-      // 相手が打った: 作戦（ポーチ/ストレート守り/ミドル/定位置）に応じた前衛の動き
-      // cpuFrontPlan はCPU前衛の作戦。player側前衛はこの作戦変数を持たないので常に "base"
-      const plan = (side === "cpu") ? cpuFrontPlan : "base";
-      let frontTargetX;
+      // 相手が打った瞬間も、基本は展開（クロス/ストレート）に応じた定位置を保つ。
+      // 届くポーチのときだけネットへ踏み込む（常時ボール追従で同サイド/隅へ暴れさせない）。
+      let frontTargetX = Math.max(-3.0, Math.min(3.0, frontDevX(myTeam)));
+      let frontTy = frontMirrorY(myTeam, myFront.homeY);
       let frontDash = dash;
-      if (plan === "poach") {
-        // 予測着地がポーチリーチ内のときだけ踏み込む。それ以外は定位置へ戻る
+      if ((side === "cpu") && cpuFrontPlan === "poach") {
         const t2 = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
         const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
         const poachReach = TUNING.ai.poachReach * myFront.stats.reach;
-        const distToPred = Math.abs(predX - myFront.x);
-        if (distToPred <= poachReach * 1.5) {
-          frontTargetX = predX;
+        if (Math.abs(predX - myFront.x) <= poachReach * 1.5) {
+          frontTargetX = Math.max(-3.4, Math.min(3.4, predX));
+          frontTy = myFront.homeY;
           frontDash = 1.3;
-        } else {
-          // 届かないポーチは定位置へ戻る
-          frontTargetX = Math.max(-3.0, Math.min(3.0, frontDevX(myTeam)));
         }
-      } else if (plan === "straight") {
-        frontTargetX = ball.originX * 0.85;
-      } else if (plan === "middle") {
-        frontTargetX = 0;
-      } else {
-        frontTargetX = Math.max(-4.6, Math.min(4.6, frontDevX(myTeam)));
       }
-      frontTargetX = Math.max(-4.6, Math.min(4.6, frontTargetX));
-      const frontTy = (plan === "base") ? frontMirrorY(myTeam, myFront.homeY) : myFront.homeY;
       moveToward(myFront, frontTargetX, frontTy, speed * frontDash * dt);
     } else if (state === "rally") {
       // 自分チームにボールがある間は展開に応じたセオリー位置へ戻る
