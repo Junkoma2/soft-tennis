@@ -2298,12 +2298,12 @@ function updateRallyControlledAI(dt) {
 function chooseAiHitForRallyControlled() {
   const cp = rallyControlled;
 
-  // コース選択: 6割は相手前衛(cpuFront)のいない側を鋭角に突く、残りはランダム
+  // セオリー: 基本は相手後衛(cpuBack)の前へクロスで返す。残りは散らす。
   let course;
-  if (Math.random() < 0.6) {
-    course = cpuFront.x > 0 ? -0.95 : 0.95;
+  if (Math.random() < 0.65) {
+    course = Math.max(-0.95, Math.min(0.95, cpuBack.x / 3.5 + (Math.random() - 0.5) * 0.3));
   } else {
-    course = (Math.random() - 0.5) * 1.6;
+    course = (Math.random() - 0.5) * 1.8;
   }
 
   // 球種選択: ネット前で打点が高ければスマッシュ（hitBall内で自動判定）。
@@ -2521,9 +2521,10 @@ function tryReturnAI(side) {
   if (!receiveDone && ball.bounces === 1 && ball.z < 2.3) {
     const receiver = receiverPlayerFor(side);
     if (distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
+      // セオリー: 基本は相手後衛の前へクロスで返す
       let course;
-      if (Math.random() < 0.6) course = oppBack.x > 0 ? -0.8 : 0.8;
-      else course = (Math.random() - 0.5) * 1.6;
+      if (Math.random() < 0.65) course = Math.max(-0.95, Math.min(0.95, oppBack.x / 3.5 + (Math.random() - 0.5) * 0.3));
+      else course = (Math.random() - 0.5) * 1.8;
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.8 ? "flat" : "slice");
       hitBall({ hitter: receiver, side: side, shot: shot, course: course, contactZ: ball.z });
@@ -2561,14 +2562,12 @@ function tryReturnAI(side) {
   if (!ball[frontChecked] && ball.bounces === 0 &&
       ball.y * homeSign < -0.6 && ball.y * homeSign > -5.2 && ball.z < 2.0) {
     const poaching = (side === "cpu") ? (cpuFrontPlan === "poach") : false;
-    // player側前衛はネット前にいるときだけボレー
-    if (side === "player" && myFront.y >= 5.2) {
-      // ボレー範囲外: スキップ
-    } else {
+    {
+      // 前衛は届くならボレーする（ポーチ指示の有無に関わらず）。
       const reach = (poaching ? ai.poachReach : ai.frontVolleyReach) * myFront.stats.reach;
       if (Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
         ball[frontChecked] = true;
-        const chance = (poaching ? 0.85 : 0.62) * myFront.stats.volley;
+        const chance = (poaching ? 0.9 : 0.82) * myFront.stats.volley;
         if (Math.random() < chance) {
           hitBall({
             hitter: myFront,
@@ -2598,13 +2597,13 @@ function tryReturnAI(side) {
   if (ball.bounces === 1 && ball.z < 2.3) {
     const reach = ai.backReach * myBack.stats.reach;
     if (distToBall(myBack) <= reach) {
-      // 相手前衛のいない側を6割で狙う（両チーム同一ロジック）。
-      // クロス展開では鋭角（サイドライン寄り）に振る。
+      // セオリー: 基本は相手後衛の前へクロスで返す（後衛同士のラリーを続ける）。
+      // 残りは散らして、時々ストレート/鋭角の攻めも混ぜる。
       let course;
-      if (Math.random() < 0.6) {
-        course = oppBack.x > 0 ? -0.95 : 0.95;
+      if (Math.random() < 0.65) {
+        course = Math.max(-0.95, Math.min(0.95, oppBack.x / 3.5 + (Math.random() - 0.5) * 0.3));
       } else {
-        course = (Math.random() - 0.5) * 1.6;
+        course = (Math.random() - 0.5) * 1.8;
       }
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
