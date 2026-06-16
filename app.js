@@ -2146,9 +2146,18 @@ function moveAutoAI(p, side, dt) {
       let frontTargetX;
       let frontDash = dash;
       if (plan === "poach") {
+        // 予測着地がポーチリーチ内のときだけ踏み込む。それ以外は定位置へ戻る
         const t2 = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
-        frontTargetX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
-        frontDash = 1.3;
+        const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
+        const poachReach = TUNING.ai.poachReach * myFront.stats.reach;
+        const distToPred = Math.abs(predX - myFront.x);
+        if (distToPred <= poachReach * 1.5) {
+          frontTargetX = predX;
+          frontDash = 1.3;
+        } else {
+          // 届かないポーチは定位置へ戻る
+          frontTargetX = Math.max(-3.0, Math.min(3.0, frontDevX(myTeam)));
+        }
       } else if (plan === "straight") {
         frontTargetX = ball.originX * 0.85;
       } else if (plan === "middle") {
@@ -2288,11 +2297,11 @@ function opponentHitterPos(side) {
  *     前衛と後衛が同じサイドに並ぶ（サイドバイサイド）。前衛は
  *     「相手後衛の打点─自センター」線上でセンターより内側、後衛はストレート側ラインを担当。
  *
- * 判定: 自陣後衛のいるサイド(ownBackSign)と、相手の打者がボールを送り込んでいる
- *   サイド(incomingSign)を比べる。
- *     同サイド = ストレート展開（自後衛のいる側へ来ている）
- *     逆サイド = クロス展開（対角でラリーしている）
- *   小刻みな切替を避けるためヒステリシスを持たせる。
+ * 判定: 自陣後衛と相手後衛のx符号（コート左右サイド）を比較する。
+ *   後衛同士が逆サイド = クロス展開（対角でラリーしている）
+ *   後衛同士が同サイド = ストレート展開（自後衛の側へ来ている）
+ *   ヒステリシス: 両後衛ともセンター付近（|x|<devHysteresis）のとき切替保留。
+ *   ボールの着地予測ではなく後衛の位置関係を軸にして判定を安定させる。
  * =========================================================== */
 
 // その展開判定で使う「自陣後衛」のx符号（操作キャラ/AIに関わらずコート上の後衛役）
@@ -2316,15 +2325,23 @@ function incomingSideSign(side) {
 // 展開状態（チームごと）。"cross" / "straight"。ヒステリシス付きで更新する。
 const development = { player: "cross", cpu: "cross" };
 
+// side から見た「相手後衛」
+function oppBackPlayer(side) { return side === "cpu" ? back : cpuBack; }
+
+// 展開判定: 自陣後衛と相手後衛のx符号（コート左右サイド）を比較する。
+//   後衛同士が対角（逆サイド）= クロス展開
+//   後衛同士が同サイド         = ストレート展開
+//   ヒステリシス: 両後衛ともセンター付近（|x| < devHysteresis）のとき切替保留。
 function updateDevelopment(side) {
-  const backP = ownBackPlayer(side);
-  const ownBackSign = backP.x >= 0 ? 1 : -1;
-  const inSign = incomingSideSign(side);
-  // 自後衛のいる側へボールが来ている＝ストレート展開、逆側＝クロス展開
-  const raw = (ownBackSign === inSign) ? "straight" : "cross";
-  // ヒステリシス: ボールが中央付近(センター±devHysteresis)では切替を保留する
-  const op = opponentHitterPos(side);
-  if (Math.abs(op.x) < TUNING.pos.devHysteresis && Math.abs(ball.x) < TUNING.pos.devHysteresis) {
+  const ownBackP = ownBackPlayer(side);
+  const oppBackP = oppBackPlayer(side);
+  const ownBackSign = ownBackP.x >= 0 ? 1 : -1;
+  const oppBackSign = oppBackP.x >= 0 ? 1 : -1;
+  // 後衛同士が逆サイド=クロス展開、同サイド=ストレート展開
+  const raw = (ownBackSign !== oppBackSign) ? "cross" : "straight";
+  // ヒステリシス: 両後衛ともセンター付近では切替を保留する
+  const hysteresis = TUNING.pos.devHysteresis;
+  if (Math.abs(ownBackP.x) < hysteresis && Math.abs(oppBackP.x) < hysteresis) {
     return development[side];
   }
   development[side] = raw;
@@ -2332,7 +2349,7 @@ function updateDevelopment(side) {
 }
 
 // 展開に応じた前衛のx定位置。
-//   クロス: 後衛がいない側（-ownBackSign）のネット前。センターを空けすぎない。
+//   クロス: 後衛がいない側（-ownBackSign）のネット前。|x|<=3.0 でクランプ。
 //   ストレート: 後衛と同サイドでセンターより内側（線上の内側）。
 function frontDevX(side) {
   const dev = updateDevelopment(side);
@@ -2342,12 +2359,11 @@ function frontDevX(side) {
     const lineX = frontTheoryX(side, ownFrontPlayer(side).homeY);
     const inside = ownBackSign * TUNING.pos.straightFrontX;
     // 線上の値と「同サイド内側」の中間。センターより内側を保つ
-    let x = (lineX + inside) / 2;
-    // センターを越えて逆サイドへ行き過ぎない（内側だが同サイド寄り）
-    return x;
+    const x = (lineX + inside) / 2;
+    return Math.max(-3.0, Math.min(3.0, x));
   }
-  // クロス展開: 後衛のいない側のネット前
-  return -ownBackSign * TUNING.pos.crossFrontX;
+  // クロス展開: 後衛のいない側のネット前。隅へ吸い込まれない
+  return Math.max(-3.0, Math.min(3.0, -ownBackSign * TUNING.pos.crossFrontX));
 }
 
 // 展開に応じた後衛のx定位置。
