@@ -258,6 +258,7 @@ const shotControls  = document.getElementById("shot-controls");
 const chargeBtn     = document.getElementById("charge-btn");
 const servePowerControls = document.getElementById("serve-power-controls");
 const serveSpinControls  = document.getElementById("serve-spin-controls");
+const aggressionControls = document.getElementById("aggression-controls");
 const shotSelectControls = document.getElementById("shot-select-controls");
 const moveStick     = document.getElementById("move-stick");
 const moveStickKnob = document.getElementById("move-stick-knob");
@@ -390,6 +391,10 @@ let rafId = null;
 let lastTime = 0;
 let pendingSwing = 0;    // 早めにタップした時の予約スイング（秒）
 let matchTime = 0;       // 経過時間（タイミング計算用）
+
+/* ---- 攻守の割合（相方AIの積極性: 0=守り 〜 1=攻め） ---- */
+// ポイント間で保持。サーブ前フェーズのUIで変更可。観戦モードでは 0.5 固定。
+let partnerAggressiveness = 0.5;
 
 /* ---- サーブ設定（打つ前にパワーと回転量を設定する） ---- */
 // serveType: トスは常に統一トス。打つ瞬間のボタン+Space状態で4種に決まる。
@@ -607,6 +612,8 @@ function setControlMode(mode) {
   const serveMode = mode === "serve";
   servePowerControls.hidden = !serveMode;
   serveSpinControls.hidden = !serveMode;
+  // 攻守は観戦モードOFF かつ サーブ前にのみ表示（パワー/回転と同運用）
+  if (aggressionControls) aggressionControls.hidden = !serveMode || spectatorMode;
   shotSelectControls.hidden = serveMode;
   if (chargeBtn) {
     chargeBtn.textContent = serveMode ? "トス / 打つ" : "打つ";
@@ -1915,6 +1922,16 @@ serveSpinControls.addEventListener("click", function (e) {
   setActiveButton(serveSpinControls, btn);
 });
 
+// 攻守の割合（相方AIの積極性）
+if (aggressionControls) {
+  aggressionControls.addEventListener("click", function (e) {
+    const btn = e.target.closest(".ctrl-btn");
+    if (!btn || btn.dataset.aggression == null) return;
+    partnerAggressiveness = parseFloat(btn.dataset.aggression);
+    setActiveButton(aggressionControls, btn);
+  });
+}
+
 // 開始画面: ポジション（後衛/前衛）と陣形の選択
 positionControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
@@ -2154,6 +2171,21 @@ function moveAutoAI(p, side, dt) {
           frontTargetX = Math.max(-3.4, Math.min(3.4, predX));
           frontTy = myFront.homeY;
           frontDash = 1.3;
+        }
+      }
+      // 相方前衛（プレイヤー=後衛のとき）のポーチ移動: 攻守スライダーで踏み込み積極性を制御
+      if ((side === "player") && !spectatorMode && p === front &&
+          rallyControlled !== front) {
+        const aggr = partnerAggressiveness;
+        // 着地予測でポーチ位置を決める（CPUポーチと対称）
+        const t2p = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
+        const predXp = (t2p > 0 && t2p < 1.5) ? ball.x + ball.vx * t2p : ball.x;
+        // 攻め度が高いほど広いリーチで踏み込む
+        const pReach = (TUNING.ai.frontVolleyReach + aggr * 0.6) * myFront.stats.reach;
+        if (aggr > 0.15 && Math.abs(predXp - myFront.x) <= pReach * 1.5) {
+          frontTargetX = Math.max(-3.4, Math.min(3.4, predXp));
+          frontTy = myFront.homeY;
+          frontDash = 1.0 + aggr * 0.4; // 攻めるほど速く踏み込む
         }
       }
       moveToward(myFront, frontTargetX, frontTy, speed * frontDash * dt);
@@ -2536,11 +2568,16 @@ function partnerTryReturn() {
   if (!spectatorMode) {
     // 人間モード: 操作キャラが届かないときだけパートナーが返す
     const partner = (rallyControlled === back) ? front : back;
+    const isPartnerFront = partner === front; // プレイヤーが後衛→相方は前衛
     if (ball.lastHitter !== "cpu" || state !== "rally") return;
     const ai = TUNING.ai;
     const sm = TUNING.smash;
-    // 前衛のスマッシュ
-    if (!ball.frontChecked && ball.bounces === 0 &&
+    // 攻守スライダー値（観戦時は中庸0.5固定）
+    const aggr = spectatorMode ? 0.5 : partnerAggressiveness;
+
+    // ---- 相方前衛のスマッシュ ----
+    if (isPartnerFront &&
+        !ball.frontChecked && ball.bounces === 0 &&
         partner.y < sm.netDist && partner.y > 0.4 &&
         ball.y > 0.6 && ball.y < sm.netDist && ball.z >= sm.minZ && ball.z < 2.3 &&
         Math.hypot(ball.x - partner.x, ball.y - partner.y) <= ai.poachReach * partner.stats.reach) {
@@ -2556,8 +2593,37 @@ function partnerTryReturn() {
         return;
       }
     }
-    // 前衛のボレー
-    if (!ball.frontChecked && ball.bounces === 0 &&
+
+    // ---- 相方前衛のポーチ（攻守スライダーで制御: プレイヤー=後衛のとき） ----
+    // ポーチ確率: 守り(0)=0.15, 中(0.5)=0.45, 攻め(1)=0.75
+    // 動き出し範囲: 攻めるほど ball.y が手前（大きい値）でも踏み込む (3.6〜5.2m)
+    if (isPartnerFront &&
+        !ball.frontChecked && ball.bounces === 0 &&
+        ball.y > 0.6 && ball.y < (3.6 + aggr * 1.6) && ball.z < 2.0) {
+      // 攻め度に応じたポーチリーチ（標準+最大0.6m拡大）
+      const poachReach = (ai.frontVolleyReach + aggr * 0.6) * partner.stats.reach;
+      if (Math.hypot(ball.x - partner.x, ball.y - partner.y) <= poachReach) {
+        ball.frontChecked = true;
+        const poachChance = (0.15 + aggr * 0.6) * partner.stats.volley;
+        if (Math.random() < poachChance) {
+          // 相手後衛のいない側を突く（CPUポーチと対称ロジック）
+          const targetCourse = (cpuBack.x > 0 ? -1 : 1) * (0.4 + Math.random() * 0.6);
+          hitBall({
+            hitter: partner, side: "player", shot: "flat",
+            course: targetCourse,
+            contactZ: ball.z,
+          });
+          const label = aggr >= 0.5 ? "相方のポーチ！" : "相方のボレー！";
+          showMessage(label);
+          setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
+          return;
+        }
+      }
+    }
+
+    // ---- 相方前衛の通常ボレー ----
+    if (isPartnerFront &&
+        !ball.frontChecked && ball.bounces === 0 &&
         partner.y < 5.2 &&
         ball.y > 0.6 && ball.y < 4.8 && ball.z < 1.9 &&
         Math.hypot(ball.x - partner.x, ball.y - partner.y) <= VOLLEY_REACH) {
@@ -2573,15 +2639,32 @@ function partnerTryReturn() {
         return;
       }
     }
-    // 後衛のストローク（操作キャラが届かないボールをカバー）
+
+    // ---- 相方後衛のストローク（操作キャラが届かないボールをカバー） ----
+    // プレイヤー=前衛のとき（partner=back）: 攻守スライダーでコース選択を制御
     if (ball.bounces === 1 && ball.z < 2.3 &&
         !canPlayerHit(rallyControlled) &&
         distToBall(partner) <= CPU_REACH * partner.stats.reach &&
         distToBall(partner) < distToBall(rallyControlled)) {
       const shot = Math.random() < 0.8 ? "drive" : "lob";
+      let course;
+      if (!isPartnerFront) {
+        // 相方=後衛（プレイヤー=前衛のケース）: 攻守でコース選択を変化
+        // 守り寄り=クロス（相手前衛のいない側）重視, 攻め寄り=ストレート/前衛方向重視
+        const straightChance = 0.15 + aggr * 0.65; // 守り=0.15, 中=0.475, 攻め=0.80
+        if (Math.random() < straightChance) {
+          // ストレート: 相手前衛(cpuFront)がいる側へ抜きにいく
+          course = (cpuFront.x >= 0 ? 1 : -1) * (0.5 + Math.random() * 0.5);
+        } else {
+          // クロス: 相手前衛のいない側を安全に返す
+          course = (cpuFront.x >= 0 ? -1 : 1) * (0.4 + Math.random() * 0.5);
+        }
+      } else {
+        course = (Math.random() - 0.5) * 1.6;
+      }
       hitBall({
         hitter: partner, side: "player", shot: shot,
-        course: (Math.random() - 0.5) * 1.6,
+        course: course,
         contactZ: ball.z,
       });
     }
