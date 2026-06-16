@@ -51,7 +51,7 @@ const TUNING = {
     lob:   { speed: 14.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
     smash: { speed: 30.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
   },
-  cpuSpeedScale: 0.85, // CPU打球の球速倍率（難易度調整）
+  cpuSpeedScale: 0.92, // CPU打球の球速倍率（難易度調整）
   // サーブ（打つ前にパワーと回転量を設定する方式）
   // トスは統一トス（base 0.9m → apex 約3.35m → 落下）。打つ瞬間のボタンで4種に
   // 振り分ける。各 type.zone は「打点の高さ(m)」。max超は空振り、idealに近いほど
@@ -164,7 +164,7 @@ const TUNING = {
   move: {
     playerSpeed: 7.0,   // 操作キャラの足の速さ
     partnerSpeed: 4.2,  // 味方AIの足の速さ
-    cpuBackSpeed: 3.2,  // 相手後衛の足の速さ（抜けるコースを残す）
+    cpuBackSpeed: 3.8,  // 相手後衛の足の速さ（抜けるコースを残す）
     cpuFrontSpeed: 3.6, // 相手前衛の足の速さ
   },
   // 打点品質 → 角度幅・球速・精度の変換係数
@@ -223,9 +223,9 @@ const TUNING = {
   // AI制限（前衛がコースを守り、後衛が走って拾う構図を成立させる）
   ai: {
     backReactionDelay: 0.3,  // 相手後衛が打球に反応するまでの遅延(秒)
-    backReach: 1.45,         // 相手後衛の打球リーチ(m)。良いコースは届かない
+    backReach: 1.75,         // 相手後衛の打球リーチ(m)。良いコースは届かない
     backChaseSpeed: 1.0,     // 追走速度の倍率（move.cpuBackSpeedに乗る）
-    frontPoachChance: 0.42,         // 前衛がポーチ（邪魔しに行く）確率
+    frontPoachChance: 0.30,         // 前衛がポーチ（邪魔しに行く）確率
     frontGuardStraightChance: 0.25, // ストレートを守る確率
     frontMiddleChance: 0.18,        // ミドルを張る確率（残りは定位置）
     frontVolleyReach: 1.55,  // 守備時のボレーリーチ
@@ -368,7 +368,7 @@ const playerStats = {
   front: makeStats(),
 };
 const cpuStats = {
-  back:  makeStats({ power: 0.9, control: 0.82 }), // 足の制限は TUNING.ai / move.cpuBackSpeed 側で行う
+  back:  makeStats({ power: 0.95, control: 0.90 }), // 足の制限は TUNING.ai / move.cpuBackSpeed 側で行う
   front: makeStats({ volley: 0.7 }),
 };
 
@@ -1462,7 +1462,7 @@ function hitBall(opts) {
   tx = Math.max(-6.5, Math.min(6.5, tx)); // コート外もあり得る（ミス）
 
   // CPUは時々凡ミスする（初心者でもポイントが取れる難易度調整）
-  if (side === "cpu" && Math.random() < 0.08) {
+  if (side === "cpu" && Math.random() < 0.04) {
     if (Math.random() < 0.5) {
       tx = (tx >= 0 ? 1 : -1) * (COURT.halfW + 0.6 + Math.random() * 1.2); // サイドアウト
     } else {
@@ -2826,8 +2826,24 @@ function update(dt) {
     charge.active = false;
     charge.source = null;
     if (spectatorMode) {
+      // 観戦モード: プレイヤー側AIもCPU後衛と同じ経路(byPlayer:false)で打球。
+      // byPlayer:true の打点品質優遇・ネットアシストをCPU側並みに揃えて対称化。
       const aiHit = chooseAiHitForRallyControlled();
-      playerHitBall(aiHit.shot, power, aiHit.aimX, aiHit.aimY);
+      const aiShotKey = (function() {
+        if (aiHit.shot === "shoot") return ball.z >= 1.25 ? "flat" : "drive";
+        if (aiHit.shot === "cut") return Math.abs(aiHit.aimY) >= 4.2 ? "slice" : "drop";
+        return "lob";
+      })();
+      hitBall({
+        hitter: rallyControlled,
+        side: "player",
+        shot: aiShotKey,
+        charge: power,
+        course: aiHit.aimX / 3.5,
+        contactZ: ball.z,
+        byPlayer: false,
+      });
+      ballHittableSince = -1;
     } else {
       playerHitBall(selectedShot, power, aim.x, aim.y);
     }
