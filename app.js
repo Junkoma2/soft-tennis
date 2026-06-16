@@ -145,7 +145,7 @@ const TUNING = {
                             //   コート中央ではなくクロス側に寄った“残り範囲の真ん中”に立つ。
     backLobCoverX: 2.3,     // 後衛: クロスへのロブで陣形が崩れたときカバーに動く横位置(m)
     // ── クロス/ストレート展開の陣形（動的切替）パラメータ ──
-    crossFrontX: 1.9,       // クロス展開: 前衛が立つ「後衛がいない側」のネット前x（センターを空けすぎない量）
+    crossFrontX: 2.3,       // クロス展開: 前衛が立つ「後衛がいない側」のネット前x。後衛のいない半面を分担して守る意識（センターは空けすぎない範囲）
     straightFrontX: 0.9,    // ストレート展開: 前衛が後衛と同サイドでセンターより内側に立つx（相手打点─自センター線上の内側）
     straightBackX: 2.3,     // ストレート展開: 後衛がストレート側ラインを担当する横位置x
     devHysteresis: 0.4,     // 展開判定のヒステリシス（小刻みな切替を防ぐ閾値m）
@@ -2137,6 +2137,27 @@ function moveAutoAI(p, side, dt) {
     return;
   }
 
+  // 相手のサーブが飛んでいる間（最初の返球まで＝!receiveDone）は、レシーブ担当だけがボールを追う。
+  // 担当でない味方はその場で待機（前衛がレシーバーの逆クロスでも後衛が追ってしまうバグ防止）。
+  if (!receiveDone && state === "rally" && ball.lastHitter === opponentTeam) {
+    if (p === receiverPlayerFor(myTeam)) {
+      const landing = predictLanding();
+      let tx = p.x, ty = p.y;
+      if (ball.bounces >= 1) {
+        tx = ball.x + ball.vx * 0.2;
+        ty = homeSign > 0 ? Math.max(4.0, ball.y + ball.vy * 0.2)
+                          : Math.min(-4.0, ball.y + ball.vy * 0.2);
+      } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
+        tx = landing.x;
+        ty = homeSign > 0 ? Math.max(4.0, landing.y + 0.8)
+                          : Math.min(-4.0, landing.y - 0.8);
+      }
+      moveToward(p, tx, ty, speed * 1.25 * dt);
+      p.x = Math.max(-5.2, Math.min(5.2, p.x));
+    }
+    return;
+  }
+
   // 前衛はレシーブが完了するまでポジション移動しない。
   // ただし自分がサーブした直後のサービスダッシュは始めてよい
   const myJustServedByFront = side === "player" ? pointJustServedByFront : cpuJustServedByFront;
@@ -2476,6 +2497,22 @@ function tryReturnAI(side) {
   const homeSign = side === "player" ? 1 : -1;
   // 前衛ボレー判定用フラグ
   const frontChecked = side === "player" ? "frontChecked" : "cpuFrontChecked";
+
+  // ---- サーブの返球: レシーブ担当（前衛/後衛どちらでも）がワンバウンドで返す ----
+  // 返球者を担当レシーバーに固定し、非担当（特に後衛）が横取りしないようにする。
+  // ball.serving はバウンド前に解除されるため、レシーブ未完了フラグ !receiveDone で判定する。
+  if (!receiveDone && ball.bounces === 1 && ball.z < 2.3) {
+    const receiver = receiverPlayerFor(side);
+    if (distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
+      let course;
+      if (Math.random() < 0.6) course = oppBack.x > 0 ? -0.8 : 0.8;
+      else course = (Math.random() - 0.5) * 1.6;
+      const r = Math.random();
+      const shot = r < 0.55 ? "drive" : (r < 0.8 ? "flat" : "slice");
+      hitBall({ hitter: receiver, side: side, shot: shot, course: course, contactZ: ball.z });
+    }
+    return;
+  }
 
   // ---- 前衛のスマッシュ（浅いロブを叩き込む） ----
   if (!ball[frontChecked] && ball.bounces === 0 &&
