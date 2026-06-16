@@ -2209,6 +2209,23 @@ function moveAutoAI(p, side, dt) {
           frontDash = 1.0 + aggr * 0.4; // 攻めるほど速く踏み込む
         }
       }
+      // ポーチ指示が無くても、前衛の守備側（後衛のいない側）へ飛んできた球は
+      // 追ってボレーに行く。ネット到達予測位置が自分の守備側で、無理なく届くなら迎えに出る。
+      {
+        const ownBackSign = myBack.x >= 0 ? 1 : -1;
+        const frontSide = -ownBackSign; // 前衛が受け持つ側
+        const tNet = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
+        if (tNet > 0 && tNet < 1.3) {
+          const crossX = ball.x + ball.vx * tNet;
+          const onMySide = (Math.sign(crossX) === frontSide) || Math.abs(crossX) < 0.8;
+          const reach = TUNING.ai.frontVolleyReach * myFront.stats.reach;
+          if (onMySide && Math.abs(crossX - myFront.x) <= reach * 2.2) {
+            frontTargetX = Math.max(-3.8, Math.min(3.8, crossX));
+            frontTy = myFront.homeY;
+            frontDash = Math.max(frontDash, 1.2);
+          }
+        }
+      }
       moveToward(myFront, frontTargetX, frontTy, speed * frontDash * dt);
     } else if (state === "rally") {
       // 自分チームにボールがある間は展開に応じたセオリー位置へ戻る
@@ -2281,10 +2298,10 @@ function updateRallyControlledAI(dt) {
 function chooseAiHitForRallyControlled() {
   const cp = rallyControlled;
 
-  // コース選択: 6割は相手前衛(cpuFront)のいない側を突く、残りはランダム
+  // コース選択: 6割は相手前衛(cpuFront)のいない側を鋭角に突く、残りはランダム
   let course;
   if (Math.random() < 0.6) {
-    course = cpuFront.x > 0 ? -0.8 : 0.8;
+    course = cpuFront.x > 0 ? -0.95 : 0.95;
   } else {
     course = (Math.random() - 0.5) * 1.6;
   }
@@ -2551,7 +2568,7 @@ function tryReturnAI(side) {
       const reach = (poaching ? ai.poachReach : ai.frontVolleyReach) * myFront.stats.reach;
       if (Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
         ball[frontChecked] = true;
-        const chance = (poaching ? 0.8 : 0.5) * myFront.stats.volley;
+        const chance = (poaching ? 0.85 : 0.62) * myFront.stats.volley;
         if (Math.random() < chance) {
           hitBall({
             hitter: myFront,
@@ -2581,10 +2598,11 @@ function tryReturnAI(side) {
   if (ball.bounces === 1 && ball.z < 2.3) {
     const reach = ai.backReach * myBack.stats.reach;
     if (distToBall(myBack) <= reach) {
-      // 相手前衛のいない側を6割で狙う（両チーム同一ロジック）
+      // 相手前衛のいない側を6割で狙う（両チーム同一ロジック）。
+      // クロス展開では鋭角（サイドライン寄り）に振る。
       let course;
       if (Math.random() < 0.6) {
-        course = oppBack.x > 0 ? -0.8 : 0.8;
+        course = oppBack.x > 0 ? -0.95 : 0.95;
       } else {
         course = (Math.random() - 0.5) * 1.6;
       }
