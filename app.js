@@ -51,7 +51,7 @@ const TUNING = {
     lob:   { speed: 14.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
     smash: { speed: 30.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
   },
-  cpuSpeedScale: 0.92, // CPU打球の球速倍率（難易度調整）
+  // cpuSpeedScale は廃止。AI打球は両チーム共通パラメータで対称化
   // サーブ（打つ前にパワーと回転量を設定する方式）
   // トスは統一トス（base 0.9m → apex 約3.35m → 落下）。打つ瞬間のボタンで4種に
   // 振り分ける。各 type.zone は「打点の高さ(m)」。max超は空振り、idealに近いほど
@@ -166,6 +166,7 @@ const TUNING = {
     partnerSpeed: 4.2,  // 味方AIの足の速さ
     cpuBackSpeed: 3.8,  // 相手後衛の足の速さ（抜けるコースを残す）
     cpuFrontSpeed: 3.6, // 相手前衛の足の速さ
+    aiSpeed: 4.0,        // moveAutoAI 共通の基本速度（統一AI・観戦モード対応）
   },
   // 打点品質 → 角度幅・球速・精度の変換係数
   contact: {
@@ -223,7 +224,7 @@ const TUNING = {
   // AI制限（前衛がコースを守り、後衛が走って拾う構図を成立させる）
   ai: {
     backReactionDelay: 0.3,  // 相手後衛が打球に反応するまでの遅延(秒)
-    backReach: 1.75,         // 相手後衛の打球リーチ(m)。良いコースは届かない
+    backReach: 2.2,          // 後衛の打球リーチ(m)。観戦モードでのラリー成立に必要な広さ
     backChaseSpeed: 1.0,     // 追走速度の倍率（move.cpuBackSpeedに乗る）
     frontPoachChance: 0.30,         // 前衛がポーチ（邪魔しに行く）確率
     frontGuardStraightChance: 0.25, // ストレートを守る確率
@@ -841,7 +842,13 @@ function startMatch() {
   if (spectatorMode) {
     back.label = "後衛";
     front.label = "前衛";
+    // 観戦モード: 両チーム同一能力（公平な対戦）
+    cpuBack.stats = makeStats();
+    cpuFront.stats = makeStats();
   } else {
+    // 通常モード: CPU は意図的にやや弱く（プレイヤーが勝ちやすい）
+    cpuBack.stats = makeStats({ power: 0.95, control: 0.90 });
+    cpuFront.stats = makeStats({ volley: 0.7 });
     back.label = (playerPosition === "back") ? "あなた" : "相方";
     front.label = (playerPosition === "front") ? "あなた" : "相方";
   }
@@ -1228,7 +1235,7 @@ function launchServeBall(team, server, stats, cfg) {
   ball.spinMag = tcfg.spinMagBase * spinMul;
   ball.trailColor = tcfg.color;
   speed *= 1 - s.qualitySpeedDrop * (1 - q);
-  if (team === "cpu") speed *= TUNING.cpuSpeedScale;
+  // AI打球は両チーム共通パラメータ（cpuSpeedScale廃止・対称性確保）
 
   let tx;
   if (cfg.aimTarget) {
@@ -1446,7 +1453,7 @@ function hitBall(opts) {
     sigma = 0.45 + 1.0 * Math.max(0, 1.1 - accuracy);
     speed = def.speed * stats.power * (backhand ? 0.9 : 1.0)
       * (1 + TUNING.charge.speedBonus * chargeK);
-    if (side === "cpu") speed *= TUNING.cpuSpeedScale;
+    // cpuSpeedScale は廃止（両チーム共通パラメータで対称化済み）
     ty = depthDir * (def.depthMin + Math.random() * def.depthRange);
   }
 
@@ -2080,100 +2087,140 @@ function partnerIsServingNow(partner) {
     serverTeamNow() === "player" && currentServer() === partner;
 }
 
-// 自陣プレイヤー（操作キャラ/AI問わず）の自動移動ロジック本体。
-// p === front か p === back かでロール（前衛/後衛）を判定し、定位置・レシーブ・
-// 展開に応じた追従を行う。updatePartner（味方パートナー）と
-// updateRallyControlledAI（観戦モードの操作キャラ）の両方から呼ばれる。
-function moveAutoPlayer(p, dt) {
-  const speed = TUNING.move.partnerSpeed * p.stats.speed;
+// AI自動移動の共通ロジック（playerチーム・cpuチーム共通）。
+// side: "player"(自陣y+側) または "cpu"(自陣y-側)
+// p: 移動させる選手オブジェクト
+// ロール（前衛/後衛）は side に応じた myFront/myBack で判定する。
+function moveAutoAI(p, side, dt) {
+  const speed = TUNING.move.aiSpeed * p.stats.speed;
+  const myFront  = side === "player" ? front    : cpuFront;
+  const myBack   = side === "player" ? back     : cpuBack;
+  const oppFront = side === "player" ? cpuFront : front;
+  const oppBack  = side === "player" ? cpuBack  : back;
+  // 自陣方向: player側はy+（自陣ベースライン y>0）、cpu側はy-（y<0）
+  const homeSign = side === "player" ? 1 : -1;
+  const homeBackY  = TUNING.pos.backY * homeSign;
+  const opponentTeam = side === "player" ? "cpu" : "player";
+  const myTeam = side;
 
-  // サーブを打つまでベースライン後方に留まる（前へ出ない）
-  if (partnerIsServingNow(p)) return;
-
-  // 相手サーブ中、レシーバーに割り当てられた選手はレシーブ位置へ移動して待機。
-  // サーブ種類（アンダーカット=前/オーバー=後ろ）に応じて前後位置を変える。
+  // 自分がサーブを打つ前はサーブ位置から動かない
   if ((state === "serve-stance" || state === "serve-toss") &&
-      serverTeamNow() === "cpu") {
-    if (p === receiverPlayerFor("player")) {
-      const rp = receivePosition("player");
-      moveToward(p, rp.x, rp.y, speed * 1.2 * dt);
-    }
-    // レシーバーでなければ定位置で待機（移動しない）
+      serverTeamNow() === myTeam && currentServer() === p) {
     return;
   }
 
-  // 前衛はレシーブが完了するまでポジション移動しない（定位置で待機）。
+  // 相手サーブ中: レシーバー担当ならレシーブ位置へ、それ以外は定位置で待機
+  if ((state === "serve-stance" || state === "serve-toss") &&
+      serverTeamNow() === opponentTeam) {
+    if (p === receiverPlayerFor(myTeam)) {
+      const rp = receivePosition(myTeam);
+      moveToward(p, rp.x, rp.y, speed * 1.2 * dt);
+    }
+    return;
+  }
+
+  // 前衛はレシーブが完了するまでポジション移動しない。
   // ただし自分がサーブした直後のサービスダッシュは始めてよい
-  if (p === front && !receiveDone) {
-    if (state === "rally" && pointJustServedByFront && formation !== "double-back") {
-      moveToward(front, front.homeX * (back.x > 0 ? -1 : 1), front.homeY, speed * 1.4 * dt);
-      front.x = Math.max(-4.6, Math.min(4.6, front.x));
+  const myJustServedByFront = side === "player" ? pointJustServedByFront : cpuJustServedByFront;
+  if (p === myFront && !receiveDone) {
+    if (state === "rally" && myJustServedByFront && formation !== "double-back") {
+      moveToward(myFront, myFront.homeX * (myBack.x > 0 ? -1 : 1), myFront.homeY, speed * 1.4 * dt);
+      myFront.x = Math.max(-4.6, Math.min(4.6, myFront.x));
     }
     return;
   }
 
   // 前衛がサーブした直後はサービスダッシュ（速めに定位置へ）
-  const dash = (state === "rally" && pointJustServedByFront && p === front &&
+  const dash = (state === "rally" && myJustServedByFront && p === myFront &&
     formation !== "double-back") ? 1.4 : 1.0;
 
-  if (p === front) {
+  if (p === myFront) {
     // 前衛
     if (formation === "double-back") {
-      // ダブル後衛: ベースラインで操作キャラと逆サイドをカバー
-      const targetX = back.x > 0 ? -2.2 : 2.2;
-      moveToward(front, targetX, front.homeY, speed * dt);
-    } else if (state === "rally" && ball.lastHitter === "cpu") {
-      // 定位置: 展開（クロス/ストレート）に応じた前衛の立ち位置。前後は鏡対応
-      const targetX = Math.max(-4.6, Math.min(4.6, frontDevX("player")));
-      moveToward(front, targetX, frontMirrorY("player", front.homeY), speed * dash * dt);
+      const targetX = myBack.x > 0 ? -2.2 : 2.2;
+      moveToward(myFront, targetX, myFront.homeY, speed * dt);
+    } else if (state === "rally" && ball.lastHitter === opponentTeam && !ball.serving) {
+      // 相手が打った: 作戦（ポーチ/ストレート守り/ミドル/定位置）に応じた前衛の動き
+      // cpuFrontPlan はCPU前衛の作戦。player側前衛はこの作戦変数を持たないので常に "base"
+      const plan = (side === "cpu") ? cpuFrontPlan : "base";
+      let frontTargetX;
+      let frontDash = dash;
+      if (plan === "poach") {
+        const t2 = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
+        frontTargetX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
+        frontDash = 1.3;
+      } else if (plan === "straight") {
+        frontTargetX = ball.originX * 0.85;
+      } else if (plan === "middle") {
+        frontTargetX = 0;
+      } else {
+        frontTargetX = Math.max(-4.6, Math.min(4.6, frontDevX(myTeam)));
+      }
+      frontTargetX = Math.max(-4.6, Math.min(4.6, frontTargetX));
+      const frontTy = (plan === "base") ? frontMirrorY(myTeam, myFront.homeY) : myFront.homeY;
+      moveToward(myFront, frontTargetX, frontTy, speed * frontDash * dt);
+    } else if (state === "rally") {
+      // 自分チームにボールがある間は展開に応じたセオリー位置へ戻る
+      const tx = Math.max(-4.4, Math.min(4.4, frontDevX(myTeam)));
+      const retSpeed = (side === "cpu" && !spectatorMode) ? speed * 0.8 : speed * dash;
+      moveToward(myFront, tx, frontMirrorY(myTeam, myFront.homeY), retSpeed * dt);
     } else {
-      moveToward(front, front.homeX * (back.x > 0 ? -1 : 1), front.homeY, speed * dash * dt);
+      moveToward(myFront, myFront.homeX * (myBack.x > 0 ? -1 : 1), myFront.homeY, speed * dash * dt);
     }
-    front.x = Math.max(-4.6, Math.min(4.6, front.x));
+    myFront.x = Math.max(-4.6, Math.min(4.6, myFront.x));
   } else {
     // 後衛: ストローク役としてボールを追う
-    if (state === "rally" && ball.lastHitter === "cpu") {
+    if (state === "rally" && ball.lastHitter === opponentTeam) {
+      if ((side === "cpu" || spectatorMode) && matchTime - ball.lastHitTime < TUNING.ai.backReactionDelay) return;
       const landing = predictLanding();
-      // 既定の戻り先＝展開に応じた後衛の担当範囲（クロス側の真ん中／ストレートライン）
-      let tx = backDevX("player");
-      let ty = TUNING.pos.backY;
+      let tx = backDevX(myTeam);
+      let ty = homeBackY;
       if (ball.bounces >= 1) {
         tx = ball.x + ball.vx * 0.25;
-        ty = Math.max(4.5, ball.y + ball.vy * 0.25);
-      } else if (landing && landing.y > 0 && insideCourt(landing.x, landing.y)) {
-        const straightSign = opponentHitterPos("player").x >= 0 ? 1 : -1;
-        const isLob = ball.spin === "flat" && ball.z > 2.0 && landing.y > COURT.serviceY;
+        ty = homeSign > 0
+          ? Math.max(4.5, ball.y + ball.vy * 0.25)
+          : Math.min(-4.5, ball.y + ball.vy * 0.25);
+      } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
+        const straightSign = opponentHitterPos(myTeam).x >= 0 ? 1 : -1;
+        const isLob = ball.spin === "flat" && ball.z > 2.0 &&
+          Math.abs(landing.y) > COURT.serviceY;
         const toStraight = (landing.x >= 0 ? 1 : -1) === straightSign;
         if (isLob && toStraight) {
-          // ストレートロブは捨てる: 展開に応じた定位置を保つ
-          tx = backDevX("player");
-          ty = TUNING.pos.backY;
+          tx = backDevX(myTeam);
+          ty = homeBackY;
         } else {
           tx = landing.x;
-          ty = Math.max(4.5, landing.y + 1.0);
+          ty = homeSign > 0
+            ? Math.max(4.5, landing.y + 1.0)
+            : Math.min(-4.5, landing.y - 1.2);
           if (isLob) tx = Math.max(-TUNING.pos.backLobCoverX, Math.min(TUNING.pos.backLobCoverX, landing.x));
         }
       }
-      moveToward(back, tx, ty, speed * 1.2 * dt);
+      moveToward(myBack, tx, ty, speed * 1.2 * dt);
+    } else if (state === "rally" && myJustServedByFront) {
+      // 前衛パートナーがサーブした回: 後衛はカバー位置へ
+      const targetX = myFront.x > 0 ? -1.6 : 1.6;
+      moveToward(myBack, targetX, homeBackY * 1.02, speed * dt);
     } else {
       // 自分側にボールがある間は展開に応じた定位置へ戻る
-      moveToward(back, backDevX("player"), TUNING.pos.backY, speed * dt);
+      const retSpeed = (side === "cpu" && !spectatorMode) ? speed * 0.55 : speed;
+      moveToward(myBack, backDevX(myTeam), homeBackY, retSpeed * dt);
     }
-    back.x = Math.max(-5.2, Math.min(5.2, back.x));
+    myBack.x = Math.max(-5.2, Math.min(5.2, myBack.x));
   }
 }
 
 // 味方パートナー（プレイヤーが操作していない方）の自動移動
 function updatePartner(dt) {
   const partner = (rallyControlled === back) ? front : back;
-  moveAutoPlayer(partner, dt);
+  moveAutoAI(partner, "player", dt);
 }
 
 // 観戦モード: 操作キャラ（rallyControlled）もAIが移動させる。
-// パートナーAIと同じロジック（moveAutoPlayer）を自分自身に適用する。
+// 共通移動ロジック（moveAutoAI）を自チーム（player側）として適用する。
 function updateRallyControlledAI(dt) {
   if (!spectatorMode) return;
-  moveAutoPlayer(rallyControlled, dt);
+  moveAutoAI(rallyControlled, "player", dt);
 }
 
 // 観戦モード: 操作キャラ（rallyControlled）の打球判断（コース・球種・狙い）。
@@ -2213,59 +2260,7 @@ function chooseAiHitForRallyControlled() {
 }
 
 function updateCpuBack(dt) {
-  const speed = TUNING.move.cpuBackSpeed * cpuBack.stats.speed * TUNING.ai.backChaseSpeed;
-  // 自分のサーブを打つ前はサーブ位置から動かない
-  if ((state === "serve-stance" || state === "serve-toss") &&
-      serverTeamNow() === "cpu" && currentServer() === cpuBack) {
-    return;
-  }
-  // 相手（プレイヤー）サーブ中、CPU後衛がレシーバー担当ならレシーブ位置へ。
-  // サーブ種類に応じてアンダーカットなら前、オーバーなら後ろで構える。
-  // レシーバーでなければ定位置で待機（移動しない）。
-  if ((state === "serve-stance" || state === "serve-toss") &&
-      serverTeamNow() === "player") {
-    if (receiverPlayerFor("cpu") === cpuBack) {
-      const rp = receivePosition("cpu");
-      moveToward(cpuBack, rp.x, rp.y, speed * 1.2 * dt);
-      cpuBack.x = Math.max(-5.2, Math.min(5.2, cpuBack.x));
-    }
-    return;
-  }
-  if (state === "rally" && ball.lastHitter === "player") {
-    // 反応遅延: 打球直後は動き出せない（良いコースは抜ける）
-    if (matchTime - ball.lastHitTime < TUNING.ai.backReactionDelay) return;
-    const landing = predictLanding();
-    // 既定の戻り先＝展開に応じた後衛の担当範囲（クロス側の真ん中／ストレートライン）
-    let tx = backDevX("cpu");
-    let ty = -TUNING.pos.backY;
-    if (ball.bounces >= 1) {
-      tx = ball.x + ball.vx * 0.25;
-      ty = Math.min(-4.5, ball.y + ball.vy * 0.25);
-    } else if (landing && landing.y < 0 && insideCourt(landing.x, landing.y)) {
-      // ストレートへのロブは追わない（ローリスク）。クロスへのロブはカバーに動く。
-      const straightSign = opponentHitterPos("cpu").x >= 0 ? 1 : -1;
-      const isLob = ball.spin === "flat" && ball.z > 2.0 && landing.y < -COURT.serviceY;
-      const toStraight = (landing.x >= 0 ? 1 : -1) === straightSign;
-      if (isLob && toStraight) {
-        // ストレートロブは捨てる: 展開に応じた定位置を保つ
-        tx = backDevX("cpu");
-        ty = -TUNING.pos.backY;
-      } else {
-        tx = landing.x;
-        ty = Math.min(-4.5, landing.y - 1.2);
-        if (isLob) tx = Math.max(-TUNING.pos.backLobCoverX, Math.min(TUNING.pos.backLobCoverX, landing.x));
-      }
-    }
-    moveToward(cpuBack, tx, ty, speed * dt);
-  } else if (state === "rally" && cpuJustServedByFront) {
-    // 相手前衛がサーブした回: 後衛パートナーはダブル後衛的にカバー
-    const targetX = cpuFront.x > 0 ? -1.6 : 1.6;
-    moveToward(cpuBack, targetX, -12.0, speed * dt);
-  } else {
-    // 自分側にボールがある間は展開に応じた定位置へ戻る
-    moveToward(cpuBack, backDevX("cpu"), -TUNING.pos.backY, speed * 0.55 * dt);
-  }
-  cpuBack.x = Math.max(-5.2, Math.min(5.2, cpuBack.x));
+  moveAutoAI(cpuBack, "cpu", dt);
 }
 
 // 相手後衛（＝こちらに打ってくる側）の打点位置を返す。
@@ -2377,13 +2372,16 @@ function frontTheoryX(side, frontY) {
   const cy = side === "cpu" ? -COURT.halfL : COURT.halfL; // 自コートのセンターマーク
   let lineX = 0;
   if (Math.abs(cy - op.y) >= 0.5) {
-    const t = (frontY - op.y) / (cy - op.y);
+    // t>1 は op.y が cy を超えた位置（ベースライン外など）なのでクランプして破綻防止
+    const t = Math.max(0, Math.min(1, (frontY - op.y) / (cy - op.y)));
     lineX = op.x * (1 - t);
   }
   // 線上から「気持ち一歩外側」へ。外側＝センターラインから離れる向き
   // （線が左側(x<0)なら更に左へ、右側なら更に右へ）。
   const outSign = lineX >= 0 ? 1 : -1;
-  return lineX + outSign * TUNING.pos.frontOutsideStep;
+  // コート外への逸脱を防ぐ（シングルスコート幅でクランプ）
+  return Math.max(-COURT.singlesHalfW, Math.min(COURT.singlesHalfW,
+    lineX + outSign * TUNING.pos.frontOutsideStep));
 }
 
 // 後衛の定位置（確定セオリー）:
@@ -2421,199 +2419,171 @@ function frontMirrorY(side, homeY) {
 }
 
 function updateCpuFront(dt) {
-  const speed = TUNING.move.cpuFrontSpeed * cpuFront.stats.speed;
-  // 自分のサーブを打つ前はベースライン後方に留まる（前へ出ない）
-  if ((state === "serve-stance" || state === "serve-toss") &&
-      serverTeamNow() === "cpu" && currentServer() === cpuFront) {
-    return;
-  }
-  // 相手（プレイヤー）サーブ中、CPU前衛がレシーバー担当ならレシーブ位置へ。
-  // 担当でなければ定位置で待機（前へ出ない）。
-  if ((state === "serve-stance" || state === "serve-toss") &&
-      serverTeamNow() === "player") {
-    if (receiverPlayerFor("cpu") === cpuFront) {
-      const rp = receivePosition("cpu");
-      moveToward(cpuFront, rp.x, rp.y, speed * 1.2 * dt);
-    }
-    return;
-  }
-  // レシーブが完了するまでポジション移動しない（定位置で待機）。
-  // ただし自分がサーブした直後のサービスダッシュは始めてよい
-  if (!receiveDone) {
-    if (state === "rally" && cpuJustServedByFront) {
-      moveToward(cpuFront, cpuFront.homeX * (cpuBack.x > 0 ? -1 : 1), cpuFront.homeY, speed * 1.3 * dt);
-    }
-    return;
-  }
-  if (state === "rally" && ball.lastHitter === "player" && !ball.serving) {
-    // 作戦に応じて動く: ポーチ / ストレート守り / ミドル張り / 定位置
-    let targetX;
-    let dash = 1.0;
-    if (cpuFrontPlan === "poach") {
-      // 邪魔しに行く: ボールの通過点へ踏み込む
-      const t = Math.abs(ball.vy) > 0.1 ? (cpuFront.homeY - ball.y) / ball.vy : -1;
-      targetX = (t > 0) ? ball.x + ball.vx * t : ball.x;
-      dash = 1.3;
-    } else if (cpuFrontPlan === "straight") {
-      // ストレートを守る: 相手の打球位置の正面に立つ
-      targetX = ball.originX * 0.85;
-    } else if (cpuFrontPlan === "middle") {
-      targetX = 0;
-    } else {
-      // 定位置: 展開（クロス/ストレート）に応じた前衛の立ち位置。前後は鏡対応
-      targetX = frontDevX("cpu");
-    }
-    targetX = Math.max(-4.6, Math.min(4.6, targetX));
-    const ty = (cpuFrontPlan === "base") ? frontMirrorY("cpu", cpuFront.homeY) : cpuFront.homeY;
-    moveToward(cpuFront, targetX, ty, speed * dash * dt);
-  } else if (state === "rally" && cpuJustServedByFront) {
-    // サーブを打った後はサービスダッシュでネット前の定位置へ
-    moveToward(cpuFront, cpuFront.homeX * (cpuBack.x > 0 ? -1 : 1), cpuFront.homeY, speed * 1.3 * dt);
-  } else if (state === "rally") {
-    // 相手（自分側）にボールがある間は展開に応じたセオリー位置へ戻る
-    const tx = Math.max(-4.4, Math.min(4.4, frontDevX("cpu")));
-    moveToward(cpuFront, tx, frontMirrorY("cpu", cpuFront.homeY), speed * 0.8 * dt);
-  } else {
-    moveToward(cpuFront, cpuFront.homeX * (cpuBack.x > 0 ? -1 : 1), cpuFront.homeY, speed * 0.6 * dt);
-  }
+  moveAutoAI(cpuFront, "cpu", dt);
 }
 
 
-function cpuTryReturn() {
-  if (ball.lastHitter !== "player" || state !== "rally") return;
+// AI打球の共通ロジック（playerチーム・cpuチーム共通）。
+// side: "player"(自陣y+側) または "cpu"(自陣y-側)
+// 両チームで同一ロジック・同一パラメータ。対称性から自動的に互角になる。
+function tryReturnAI(side) {
+  const opponentSide = side === "player" ? "cpu" : "player";
+  if (ball.lastHitter !== opponentSide || state !== "rally") return;
+
   const ai = TUNING.ai;
   const sm = TUNING.smash;
+  const myFront  = side === "player" ? front    : cpuFront;
+  const myBack   = side === "player" ? back     : cpuBack;
+  const oppBack  = side === "player" ? cpuBack  : back;
+  // 自陣のy符号: player=+（y>0）、cpu=-（y<0）
+  const homeSign = side === "player" ? 1 : -1;
+  // 前衛ボレー判定用フラグ
+  const frontChecked = side === "player" ? "frontChecked" : "cpuFrontChecked";
 
-  // 前衛のスマッシュ: 相手のロブが浅い（前衛域に高い球が来た）ときは
-  // ノーバウンドで上から叩き込んで決める。リーチを広めに取り、打点が高いうちに捉える。
-  if (!ball.cpuFrontChecked && ball.bounces === 0 &&
-      ball.lastHitter === "player" &&
-      ball.y < -0.6 && ball.y > -sm.netDist && ball.z >= sm.minZ && ball.z < 2.3) {
+  // ---- 前衛のスマッシュ（浅いロブを叩き込む） ----
+  if (!ball[frontChecked] && ball.bounces === 0 &&
+      ball.y * homeSign < -0.6 && ball.y * homeSign > -sm.netDist &&
+      ball.z >= sm.minZ && ball.z < 2.3) {
     const landing = predictLanding();
-    const shallowLob = landing && landing.y < 0 && Math.abs(landing.y) <= sm.aiLobShallowY;
-    const reach = ai.poachReach * cpuFront.stats.reach;
-    if (shallowLob && Math.hypot(ball.x - cpuFront.x, ball.y - cpuFront.y) <= reach) {
-      ball.cpuFrontChecked = true;
-      if (Math.random() < 0.85 * cpuFront.stats.volley) {
+    const shallowLob = landing && landing.y * homeSign < 0 &&
+      Math.abs(landing.y) <= sm.aiLobShallowY;
+    const reach = ai.poachReach * myFront.stats.reach;
+    if (shallowLob && Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
+      ball[frontChecked] = true;
+      if (Math.random() < 0.85 * myFront.stats.volley) {
         hitBall({
-          hitter: cpuFront,
-          side: "cpu",
-          shot: "flat", // hitBall 内で高打点・ネット前のためスマッシュへ自動変換
-          course: (back.x > 0 ? -1 : 1) * (0.4 + Math.random() * 0.6),
-          contactZ: ball.z,
-        });
-        showMessage("相手前衛のスマッシュ！");
-        setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
-        return;
-      }
-    }
-  }
-
-  // 前衛のボレー/ポーチ（ノーバウンドでカット）: 打球ごとに1回だけ判定。
-  // ポーチに出ているときはリーチが広く決定力も高い
-  if (!ball.cpuFrontChecked && ball.bounces === 0 &&
-      ball.y < -0.6 && ball.y > -5.2 && ball.z < 2.0) {
-    const poaching = cpuFrontPlan === "poach";
-    const reach = (poaching ? ai.poachReach : ai.frontVolleyReach) * cpuFront.stats.reach;
-    if (Math.hypot(ball.x - cpuFront.x, ball.y - cpuFront.y) <= reach) {
-      ball.cpuFrontChecked = true;
-      const chance = (poaching ? 0.8 : 0.5) * cpuFront.stats.volley;
-      if (Math.random() < chance) {
-        hitBall({
-          hitter: cpuFront,
-          side: "cpu",
+          hitter: myFront,
+          side: side,
           shot: "flat",
-          course: (back.x > 0 ? -1 : 1) * (0.4 + Math.random() * 0.6), // 空いた側へ決める
+          course: (oppBack.x > 0 ? -1 : 1) * (0.4 + Math.random() * 0.6),
           contactZ: ball.z,
         });
-        showMessage(poaching ? "相手前衛のポーチ！" : "相手前衛のカット！");
+        const label = side === "player" ? "相方のスマッシュ！" : "相手前衛のスマッシュ！";
+        showMessage(label);
         setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
         return;
       }
     }
   }
 
-  // 後衛はワンバウンドしてから打つ。リーチに上限があり、
-  // 良いコース・良い打点からの打球には追いつけない（抜ける）
-  if (ball.bounces === 1 && ball.z < 2.3 &&
-      distToBall(cpuBack) <= ai.backReach * cpuBack.stats.reach) {
-    // 6割でプレイヤー側後衛のいない方を突くコースを選ぶ
-    let course;
-    if (Math.random() < 0.6) {
-      course = back.x > 0 ? -0.8 : 0.8;
+  // ---- 前衛のボレー/ポーチ ----
+  if (!ball[frontChecked] && ball.bounces === 0 &&
+      ball.y * homeSign < -0.6 && ball.y * homeSign > -5.2 && ball.z < 2.0) {
+    const poaching = (side === "cpu") ? (cpuFrontPlan === "poach") : false;
+    // player側前衛はネット前にいるときだけボレー
+    if (side === "player" && myFront.y >= 5.2) {
+      // ボレー範囲外: スキップ
     } else {
-      course = (Math.random() - 0.5) * 1.6;
+      const reach = (poaching ? ai.poachReach : ai.frontVolleyReach) * myFront.stats.reach;
+      if (Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
+        ball[frontChecked] = true;
+        const chance = (poaching ? 0.8 : 0.5) * myFront.stats.volley;
+        if (Math.random() < chance) {
+          hitBall({
+            hitter: myFront,
+            side: side,
+            shot: "flat",
+            course: (oppBack.x > 0 ? -1 : 1) * (0.4 + Math.random() * 0.6),
+            contactZ: ball.z,
+          });
+          let label;
+          if (side === "player") {
+            label = "相方のボレー！";
+          } else {
+            label = poaching ? "相手前衛のポーチ！" : "相手前衛のカット！";
+          }
+          showMessage(label);
+          setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
+          return;
+        }
+      }
     }
-    const r = Math.random();
-    const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
-    hitBall({
-      hitter: cpuBack, side: "cpu", shot: shot,
-      course: course,
-      contactZ: ball.z,
-    });
+  }
+
+  // ---- cpu前衛のポーチ（作戦による定位置移動ロジックは moveAutoAI で対応。
+  //      ここではボレー判定後の「ポーチに出た位置でのボレー」のみ ----
+
+  // ---- 後衛のワンバウンド返球 ----
+  if (ball.bounces === 1 && ball.z < 2.3) {
+    const reach = ai.backReach * myBack.stats.reach;
+    if (distToBall(myBack) <= reach) {
+      // 相手前衛のいない側を6割で狙う（両チーム同一ロジック）
+      let course;
+      if (Math.random() < 0.6) {
+        course = oppBack.x > 0 ? -0.8 : 0.8;
+      } else {
+        course = (Math.random() - 0.5) * 1.6;
+      }
+      const r = Math.random();
+      const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
+      hitBall({
+        hitter: myBack, side: side, shot: shot,
+        course: course,
+        contactZ: ball.z,
+      });
+    }
   }
 }
 
-// 味方パートナーの返球（ボレー+ストローク）
+// 後方互換ラッパー（メインループから呼ばれる）
+function cpuTryReturn() { tryReturnAI("cpu"); }
 function partnerTryReturn() {
-  if (ball.lastHitter !== "cpu" || state !== "rally") return;
-  const partner = (rallyControlled === back) ? front : back;
-  const sm = TUNING.smash;
-
-  // 味方前衛のスマッシュ: ネット前に高い球（浅いロブ等）が来たら上から叩き込む
-  if (!ball.frontChecked && ball.bounces === 0 &&
-      partner.y < sm.netDist && partner.y > 0.4 &&
-      ball.y > 0.6 && ball.y < sm.netDist && ball.z >= sm.minZ && ball.z < 2.3 &&
-      Math.hypot(ball.x - partner.x, ball.y - partner.y) <= TUNING.ai.poachReach * partner.stats.reach) {
-    ball.frontChecked = true;
-    if (Math.random() < 0.8 * partner.stats.volley) {
+  if (!spectatorMode) {
+    // 人間モード: 操作キャラが届かないときだけパートナーが返す
+    const partner = (rallyControlled === back) ? front : back;
+    if (ball.lastHitter !== "cpu" || state !== "rally") return;
+    const ai = TUNING.ai;
+    const sm = TUNING.smash;
+    // 前衛のスマッシュ
+    if (!ball.frontChecked && ball.bounces === 0 &&
+        partner.y < sm.netDist && partner.y > 0.4 &&
+        ball.y > 0.6 && ball.y < sm.netDist && ball.z >= sm.minZ && ball.z < 2.3 &&
+        Math.hypot(ball.x - partner.x, ball.y - partner.y) <= ai.poachReach * partner.stats.reach) {
+      ball.frontChecked = true;
+      if (Math.random() < 0.8 * partner.stats.volley) {
+        hitBall({
+          hitter: partner, side: "player", shot: "flat",
+          course: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6),
+          contactZ: ball.z,
+        });
+        showMessage("相方のスマッシュ！");
+        setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
+        return;
+      }
+    }
+    // 前衛のボレー
+    if (!ball.frontChecked && ball.bounces === 0 &&
+        partner.y < 5.2 &&
+        ball.y > 0.6 && ball.y < 4.8 && ball.z < 1.9 &&
+        Math.hypot(ball.x - partner.x, ball.y - partner.y) <= VOLLEY_REACH) {
+      ball.frontChecked = true;
+      if (Math.random() < 0.5 * partner.stats.volley) {
+        hitBall({
+          hitter: partner, side: "player", shot: "flat",
+          course: (Math.random() - 0.5) * 1.4,
+          contactZ: ball.z,
+        });
+        showMessage("相方のボレー！");
+        setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
+        return;
+      }
+    }
+    // 後衛のストローク（操作キャラが届かないボールをカバー）
+    if (ball.bounces === 1 && ball.z < 2.3 &&
+        !canPlayerHit(rallyControlled) &&
+        distToBall(partner) <= CPU_REACH * partner.stats.reach &&
+        distToBall(partner) < distToBall(rallyControlled)) {
+      const shot = Math.random() < 0.8 ? "drive" : "lob";
       hitBall({
-        hitter: partner,
-        side: "player",
-        shot: "flat", // hitBall 内でスマッシュへ自動変換
-        course: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6),
+        hitter: partner, side: "player", shot: shot,
+        course: (Math.random() - 0.5) * 1.6,
         contactZ: ball.z,
       });
-      showMessage("相方のスマッシュ！");
-      setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
-      return;
     }
+    return;
   }
-
-  // ノーバウンドのボレー: ネット付近にいるときだけ、打球ごとに1回判定
-  if (!ball.frontChecked && ball.bounces === 0 &&
-      partner.y < 5.2 &&
-      ball.y > 0.6 && ball.y < 4.8 && ball.z < 1.9 &&
-      Math.hypot(ball.x - partner.x, ball.y - partner.y) <= VOLLEY_REACH) {
-    ball.frontChecked = true;
-    if (Math.random() < 0.5 * partner.stats.volley) {
-      hitBall({
-        hitter: partner,
-        side: "player",
-        shot: "flat",
-        course: (Math.random() - 0.5) * 1.4,
-        contactZ: ball.z,
-      });
-      showMessage("相方のボレー！");
-      setTimeout(function () { if (state === "rally") hideMessage(); }, TUNING.tempo.rallyMsgHide);
-      return;
-    }
-  }
-
-  // ワンバウンド後のストローク: 操作キャラが打てないボールをカバーする
-  if (ball.bounces === 1 && ball.z < 2.3 &&
-      !canPlayerHit(rallyControlled) &&
-      distToBall(partner) <= CPU_REACH * partner.stats.reach &&
-      distToBall(partner) < distToBall(rallyControlled)) {
-    const shot = Math.random() < 0.8 ? "drive" : "lob";
-    hitBall({
-      hitter: partner,
-      side: "player",
-      shot: shot,
-      course: (Math.random() - 0.5) * 1.6,
-      contactZ: ball.z,
-    });
-  }
+  // 観戦モード: 統一AIで返球
+  tryReturnAI("player");
 }
 
 /* ===========================================================
@@ -2826,23 +2796,8 @@ function update(dt) {
     charge.active = false;
     charge.source = null;
     if (spectatorMode) {
-      // 観戦モード: プレイヤー側AIもCPU後衛と同じ経路(byPlayer:false)で打球。
-      // byPlayer:true の打点品質優遇・ネットアシストをCPU側並みに揃えて対称化。
-      const aiHit = chooseAiHitForRallyControlled();
-      const aiShotKey = (function() {
-        if (aiHit.shot === "shoot") return ball.z >= 1.25 ? "flat" : "drive";
-        if (aiHit.shot === "cut") return Math.abs(aiHit.aimY) >= 4.2 ? "slice" : "drop";
-        return "lob";
-      })();
-      hitBall({
-        hitter: rallyControlled,
-        side: "player",
-        shot: aiShotKey,
-        charge: power,
-        course: aiHit.aimX / 3.5,
-        contactZ: ball.z,
-        byPlayer: false,
-      });
+      // 観戦モード: 打球は tryReturnAI("player") に委譲（partnerTryReturn経由）
+      // ここでは charge のみリセットして二重打球を防ぐ
       ballHittableSince = -1;
     } else {
       playerHitBall(selectedShot, power, aim.x, aim.y);
