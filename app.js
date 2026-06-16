@@ -1468,8 +1468,9 @@ function hitBall(opts) {
   ty += (Math.random() - 0.5) * 2 * sigma * 0.8 + (Math.random() - 0.5) * 2 * TUNING.jitter.x;
   tx = Math.max(-6.5, Math.min(6.5, tx)); // コート外もあり得る（ミス）
 
-  // CPUは時々凡ミスする（初心者でもポイントが取れる難易度調整）
-  if (side === "cpu" && Math.random() < 0.04) {
+  // CPUは時々凡ミスする（初心者でもポイントが取れる難易度調整）。
+  // 観戦モード（AI対AI）では公平性のため無効。
+  if (side === "cpu" && !spectatorMode && Math.random() < 0.04) {
     if (Math.random() < 0.5) {
       tx = (tx >= 0 ? 1 : -1) * (COURT.halfW + 0.6 + Math.random() * 1.2); // サイドアウト
     } else {
