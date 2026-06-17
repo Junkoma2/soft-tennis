@@ -141,7 +141,7 @@ const TUNING = {
     frontOutsideStep: 0.55, // 前衛: 「相手後衛の打点─自センターマーク」線上から
                             //   気持ち一歩“外側”へオフセットする量(m)。利き腕の肩が線に乗る程度。
     frontMirror: 0.5,       // 前衛: 相手後衛の前後動きへ鏡対応する追従率（歩幅の約半分）
-    backCrossBias: 1.7,     // 後衛: 前衛が守るストレートレーンを捨て、空いたクロス側へ寄る量(m)。
+    backCrossBias: 3.9,     // 後衛: クロス展開でアレー内側の線（シングルスサイドライン≒4.1m）付近まで外に立つ。
                             //   コート中央ではなくクロス側に寄った“残り範囲の真ん中”に立つ。
     backLobCoverX: 2.3,     // 後衛: クロスへのロブで陣形が崩れたときカバーに動く横位置(m)
     // ── クロス/ストレート展開の陣形（動的切替）パラメータ ──
@@ -467,6 +467,18 @@ const SHOT_FAMILY_META = {
 // base（センターライン基準の定位置） / poach（邪魔しに行く） /
 // straight（ストレートを守る） / middle（ミドルを張る）
 let cpuFrontPlan = "base";
+// 味方（player側）前衛の作戦。観戦モードでは相手前衛と対称に動かすために使う。
+let playerFrontPlan = "base";
+
+// 前衛の作戦を確率で抽選（両チーム共通）。
+function pickFrontPlan() {
+  const ai = TUNING.ai;
+  const r = Math.random();
+  if (r < ai.frontPoachChance) return "poach";
+  if (r < ai.frontPoachChance + ai.frontGuardStraightChance) return "straight";
+  if (r < ai.frontPoachChance + ai.frontGuardStraightChance + ai.frontMiddleChance) return "middle";
+  return "base";
+}
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 function lerp(a, b, k) { return a + (b - a) * k; }
@@ -1509,16 +1521,15 @@ function hitBall(opts) {
   receiveDone = true; // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
   launchBall(hitter.x, hitter.y, fromZ, tx, ty, speed);
 
-  // プレイヤーチームの打球に対して相手前衛の作戦を抽選する
+  // 打球を受ける側チームの前衛に作戦を抽選する（両チーム対称）。
+  // player が打つ→相手(cpu)前衛、cpu が打つ→味方(player)前衛。
+  // 味方前衛のポーチは観戦モードでのみ自走（人間モードは partnerAggressiveness 側で制御）。
   if (side === "player") {
-    const ai = TUNING.ai;
-    const r = Math.random();
-    if (r < ai.frontPoachChance) cpuFrontPlan = "poach";
-    else if (r < ai.frontPoachChance + ai.frontGuardStraightChance) cpuFrontPlan = "straight";
-    else if (r < ai.frontPoachChance + ai.frontGuardStraightChance + ai.frontMiddleChance) cpuFrontPlan = "middle";
-    else cpuFrontPlan = "base";
+    cpuFrontPlan = pickFrontPlan();
+    playerFrontPlan = "base";
   } else {
     cpuFrontPlan = "base";
+    playerFrontPlan = spectatorMode ? pickFrontPlan() : "base";
   }
 
   startSwing(hitter, backhand ? "back" : "fore");
@@ -2184,7 +2195,9 @@ function moveAutoAI(p, side, dt) {
       let frontTargetX = Math.max(-3.0, Math.min(3.0, frontDevX(myTeam)));
       let frontTy = frontMirrorY(myTeam, myFront.homeY);
       let frontDash = dash;
-      if ((side === "cpu") && cpuFrontPlan === "poach") {
+      // ポーチ作戦時の踏み込み移動（両チーム対称。player側は観戦モードのみ自走）。
+      const myPlan = (side === "cpu") ? cpuFrontPlan : (spectatorMode ? playerFrontPlan : "base");
+      if (myPlan === "poach") {
         const t2 = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
         const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
         const poachReach = TUNING.ai.poachReach * myFront.stats.reach;
@@ -2299,12 +2312,12 @@ function updateRallyControlledAI(dt) {
 function chooseAiHitForRallyControlled() {
   const cp = rallyControlled;
 
-  // セオリー: 基本は相手後衛(cpuBack)の前へクロスで返す。残りは散らす。
+  // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す。
   let course;
   if (Math.random() < 0.65) {
-    course = Math.max(-0.95, Math.min(0.95, cpuBack.x / 3.5 + (Math.random() - 0.5) * 0.3));
+    course = (cpuBack.x >= 0 ? 1 : -1) * (0.9 + Math.random() * 0.4);
   } else {
-    course = (Math.random() - 0.5) * 1.8;
+    course = (Math.random() - 0.5) * 2.1;
   }
 
   // 球種選択: ネット前で打点が高ければスマッシュ（hitBall内で自動判定）。
@@ -2522,10 +2535,10 @@ function tryReturnAI(side) {
   if (!receiveDone && ball.bounces === 1 && ball.z < 2.3) {
     const receiver = receiverPlayerFor(side);
     if (distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
-      // セオリー: 基本は相手後衛の前へクロスで返す
+      // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す
       let course;
-      if (Math.random() < 0.65) course = Math.max(-0.95, Math.min(0.95, oppBack.x / 3.5 + (Math.random() - 0.5) * 0.3));
-      else course = (Math.random() - 0.5) * 1.8;
+      if (Math.random() < 0.65) course = (oppBack.x >= 0 ? 1 : -1) * (0.9 + Math.random() * 0.4);
+      else course = (Math.random() - 0.5) * 2.1;
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.8 ? "flat" : "slice");
       hitBall({ hitter: receiver, side: side, shot: shot, course: course, contactZ: ball.z });
@@ -2565,7 +2578,7 @@ function tryReturnAI(side) {
   // 深く速いラリー球（ネットを高く越えて後衛へ抜ける球）は拾わず後衛に任せる。
   if (!ball[frontChecked] && ball.bounces === 0 &&
       ball.y * homeSign > 0.4 && ball.y * homeSign < 3.2 && ball.z < 1.6) {
-    const poaching = (side === "cpu") ? (cpuFrontPlan === "poach") : false;
+    const poaching = ((side === "cpu") ? cpuFrontPlan : playerFrontPlan) === "poach";
     {
       // 前衛は届くならボレーする（ポーチ指示の有無に関わらず）。
       const reach = (poaching ? ai.poachReach : ai.frontVolleyReach) * myFront.stats.reach;
@@ -2605,13 +2618,14 @@ function tryReturnAI(side) {
       (ball.vz <= 0.8 || (ball.vz < 0 && ball.z < 0.4))) {
     const reach = ai.backReach * myBack.stats.reach;
     if (distToBall(myBack) <= reach) {
-      // セオリー: 基本は相手後衛の前へクロスで返す（後衛同士のラリーを続ける）。
-      // 残りは散らして、時々ストレート/鋭角の攻めも混ぜる。
+      // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ深く返す。
+      // 相手後衛のいる側へ外めに振り、アレー方向の球を増やす。残りは散らす。
       let course;
       if (Math.random() < 0.65) {
-        course = Math.max(-0.95, Math.min(0.95, oppBack.x / 3.5 + (Math.random() - 0.5) * 0.3));
+        const crossSign = oppBack.x >= 0 ? 1 : -1;
+        course = crossSign * (0.9 + Math.random() * 0.4);
       } else {
-        course = (Math.random() - 0.5) * 1.8;
+        course = (Math.random() - 0.5) * 2.1;
       }
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
