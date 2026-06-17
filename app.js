@@ -2271,17 +2271,20 @@ function moveAutoAI(p, side, dt) {
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
-        // バウンド後もボールは進行方向へ進みつつ上がる。バウンド地点へ走り込むと
-        // 上がってきた球を追って下がる羽目になるので、進みを見越して「深め」に待ち、
-        // 上がってきた高い打点で打つ。
-        tx = landing.x + ball.vx * 0.28;
-        ty = landing.y + ball.vy * 0.28;
-        ty = homeSign > 0 ? Math.max(4.5, ty) : Math.min(-4.5, ty);
         if (isLob) {
           // ロブ（ストレートロブ含む）は後衛の責任範囲。前衛の頭を越えた深いロブも
           // 後衛が深い着地点まで下がってカバーする（定位置に戻って見捨てない）。
           tx = Math.max(-(COURT.singlesHalfW + 0.2), Math.min(COURT.singlesHalfW + 0.2, landing.x));
           ty = homeSign > 0 ? Math.max(5.5, landing.y) : Math.min(-5.5, landing.y);
+        } else {
+          // バウンド地点へ走り込まず、打球の「軌道の延長線上」でバウンドより少し深い
+          // 位置に構える。横方向の速度はバウンドで変わらないので、軌道をその深さまで
+          // 延長したxを狙えば、上がってきた球を高い打点で迎えられる。
+          const behindDepth = Math.min(COURT.halfL + 0.3, Math.abs(landing.y) + 1.3);
+          const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
+          const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
+          tx = ball.x + ball.vx * Math.max(0, tProj);
+          ty = targetDepth;
         }
       }
       moveToward(myBack, tx, ty, speed * 1.2 * dt);
@@ -2321,9 +2324,9 @@ function chooseAiHitForRallyControlled() {
   // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す。
   let course;
   if (Math.random() < 0.65) {
-    course = (cpuBack.x >= 0 ? 1 : -1) * (0.9 + Math.random() * 0.4);
+    course = (cpuBack.x >= 0 ? 1 : -1) * (0.78 + Math.random() * 0.32);
   } else {
-    course = (Math.random() - 0.5) * 2.1;
+    course = (Math.random() - 0.5) * 1.9;
   }
 
   // 球種選択: ネット前で打点が高ければスマッシュ（hitBall内で自動判定）。
@@ -2545,8 +2548,8 @@ function tryReturnAI(side) {
     if (distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
       // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す
       let course;
-      if (Math.random() < 0.65) course = (oppBack.x >= 0 ? 1 : -1) * (0.9 + Math.random() * 0.4);
-      else course = (Math.random() - 0.5) * 2.1;
+      if (Math.random() < 0.65) course = (oppBack.x >= 0 ? 1 : -1) * (0.78 + Math.random() * 0.32);
+      else course = (Math.random() - 0.5) * 1.9;
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.8 ? "flat" : "slice");
       hitBall({ hitter: receiver, side: side, shot: shot, course: course, contactZ: ball.z });
@@ -2631,9 +2634,9 @@ function tryReturnAI(side) {
       let course;
       if (Math.random() < 0.65) {
         const crossSign = oppBack.x >= 0 ? 1 : -1;
-        course = crossSign * (0.9 + Math.random() * 0.4);
+        course = crossSign * (0.78 + Math.random() * 0.32);
       } else {
-        course = (Math.random() - 0.5) * 2.1;
+        course = (Math.random() - 0.5) * 1.9;
       }
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
