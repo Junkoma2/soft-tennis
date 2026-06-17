@@ -44,9 +44,9 @@ const TUNING = {
   //   speed: 基本球速(m/s) / depthMin+depthRange: 狙う深さ /
   //   spin: バウンド挙動 / spinMag: 回転の強さ / color: 軌道の色分け
   shots: {
-    flat:  { speed: 25.0, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
-    drive: { speed: 20.0, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
-    slice: { speed: 20.0, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
+    flat:  { speed: 26.5, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
+    drive: { speed: 22.5, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
+    slice: { speed: 21.5, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
     drop:  { speed: 8.0,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
     lob:   { speed: 14.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
     smash: { speed: 30.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
@@ -2268,8 +2268,8 @@ function moveAutoAI(p, side, dt) {
         // （深く下がると落ちてきた球を低く打つことになる）。
         tx = ball.x + ball.vx * 0.2;
         ty = homeSign > 0
-          ? Math.min(COURT.halfL + 0.4, Math.max(4.5, ball.y + ball.vy * 0.2))
-          : Math.max(-(COURT.halfL + 0.4), Math.min(-4.5, ball.y + ball.vy * 0.2));
+          ? Math.min(COURT.halfL + 1.8, Math.max(4.5, ball.y + ball.vy * 0.2))
+          : Math.max(-(COURT.halfL + 1.8), Math.min(-4.5, ball.y + ball.vy * 0.2));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
@@ -2283,7 +2283,7 @@ function moveAutoAI(p, side, dt) {
           // （= バウンド地点 + バウンド後の進み。vy が大きいほど奥）まで見越して
           // 最初から十分深く、打球の「軌道の延長線上」に構える。これで打つ瞬間に
           // 後退せず、前に踏み込みながら高い打点で打てる。
-          const behindDepth = Math.min(COURT.halfL + 0.3, Math.abs(landing.y) + Math.abs(ball.vy) * 0.3);
+          const behindDepth = Math.min(COURT.halfL + 1.8, Math.abs(landing.y) + Math.abs(ball.vy) * 0.32);
           const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
           const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
           tx = ball.x + ball.vx * Math.max(0, tProj);
