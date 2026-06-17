@@ -135,7 +135,7 @@ const TUNING = {
     frontY: 2.6,      // 前衛の定位置（ネット前）
     frontSideX: 1.8,  // 前衛が逆サイドに寄るときのx
     serveBackY: 0.6,  // サーバーがベースラインの何m後方に立つか
-    serveSideX: 2.0,  // サーブ時のサイド寄りx（センターマーク〜サイドの間）
+    serveSideX: 2.6,  // サーブ時のサイド寄りx（やや外側。センターマーク〜サイドの間）
     receiveBackY: 0.2, // レシーバーがベースラインの何m後方に立つか
     // ── 確定セオリーの定位置パラメータ ──
     frontOutsideStep: 0.55, // 前衛: 「相手後衛の打点─自センターマーク」線上から
@@ -2148,6 +2148,12 @@ function moveAutoAI(p, side, dt) {
     return;
   }
 
+  // 自分のサーブ前は、サーバー以外（味方前衛など）も持ち場で待つ。
+  // サーブを打つ前にセンターマークを越えて動かない（ここで止める）。
+  if (state === "serve-stance" || state === "serve-toss") {
+    return;
+  }
+
   // 相手のサーブが飛んでいる間（最初の返球まで＝!receiveDone）は、レシーブ担当だけがボールを追う。
   // 担当でない味方はその場で待機（前衛がレシーバーの逆クロスでも後衛が追ってしまうバグ防止）。
   if (!receiveDone && state === "rally" && ball.lastHitter === opponentTeam) {
@@ -2271,10 +2277,12 @@ function moveAutoAI(p, side, dt) {
           tx = backDevX(myTeam);
           ty = homeBackY;
         } else {
-          tx = landing.x;
-          ty = homeSign > 0
-            ? Math.max(4.5, landing.y + 1.0)
-            : Math.min(-4.5, landing.y - 1.2);
+          // バウンド後もボールは進行方向へ進みつつ上がる。バウンド地点へ走り込むと
+          // 上がってきた球を追って下がる羽目になるので、進みを見越して「深め」に待ち、
+          // 上がってきた高い打点で打つ。
+          tx = landing.x + ball.vx * 0.28;
+          ty = landing.y + ball.vy * 0.28;
+          ty = homeSign > 0 ? Math.max(4.5, ty) : Math.min(-4.5, ty);
           if (isLob) tx = Math.max(-TUNING.pos.backLobCoverX, Math.min(TUNING.pos.backLobCoverX, landing.x));
         }
       }
