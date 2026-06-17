@@ -2347,16 +2347,18 @@ function updateCpuBack(dt) {
 
 // 相手後衛（＝こちらに打ってくる側）の打点位置を返す。
 //   side="cpu": 相手はプレイヤー。side="player": 相手はCPU。
+// 相手が打った球が飛来中はその打点(originX)を、こちらの打球が飛行中
+// （サーブ含む）は飛んでいる球ではなく相手後衛の現在位置を基準にする。
+// （飛行中の自球xを使うと、球がコートを横切るのに合わせて展開判定/定位置が
+//   左右に振れてしまうため）。
 function opponentHitterPos(side) {
   if (side === "cpu") {
     // CPUから見た相手＝プレイヤー側
-    const ax = (ball.lastHitter === "player") ? ball.originX : ball.x;
-    const ay = (ball.lastHitter === "player") ? ball.originY : ball.y;
-    return { x: ax, y: ay };
+    if (ball.lastHitter === "player") return { x: ball.originX, y: ball.originY };
+    return { x: back.x, y: back.y };
   }
-  const ax = (ball.lastHitter === "cpu") ? ball.originX : ball.x;
-  const ay = (ball.lastHitter === "cpu") ? ball.originY : ball.y;
-  return { x: ax, y: ay };
+  if (ball.lastHitter === "cpu") return { x: ball.originX, y: ball.originY };
+  return { x: cpuBack.x, y: cpuBack.y };
 }
 
 /* ===========================================================
