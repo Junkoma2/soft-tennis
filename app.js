@@ -2264,10 +2264,12 @@ function moveAutoAI(p, side, dt) {
       let tx = backDevX(myTeam);
       let ty = homeBackY;
       if (ball.bounces >= 1) {
-        tx = ball.x + ball.vx * 0.25;
+        // バウンド後はボールへ寄せるが、ベースライン後方へ深追いしすぎない
+        // （深く下がると落ちてきた球を低く打つことになる）。
+        tx = ball.x + ball.vx * 0.2;
         ty = homeSign > 0
-          ? Math.max(4.5, ball.y + ball.vy * 0.25)
-          : Math.min(-4.5, ball.y + ball.vy * 0.25);
+          ? Math.min(COURT.halfL + 0.4, Math.max(4.5, ball.y + ball.vy * 0.2))
+          : Math.max(-(COURT.halfL + 0.4), Math.min(-4.5, ball.y + ball.vy * 0.2));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
@@ -2277,10 +2279,11 @@ function moveAutoAI(p, side, dt) {
           tx = Math.max(-(COURT.singlesHalfW + 0.2), Math.min(COURT.singlesHalfW + 0.2, landing.x));
           ty = homeSign > 0 ? Math.max(5.5, landing.y) : Math.min(-5.5, landing.y);
         } else {
-          // バウンド地点へ走り込まず、打球の「軌道の延長線上」でバウンドより少し深い
-          // 位置に構える。横方向の速度はバウンドで変わらないので、軌道をその深さまで
-          // 延長したxを狙えば、上がってきた球を高い打点で迎えられる。
-          const behindDepth = Math.min(COURT.halfL + 0.3, Math.abs(landing.y) + 1.3);
+          // バウンド地点へ走り込まない。バウンド後もボールは奥へ進むので、その到達点
+          // （= バウンド地点 + バウンド後の進み。vy が大きいほど奥）まで見越して
+          // 最初から十分深く、打球の「軌道の延長線上」に構える。これで打つ瞬間に
+          // 後退せず、前に踏み込みながら高い打点で打てる。
+          const behindDepth = Math.min(COURT.halfL + 0.3, Math.abs(landing.y) + Math.abs(ball.vy) * 0.3);
           const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
           const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
           tx = ball.x + ball.vx * Math.max(0, tProj);
