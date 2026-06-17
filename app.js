@@ -2269,21 +2269,19 @@ function moveAutoAI(p, side, dt) {
           ? Math.max(4.5, ball.y + ball.vy * 0.25)
           : Math.min(-4.5, ball.y + ball.vy * 0.25);
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
-        const straightSign = opponentHitterPos(myTeam).x >= 0 ? 1 : -1;
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
-        const toStraight = (landing.x >= 0 ? 1 : -1) === straightSign;
-        if (isLob && toStraight) {
-          tx = backDevX(myTeam);
-          ty = homeBackY;
-        } else {
-          // バウンド後もボールは進行方向へ進みつつ上がる。バウンド地点へ走り込むと
-          // 上がってきた球を追って下がる羽目になるので、進みを見越して「深め」に待ち、
-          // 上がってきた高い打点で打つ。
-          tx = landing.x + ball.vx * 0.28;
-          ty = landing.y + ball.vy * 0.28;
-          ty = homeSign > 0 ? Math.max(4.5, ty) : Math.min(-4.5, ty);
-          if (isLob) tx = Math.max(-TUNING.pos.backLobCoverX, Math.min(TUNING.pos.backLobCoverX, landing.x));
+        // バウンド後もボールは進行方向へ進みつつ上がる。バウンド地点へ走り込むと
+        // 上がってきた球を追って下がる羽目になるので、進みを見越して「深め」に待ち、
+        // 上がってきた高い打点で打つ。
+        tx = landing.x + ball.vx * 0.28;
+        ty = landing.y + ball.vy * 0.28;
+        ty = homeSign > 0 ? Math.max(4.5, ty) : Math.min(-4.5, ty);
+        if (isLob) {
+          // ロブ（ストレートロブ含む）は後衛の責任範囲。前衛の頭を越えた深いロブも
+          // 後衛が深い着地点まで下がってカバーする（定位置に戻って見捨てない）。
+          tx = Math.max(-(COURT.singlesHalfW + 0.2), Math.min(COURT.singlesHalfW + 0.2, landing.x));
+          ty = homeSign > 0 ? Math.max(5.5, landing.y) : Math.min(-5.5, landing.y);
         }
       }
       moveToward(myBack, tx, ty, speed * 1.2 * dt);
