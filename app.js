@@ -229,7 +229,7 @@ const TUNING = {
     frontPoachChance: 0.30,         // 前衛がポーチ（邪魔しに行く）確率
     frontGuardStraightChance: 0.25, // ストレートを守る確率
     frontMiddleChance: 0.18,        // ミドルを張る確率（残りは定位置）
-    frontVolleyReach: 1.55,  // 守備時のボレーリーチ
+    frontVolleyReach: 1.05,  // 守備時のボレーリーチ（明確に届く球だけ拾い、深い球は後衛へ通す）
     poachReach: 2.0,         // ポーチに出たときのリーチ
   },
 };
@@ -2209,20 +2209,21 @@ function moveAutoAI(p, side, dt) {
           frontDash = 1.0 + aggr * 0.4; // 攻めるほど速く踏み込む
         }
       }
-      // ポーチ指示が無くても、前衛の守備側（後衛のいない側）へ飛んできた球は
-      // 追ってボレーに行く。ネット到達予測位置が自分の守備側で、無理なく届くなら迎えに出る。
+      // 前衛の守備側（後衛のいない側）のネット際へ低く来る球には、届く範囲で
+      // 軽く一歩踏み込んでボレーに行く（大きくは追わず、後衛のクロス球は奪わない）。
       {
         const ownBackSign = myBack.x >= 0 ? 1 : -1;
         const frontSide = -ownBackSign; // 前衛が受け持つ側
         const tNet = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
-        if (tNet > 0 && tNet < 1.3) {
+        if (tNet > 0 && tNet < 0.9) {
           const crossX = ball.x + ball.vx * tNet;
-          const onMySide = (Math.sign(crossX) === frontSide) || Math.abs(crossX) < 0.8;
+          const crossZ = ball.z + ball.vz * tNet - 0.5 * G * tNet * tNet; // ネット到達時の高さ
+          const onMySide = (Math.sign(crossX) === frontSide); // 自分の守備側に来る球のみ
           const reach = TUNING.ai.frontVolleyReach * myFront.stats.reach;
-          if (onMySide && Math.abs(crossX - myFront.x) <= reach * 2.2) {
-            frontTargetX = Math.max(-3.8, Math.min(3.8, crossX));
+          if (onMySide && crossZ < 1.3 && Math.abs(crossX - myFront.x) <= reach * 0.9) {
+            frontTargetX = Math.max(-3.4, Math.min(3.4, crossX));
             frontTy = myFront.homeY;
-            frontDash = Math.max(frontDash, 1.2);
+            frontDash = Math.max(frontDash, 1.15);
           }
         }
       }
@@ -2533,11 +2534,12 @@ function tryReturnAI(side) {
   }
 
   // ---- 前衛のスマッシュ（浅いロブを叩き込む） ----
+  // 自陣側（homeSign方向）のネット前〜に浮いた球を、バウンド前に叩く。
   if (!ball[frontChecked] && ball.bounces === 0 &&
-      ball.y * homeSign < -0.6 && ball.y * homeSign > -sm.netDist &&
+      ball.y * homeSign > 0.4 && ball.y * homeSign < sm.netDist &&
       ball.z >= sm.minZ && ball.z < 2.3) {
     const landing = predictLanding();
-    const shallowLob = landing && landing.y * homeSign < 0 &&
+    const shallowLob = landing && landing.y * homeSign > 0 &&
       Math.abs(landing.y) <= sm.aiLobShallowY;
     const reach = ai.poachReach * myFront.stats.reach;
     if (shallowLob && Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
@@ -2559,8 +2561,10 @@ function tryReturnAI(side) {
   }
 
   // ---- 前衛のボレー/ポーチ ----
+  // 自陣側（homeSign方向）のネット際に来た、まだバウンドしていない球だけを迎える。
+  // 深く速いラリー球（ネットを高く越えて後衛へ抜ける球）は拾わず後衛に任せる。
   if (!ball[frontChecked] && ball.bounces === 0 &&
-      ball.y * homeSign < -0.6 && ball.y * homeSign > -5.2 && ball.z < 2.0) {
+      ball.y * homeSign > 0.4 && ball.y * homeSign < 3.2 && ball.z < 1.6) {
     const poaching = (side === "cpu") ? (cpuFrontPlan === "poach") : false;
     {
       // 前衛は届くならボレーする（ポーチ指示の有無に関わらず）。
@@ -2594,7 +2598,11 @@ function tryReturnAI(side) {
   //      ここではボレー判定後の「ポーチに出た位置でのボレー」のみ ----
 
   // ---- 後衛のワンバウンド返球 ----
-  if (ball.bounces === 1 && ball.z < 2.3) {
+  // バウンド直後の地面スレスレ（急上昇中）を叩かず、バウンドの頂点付近
+  // （vz が十分下がってから＝ライジングしすぎない打点）で打つ。
+  // ただし落ちて二度目のバウンド直前になったら最後のチャンスで打つ。
+  if (ball.bounces === 1 && ball.z < 2.3 &&
+      (ball.vz <= 0.8 || (ball.vz < 0 && ball.z < 0.4))) {
     const reach = ai.backReach * myBack.stats.reach;
     if (distToBall(myBack) <= reach) {
       // セオリー: 基本は相手後衛の前へクロスで返す（後衛同士のラリーを続ける）。
