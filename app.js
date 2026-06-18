@@ -2268,8 +2268,8 @@ function moveAutoAI(p, side, dt) {
         // （深く下がると落ちてきた球を低く打つことになる）。
         tx = ball.x + ball.vx * 0.2;
         ty = homeSign > 0
-          ? Math.min(COURT.halfL + 1.8, Math.max(4.5, ball.y + ball.vy * 0.2))
-          : Math.max(-(COURT.halfL + 1.8), Math.min(-4.5, ball.y + ball.vy * 0.2));
+          ? Math.min(COURT.halfL + 3.0, Math.max(4.5, ball.y + ball.vy * 0.2))
+          : Math.max(-(COURT.halfL + 3.0), Math.min(-4.5, ball.y + ball.vy * 0.2));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
@@ -2283,7 +2283,7 @@ function moveAutoAI(p, side, dt) {
           // （= バウンド地点 + バウンド後の進み。vy が大きいほど奥）まで見越して
           // 最初から十分深く、打球の「軌道の延長線上」に構える。これで打つ瞬間に
           // 後退せず、前に踏み込みながら高い打点で打てる。
-          const behindDepth = Math.min(COURT.halfL + 1.8, Math.abs(landing.y) + Math.abs(ball.vy) * 0.32);
+          const behindDepth = Math.min(COURT.halfL + 3.0, Math.abs(landing.y) + Math.max(1.2, Math.abs(ball.vy) * 0.4));
           const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
           const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
           tx = ball.x + ball.vx * Math.max(0, tProj);
