@@ -1670,12 +1670,17 @@ function serveFault(reason) {
  * バウンド・ラリー判定
  * =========================================================== */
 
+// オンザライン（ライン上）はイン。ボール半径＋ライン幅相当の余裕を持たせ、
+// 着地点がラインに掛かっていればインと判定する。
+const LINE_IN_MARGIN = 0.12;
+
 function insideCourt(x, y) {
-  return Math.abs(x) <= COURT.halfW + 0.04 && Math.abs(y) <= COURT.halfL + 0.04;
+  return Math.abs(x) <= COURT.halfW + LINE_IN_MARGIN && Math.abs(y) <= COURT.halfL + LINE_IN_MARGIN;
 }
 
 function insideBox(x, y, box) {
-  return x >= box.x1 - 0.04 && x <= box.x2 + 0.04 && y >= box.y1 - 0.04 && y <= box.y2 + 0.04;
+  var m = LINE_IN_MARGIN;
+  return x >= box.x1 - m && x <= box.x2 + m && y >= box.y1 - m && y <= box.y2 + m;
 }
 
 function handleBounce() {
