@@ -2171,7 +2171,7 @@ function moveAutoAI(p, side, dt) {
                           : Math.max(-(COURT.halfL + 3.0), Math.min(-4.0, ball.y + ball.vy * 0.2));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         // サーブもバウンド地点へ走り込まず、軌道の延長線上の奥で待って迎える。
-        const behindDepth = Math.min(COURT.halfL + 3.0, Math.abs(landing.y) + Math.max(1.2, Math.abs(ball.vy) * 0.4));
+        const behindDepth = Math.min(COURT.halfL + 2.6, Math.abs(landing.y) + Math.max(0.4, Math.abs(ball.vy) * 0.2));
         const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
         const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
         tx = ball.x + ball.vx * Math.max(0, tProj);
@@ -2286,9 +2286,9 @@ function moveAutoAI(p, side, dt) {
         // 奥に構える。これで打つ瞬間に後退せず、前へ踏み込みながら高い打点で打てる。
         // 浮き球（ロブ）は高く弾んで更に奥まで来るので、最低オフセット・係数を大きめに。
         // ロブはストレートロブも後衛の責任範囲なので横はサイドライン付近まで許容する。
-        const minBehind = isLob ? 2.4 : 1.2;
-        const vyCoef = isLob ? 0.55 : 0.4;
-        const behindDepth = Math.min(COURT.halfL + 3.5, Math.abs(landing.y) + Math.max(minBehind, Math.abs(ball.vy) * vyCoef));
+        const minBehind = isLob ? 0.8 : 0.4;
+        const vyCoef = isLob ? 0.3 : 0.2;
+        const behindDepth = Math.min(COURT.halfL + 2.6, Math.abs(landing.y) + Math.max(minBehind, Math.abs(ball.vy) * vyCoef));
         const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
         const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
         let txProj = ball.x + ball.vx * Math.max(0, tProj);
