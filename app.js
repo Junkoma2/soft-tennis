@@ -2167,12 +2167,15 @@ function moveAutoAI(p, side, dt) {
       let tx = p.x, ty = p.y;
       if (ball.bounces >= 1) {
         tx = ball.x + ball.vx * 0.2;
-        ty = homeSign > 0 ? Math.max(4.0, ball.y + ball.vy * 0.2)
-                          : Math.min(-4.0, ball.y + ball.vy * 0.2);
+        ty = homeSign > 0 ? Math.min(COURT.halfL + 3.0, Math.max(4.0, ball.y + ball.vy * 0.2))
+                          : Math.max(-(COURT.halfL + 3.0), Math.min(-4.0, ball.y + ball.vy * 0.2));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
-        tx = landing.x;
-        ty = homeSign > 0 ? Math.max(4.0, landing.y + 0.8)
-                          : Math.min(-4.0, landing.y - 0.8);
+        // サーブもバウンド地点へ走り込まず、軌道の延長線上の奥で待って迎える。
+        const behindDepth = Math.min(COURT.halfL + 3.0, Math.abs(landing.y) + Math.max(1.2, Math.abs(ball.vy) * 0.4));
+        const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
+        const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
+        tx = ball.x + ball.vx * Math.max(0, tProj);
+        ty = targetDepth;
       }
       moveToward(p, tx, ty, speed * 1.25 * dt);
       p.x = Math.max(-5.2, Math.min(5.2, p.x));
