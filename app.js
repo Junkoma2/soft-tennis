@@ -2278,22 +2278,20 @@ function moveAutoAI(p, side, dt) {
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
-        if (isLob) {
-          // ロブ（ストレートロブ含む）は後衛の責任範囲。前衛の頭を越えた深いロブも
-          // 後衛が深い着地点まで下がってカバーする（定位置に戻って見捨てない）。
-          tx = Math.max(-(COURT.singlesHalfW + 0.2), Math.min(COURT.singlesHalfW + 0.2, landing.x));
-          ty = homeSign > 0 ? Math.max(5.5, landing.y) : Math.min(-5.5, landing.y);
-        } else {
-          // バウンド地点へ走り込まない。バウンド後もボールは奥へ進むので、その到達点
-          // （= バウンド地点 + バウンド後の進み。vy が大きいほど奥）まで見越して
-          // 最初から十分深く、打球の「軌道の延長線上」に構える。これで打つ瞬間に
-          // 後退せず、前に踏み込みながら高い打点で打てる。
-          const behindDepth = Math.min(COURT.halfL + 3.0, Math.abs(landing.y) + Math.max(1.2, Math.abs(ball.vy) * 0.4));
-          const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
-          const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
-          tx = ball.x + ball.vx * Math.max(0, tProj);
-          ty = targetDepth;
-        }
+        // バウンド地点へ走り込まない。バウンド後もボールは奥へ進むので、その到達点
+        // （= バウンド地点 + バウンド後の進み）まで見越して、打球の「軌道の延長線上」の
+        // 奥に構える。これで打つ瞬間に後退せず、前へ踏み込みながら高い打点で打てる。
+        // 浮き球（ロブ）は高く弾んで更に奥まで来るので、最低オフセット・係数を大きめに。
+        // ロブはストレートロブも後衛の責任範囲なので横はサイドライン付近まで許容する。
+        const minBehind = isLob ? 2.4 : 1.2;
+        const vyCoef = isLob ? 0.55 : 0.4;
+        const behindDepth = Math.min(COURT.halfL + 3.5, Math.abs(landing.y) + Math.max(minBehind, Math.abs(ball.vy) * vyCoef));
+        const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
+        const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
+        let txProj = ball.x + ball.vx * Math.max(0, tProj);
+        const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
+        tx = Math.max(-xCap, Math.min(xCap, txProj));
+        ty = targetDepth;
       }
       moveToward(myBack, tx, ty, speed * 1.2 * dt);
     } else if (state === "rally" && myJustServedByFront) {
