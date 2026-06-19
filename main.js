@@ -1,441 +1,60 @@
-/* ===========================================================
- * ソフトテニス ダブルス（雁行陣）ラリーゲーム
- *
- * ワールド座標系（メートル・実コート寸法）:
- *   x: -5.485（画面左） 〜 +5.485（画面右）, 0 がセンター
- *   y: +11.885 が自陣ベースライン, -11.885 が相手陣ベースライン, 0 がネット
- *   z: 高さ（0 が地面, ネット 1.07m）
- *
- * カメラは自陣ベースライン後方・やや上空からの透視投影
- * （「みんなのテニス」風の視点）。
- *
- * 操作方式（PC確定形・マウス主体）:
- *   - 移動 = WASD（左手）。矢印キーは廃止（移動にも狙いにも使わない）。
- *     打点ゾーン中も常に移動できる（操作ロックなし）。
- *   - 狙い（着地カーソル）= マウス。マウスが指すコート地点へ着地リングが追従する。
- *     スクリーン座標→地面(z=0)の逆投影 unproject() で求める。スマホはスティック。
- *   - 球種はマウスボタンで決まる:
- *       左クリック = シュート（フラット/ドライブ）
- *       右クリック = カット（スライス/ドロップ）
- *       Space（ロブ修飾キー）を押しながらクリック = ロブ
- *     ボールが打点ゾーンに入ると自動でため開始。クリックした瞬間にそのボタンの
- *     球種でスイングする。打点高さ・着地カーソルの深さで内部の5種
- *     (flat/drive/slice/drop/lob)へ自動振り分け。
- *   - スマッシュ: ネット前で高い球（ロブ等）を捉えると自動でスマッシュ（速く鋭い決め球）。
- *   - 打点が大事: 体の横・少し前の適正打点ほど角度と球速が出る。
- *     詰まる/泳ぐと「選べる角度の幅」が段階的に狭くなる（方向自体は消えない）。
- *   - サーブ: 左クリックでトス（統一トス）→ 適正打点で
- *       左クリック=フラット / 右クリック=スライス /
- *       Space+左クリック=アンダーカット（セカンド向け安全球） /
- *       Space+右クリック=攻撃的カット（速くて鋭いがリスク高め）。
- *     マウスで対角サービスコート内の狙いを指す。高すぎる打点は空振りになる。
- *   - 試合前にポジション（後衛/前衛）と陣形（雁行陣/ダブル後衛/
- *     ダブル前衛）を選べる。操作しない相方はAIが動かす。
- *
- * 調整パラメータは下の TUNING に一元化。将来の育成要素は
- * makeStats() の戻り値を書き換えるだけで反映される設計。
- * =========================================================== */
+import {
+  TUNING, COURT, G,
+  POINT_LABELS, POINTS_TO_WIN_GAME, FINAL_GAME_POINTS, GAMES_TO_WIN_MATCH,
+  FORMATIONS, PLAYER_X_LIMIT, HIT_REACH, CPU_REACH, VOLLEY_REACH,
+  SHOOT_FLAT_Z, CUT_SLICE_DEPTH, SHOT_FAMILY_ORDER, SHOT_FAMILY_META,
+  TOSS_RISE_TIME, TOSS_HOLD_TIME, TOSS_BASE_Z, TOSS_APEX_Z,
+  IDEAL_HIT_DELAY, LINE_IN_MARGIN, Y_RANGE_BACK, Y_RANGE_FRONT,
+  W, H,
+} from "./config.js";
 
-/* ===========================================================
- * ゲームバランス調整パラメータ（ここの数値をいじるだけで調整可能）
- * =========================================================== */
-const TUNING = {
-  // ストロークの球種（5種・選択式。中ロブは存在しない）
-  //   speed: 基本球速(m/s) / depthMin+depthRange: 狙う深さ /
-  //   spin: バウンド挙動 / spinMag: 回転の強さ / color: 軌道の色分け
-  shots: {
-    flat:  { speed: 26.5, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
-    drive: { speed: 22.5, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
-    slice: { speed: 21.5, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
-    drop:  { speed: 8.0,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
-    lob:   { speed: 14.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
-    smash: { speed: 30.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
-  },
-  // cpuSpeedScale は廃止。AI打球は両チーム共通パラメータで対称化
-  // サーブ（打つ前にパワーと回転量を設定する方式）
-  // トスは統一トス（base 0.9m → apex 約3.35m → 落下）。打つ瞬間のボタンで4種に
-  // 振り分ける。各 type.zone は「打点の高さ(m)」。max超は空振り、idealに近いほど
-  // 速く正確。いずれもトス軌道(0.9〜3.35m)内に収まるよう設計。
-  //   左クリック        = flat      （フラットサーブ。最速・最深）
-  //   右クリック        = slice     （スライスサーブ。フラットより遅れて落ちる）
-  //   Space+左クリック  = underCut  （アンダーカット。セカンド向け・山なりで確実に入る）
-  //   Space+右クリック  = attackCut （攻撃的カット。速くて鋭く切れる/伸びる。リスク高め）
-  serve: {
-    power: { weak: 0.8, mid: 1.0, strong: 1.2 },  // パワー設定→球速倍率
-    spin:  { weak: 0.6, mid: 1.0, strong: 1.7 },  // 回転設定→回転量倍率
-    sigmaBase: 0.22,
-    sigmaPower: 0.65,  // パワー強で増える散らばり（強いほど狙いにくい）
-    sigmaSpin: 0.5,    // 回転強で増える散らばり
-    qualitySpeedDrop: 0.35, // 打点品質が悪いときの球速低下
-    qualitySigma: 0.6,      // 打点品質が悪いときの散らばり増加
-    // 4種とも、トス頂点〜やや落ち始めの「常用打点帯」(z ≈ 1.9〜3.35)では
-    // zone.max を超えずフォルトしない（トスの真の頂点は約3.35m、3.4で安全マージン）。
-    // 体感差は ideal（適正打点の高さ）・速度・回転・depthOffset・散らばりで表現する:
-    //   flat=頂点で最良（最速・最深） / slice=やや遅れて落ちる打点が適正 /
-    //   attackCut=さらに低め・速くて鋭い / underCut=低い打点が適正の安全球（広いゾーン）
-    types: {
-      // フラット: トス頂点付近の高い打点が適正。最速・最深（サービスライン際）。やや散らばりやすい。
-      flat: {
-        speed: 25.0, zone: { min: 1.9, ideal: 2.7, max: 3.4 },
-        depthOffset: 0.8,  // サービスラインから手前への距離（小さい=深い）
-        spinKind: "drive", spinMagBase: 0.8, color: "#F8FAFC", label: "フラット",
-        sigmaExtra: 0.05,  // 速い分、散らばりはやや大きめ
-      },
-      // スライス: フラットよりやや低い打点が適正。フラットより遅れて落下する軌道。
-      slice: {
-        speed: 19.0, zone: { min: 1.4, ideal: 2.3, max: 3.4 },
-        depthOffset: 1.6,
-        spinKind: "slice", spinMagBase: 1.1, color: "#38BDF8", label: "スライス",
-        sigmaExtra: 0.0,
-      },
-      // アンダーカット（セカンド向け）: 低い打点が適正。山なりで確実に入る安全球。
-      // ゾーンが広く・速度が遅く・散らばりも小さい＝最も浅く入りやすい。
-      underCut: {
-        speed: 10.5, zone: { min: 0.45, ideal: 1.0, max: 3.4 },
-        depthOffset: 3.2,
-        spinKind: "slice", spinMagBase: 1.3, color: "#A78BFA", label: "アンダーカット",
-        sigmaExtra: -0.08, // 散らばりを抑えて入りやすくする
-      },
-      // 攻撃的カット: フラットとアンダーカットの間の、やや低めの打点が適正。速くて鋭く切れる/伸びる攻め球。
-      // 適正ゾーンが狭く散らばりも大きい＝リスク高め。
-      attackCut: {
-        speed: 21.0, zone: { min: 1.35, ideal: 2.0, max: 3.4 },
-        depthOffset: 2.0,
-        spinKind: "slice", spinMagBase: 1.6, color: "#F43F5E", label: "攻撃カット",
-        sigmaExtra: 0.12,  // 攻め球の分、散らばりが大きい
-      },
-    },
-  },
-  // ため（チャージ）: 長いほど鋭い角度を狙える（効果は控えめ）
-  charge: {
-    maxTime: 1.0,     // この秒数押し続けると最大チャージ
-    angleBonus: 0.22, // 最大ためで狙える角度が+22%
-    speedBonus: 0.1,  // 最大ための球速ボーナス（+10%）
-    moveSlow: 0.4,    // ため中のWASD移動の速度倍率
-  },
-  // 着地点カーソル（ため中にマウス/スティックで狙いを自由移動）
-  aim: {
-    cursorSpeed: 9.0,  // カーソル移動速度(m/s)
-    sideMargin: 0.5,   // サイドラインからの内側マージン（狙い自体はコート内）
-    depthMargin: 0.7,  // ベースラインからの内側マージン
-    minDepth: 1.0,     // ネットからの最小距離
-    defaultY: 9.0,     // 未操作時のデフォルト狙い: ミドル深め（ネットからの距離）
-  },
-  // サーブ前のレシーブ準備（準備が整うまでサーブを打てない）
-  serveReady: {
-    stillTime: 0.35, // レシーブ側プレイヤーがこの秒数静止したら準備完了
-    minShow: 0.9,    // 相手サーブの種類表示からトスまでの最低猶予(秒)
-    maxWait: 6.0,    // 準備を待つ最大秒数（過ぎたら相手は打ってくる）
-    aiReady: 0.7,    // AIレシーバーの準備時間（プレイヤーはこれを過ぎるまでトス不可）
-  },
-  // 雁行陣の定位置（コート座標m。後衛はベースライン後方、前衛はネット寄り）
-  //   ベースラインは ±11.885。後衛はその 0.4m 後方に立つのが自然。
-  pos: {
-    backY: 12.3,      // 後衛の定位置（ベースライン後方0.4m）
-    frontY: 2.6,      // 前衛の定位置（ネット前）
-    frontSideX: 1.8,  // 前衛が逆サイドに寄るときのx
-    serveBackY: 0.6,  // サーバーがベースラインの何m後方に立つか
-    serveSideX: 2.6,  // サーブ時のサイド寄りx（やや外側。センターマーク〜サイドの間）
-    receiveBackY: 0.2, // レシーバーがベースラインの何m後方に立つか
-    // ── 確定セオリーの定位置パラメータ ──
-    frontOutsideStep: 0.55, // 前衛: 「相手後衛の打点─自センターマーク」線上から
-                            //   気持ち一歩“外側”へオフセットする量(m)。利き腕の肩が線に乗る程度。
-    frontMirror: 0.5,       // 前衛: 相手後衛の前後動きへ鏡対応する追従率（歩幅の約半分）
-    backCrossBias: 3.9,     // 後衛: クロス展開でアレー内側の線（シングルスサイドライン≒4.1m）付近まで外に立つ。
-                            //   コート中央ではなくクロス側に寄った“残り範囲の真ん中”に立つ。
-    backLobCoverX: 2.3,     // 後衛: クロスへのロブで陣形が崩れたときカバーに動く横位置(m)
-    // ── クロス/ストレート展開の陣形（動的切替）パラメータ ──
-    crossFrontX: 2.3,       // クロス展開: 前衛が立つ「後衛がいない側」のネット前x。後衛のいない半面を分担して守る意識（センターは空けすぎない範囲）
-    straightFrontX: 0.9,    // ストレート展開: 前衛が後衛と同サイドでセンターより内側に立つx（相手打点─自センター線上の内側）
-    straightBackX: 2.3,     // ストレート展開: 後衛がストレート側ラインを担当する横位置x
-    devHysteresis: 0.4,     // 展開判定のヒステリシス（小刻みな切替を防ぐ閾値m）
-    receiveCutAdvanceY: 6.6, // アンダーカット告知時、レシーバーが前に出る到達ライン（ネットからの距離m≒サービスライン付近）
-    receiveOverBackY: 12.3,  // オーバーサーブ告知時、レシーバーが下がって待つy（ベースライン付近）
-  },
-  // 局面間のテンポ（演出の待機時間。短いほど実戦的なテンポになる）
-  tempo: {
-    pointDelay: 900,   // ポイント表示→次サーブまで(ms)
-    gameDelay: 1100,   // ゲーム取得→次ゲームまで(ms)
-    faultDelay: 700,   // フォルト表示→打ち直しまで(ms)
-    serveMsgHide: 850, // サーブ告知メッセージの自動消去まで(ms)
-    rallyMsgHide: 500, // ポーチ/ボレー等のラリー中告知の表示時間(ms)
-  },
-  // 移動の速さ（m/s）
-  move: {
-    playerSpeed: 7.0,   // 操作キャラの足の速さ
-    partnerSpeed: 4.2,  // 味方AIの足の速さ
-    cpuBackSpeed: 3.8,  // 相手後衛の足の速さ（抜けるコースを残す）
-    cpuFrontSpeed: 3.6, // 相手前衛の足の速さ
-    aiSpeed: 4.0,        // moveAutoAI 共通の基本速度（統一AI・観戦モード対応）
-  },
-  // 打点品質 → 角度幅・球速・精度の変換係数
-  contact: {
-    idealLateral: 0.75,  // 体の横この距離(m)が適正打点
-    minLateral: 0.15,    // これ以下は「完全に詰まり」
-    idealZLow: 0.5,      // この高さ範囲が標準打点
-    idealZHigh: 1.3,
-    maxAngle: 4.4,       // 適正打点で狙える左右ターゲットの最大幅(コートx)。ためMAXでサイドライン際
-    pullCrampMin: 0.08,  // 完全詰まり時の引っ張り方向の角度倍率（ほぼ真っ直ぐのみ）
-    flowCrampMin: 0.42,  // 完全詰まり時の流し方向の角度倍率（比較的出しやすい）
-    crampSpeedDrop: 0.3, // 完全詰まり時の球速低下（返すだけの球質）
-    frontYIdeal: 0.35,   // 体より前(ネット寄り)この距離が適正
-    yTolerance: 0.9,     // 前後ズレの許容幅
-    highZBonus: 0.25,    // 高い打点の球速ボーナス（トップ打ちフラットで25m/s程度）
-    lowZLoft: 0.18,      // 低い打点の球速ダウン（すくい上げで弾道が上がる）
-    sigmaBase: 0.35,     // 適正打点の散らばり（狙いがコート内ならほぼ収まる）
-    sigmaBad: 1.6,       // 打点が悪いときに加算される散らばり（ミス率上昇）
-    backhandPower: 0.88, // バック側の威力倍率
-    // 泳ぎ（打点が体から遠すぎる）
-    reachSlack: 0.6,     // ideal+この距離までは泳ぎ扱いにしない(m)
-    reachRange: 0.9,     // そこからこの幅で泳ぎ度が最大になる(m)
-    reachAngleDrop: 0.45, // 泳ぎ最大時の角度倍率低下
-    reachSpeedDrop: 0.2,  // 泳ぎ最大時の球速低下
-    // 前後の打点ズレ → 引っ張り/流しの変化
-    frontPullBoost: 0.3,  // 前すぎ: 引っ張り方向が強くなる
-    frontFlowDrop: 0.5,   // 前すぎ: 流し方向の角度がつかない
-    backFlowBoost: 0.25,  // 後ろ: 流し方向が強くなる
-    backPullDrop: 0.5,    // 後ろ: 引っ張り方向の角度がつかない
-    frontSpeedBoost: 0.06, // 前すぎ: 低弾道で速くなりやすい
-    backSpeedDrop: 0.18,   // 後ろ: 弱い球になりやすい
-    driftFront: 0.6,     // 前すぎ打点で引っ張り側へ流れる量(m)
-    driftBack: 0.5,      // 後ろ打点で流し側へ流れる量(m)
-  },
-  // スマッシュ（ネット前で高い球を上から叩き込む決め球）
-  //   ネット前（netDist以内）で打点が高い（contactZ>=minZ）と自動でスマッシュ判定。
-  //   通常ストロークより速く、角度が鋭く下向きに突き刺さる。
-  smash: {
-    minZ: 1.75,       // この打点高さ(m)以上でスマッシュ成立（高い球＝ロブ等）
-    netDist: 5.0,     // ネットからこの距離(m)以内（前衛域）でのみ成立
-    speed: 30.0,      // スマッシュの球速(m/s)。通常ストロークより速い決め球
-    depthMin: 3.0,    // 着地の最小深さ（ネット際〜サービスライン手前へ鋭く落とす）
-    depthRange: 3.5,  // 着地深さのばらつき幅
-    aiLobShallowY: 7.0, // AI前衛がスマッシュで決めにいく「相手ロブが浅い」着地深さ(ネットから, m)
-  },
-  // 回転によるバウンド後の挙動（spinMagで強調される）
-  //   friction: バウンド時の前方速度の維持率（低い=止まる）
-  //   restitution: 跳ね返り係数（低い=低く滑る）
-  spin: {
-    slice: { friction: 0.52, restitution: 0.30 }, // スライス/カット: 止まる・低く滑る
-    drive: { friction: 0.9,  restitution: 0.58 }, // ドライブ: 順回転でやや高く弾む（高めの打点）
-    flat:  { friction: 0.76, restitution: 0.55 }, // 無回転: 中
-  },
-  // 軌道の自然なブレ（打球時に高さ/横へわずかなランダムを加える）
-  jitter: { z: 0.5, x: 0.25 },
-  // AI制限（前衛がコースを守り、後衛が走って拾う構図を成立させる）
-  ai: {
-    backReactionDelay: 0.3,  // 相手後衛が打球に反応するまでの遅延(秒)
-    backReach: 2.55,         // 後衛の打球リーチ(m)。高く弾む球も拾えるよう広め
-    backChaseSpeed: 1.0,     // 追走速度の倍率（move.cpuBackSpeedに乗る）
-    frontPoachChance: 0.30,         // 前衛がポーチ（邪魔しに行く）確率
-    frontGuardStraightChance: 0.25, // ストレートを守る確率
-    frontMiddleChance: 0.18,        // ミドルを張る確率（残りは定位置）
-    frontVolleyReach: 1.05,  // 守備時のボレーリーチ（明確に届く球だけ拾い、深い球は後衛へ通す）
-    poachReach: 2.0,         // ポーチに出たときのリーチ
-  },
-};
+import {
+  project, unproject, clientToCanvas, clamp01, lerp, roundRect,
+} from "./math.js";
 
-const screens = {
-  ready:  document.getElementById("screen-ready"),
-  game:   document.getElementById("screen-game"),
-  result: document.getElementById("screen-result"),
-};
-
-const startBtn   = document.getElementById("start-btn");
-const retryBtn   = document.getElementById("retry-btn");
-const canvas     = document.getElementById("court");
-const ctx        = canvas.getContext("2d");
-const messageOverlay = document.getElementById("message-overlay");
-const messageText    = document.getElementById("message-text");
-
-const playerScoreEl = document.getElementById("player-score");
-const cpuScoreEl    = document.getElementById("cpu-score");
-const playerGamesEl = document.getElementById("player-games");
-const cpuGamesEl    = document.getElementById("cpu-games");
-const resultTitle   = document.getElementById("result-title");
-const resultDetail  = document.getElementById("result-detail");
-const hintText      = document.getElementById("hint-text");
-const shotControls  = document.getElementById("shot-controls");
-const chargeBtn     = document.getElementById("charge-btn");
-const servePowerControls = document.getElementById("serve-power-controls");
-const serveSpinControls  = document.getElementById("serve-spin-controls");
-const aggressionControls = document.getElementById("aggression-controls");
-const shotSelectControls = document.getElementById("shot-select-controls");
-const moveStick     = document.getElementById("move-stick");
-const moveStickKnob = document.getElementById("move-stick-knob");
-const positionControls  = document.getElementById("position-controls");
-const formationControls = document.getElementById("formation-controls");
-const spectatorToggle   = document.getElementById("spectator-toggle");
-const controlsPanel     = document.getElementById("controls");
-
-const W = 720;
-const H = 1080;
-
-/* ---- 実コート寸法（m） ---- */
-const COURT = {
-  halfW: 5.485,        // ダブルスサイドライン（幅10.97m）
-  singlesHalfW: 4.115, // シングルスサイドライン（幅8.23m）
-  halfL: 11.885,       // ベースライン（全長23.77m）
-  serviceY: 6.40,      // サービスラインはネットから6.40m
-  netH: 1.07,          // ネット高
-};
-
-const G = 9.8; // 重力 m/s^2
-
-/* ---- カメラ（自陣ベースライン後方やや上空からの中継カメラ視点） ----
- * 横長16:9（960×540）想定。自陣ベースラインを画面下部・幅85%、相手ベースラインを
- * 画面上から約18%・幅40%の左右対称台形に投影する。俯角(pitch)を立てすぎず横方向の
- * 位置差がはっきり読めるパラメータ。fov/horizonYは下記の幾何から逆算した固定値。 */
-const CAM = {
-  y: 30.0,       // 自陣ベースライン(11.885)後方のカメラ距離
-  z: 11.0,       // カメラ高さ
-  pitch: 0.62,   // 俯角（縦長用にやや立てる。遠側コートの圧縮を緩和）
-  fov: 1300,     // 焦点距離相当（縦長でコート幅が収まるよう）
-  horizonY: 560, // 投影の縦オフセット（縦長で奥行きを画面に収める）
-  cos: Math.cos(0.62),
-  sin: Math.sin(0.62),
-};
-
-function project(x, y, z) {
-  const dy = CAM.y - y;
-  const dz = z - CAM.z;
-  const depth = dy * CAM.cos - dz * CAM.sin;
-  const up = dy * CAM.sin + dz * CAM.cos;
-  const s = CAM.fov / Math.max(depth, 0.5);
-  return {
-    x: W / 2 + x * s,
-    y: CAM.horizonY - up * s,
-    s: s,          // px/m 換算（奥行きスケール）
-    depth: depth,
-  };
-}
-
-/* 内部解像度(960×540)のスクリーン点 → 地面(z=0)のワールド座標へ逆投影する。
- * project() の幾何を z=0 で解いたもの。マウスが指すコート地点を求めるのに使う。
- *   depth = dy*cos + CAM.z*sin,  up = dy*sin - CAM.z*cos   （dy = CAM.y - y）
- *   sy = horizonY - up*(fov/depth)  を dy について解く。
- * 地平線より上（depth<=0）など解が手前に来ない場合は null を返す。 */
-function unproject(sx, sy) {
-  const k = (CAM.horizonY - sy) / CAM.fov;
-  const denom = CAM.sin - k * CAM.cos;
-  if (Math.abs(denom) < 1e-6) return null; // 地平線方向（交点が無限遠）
-  const dy = CAM.z * (CAM.cos + k * CAM.sin) / denom;
-  const depth = dy * CAM.cos + CAM.z * CAM.sin;
-  if (depth <= 0.5) return null;           // カメラ後方／地平線より上
-  const s = CAM.fov / depth;
-  return { x: (sx - W / 2) / s, y: CAM.y - dy };
-}
-
-/* マウスのクライアント座標(イベントの clientX/Y) を内部解像度のスクリーン座標へ。
- * canvas の実表示サイズと内部960×540のスケール差を換算する。 */
-function clientToCanvas(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return { sx: W / 2, sy: H / 2 };
-  return {
-    sx: (clientX - rect.left) / rect.width * W,
-    sy: (clientY - rect.top) / rect.height * H,
-  };
-}
-
-// マウスが最後に指していたコート地面のワールド座標（canvas外でも直前値を保持）
-const mouseAim = { x: 0, y: -TUNING.aim.defaultY, valid: false };
-
-function updateMouseAimFromEvent(e) {
-  const c = clientToCanvas(e.clientX, e.clientY);
-  const w = unproject(c.sx, c.sy);
-  if (w) { mouseAim.x = w.x; mouseAim.y = w.y; mouseAim.valid = true; }
-}
-
-/* ---- ステータス（育成要素の拡張ポイント） ----
- * 将来の育成システムはこの値を書き換えるだけで効く。
- *   power:   ストロークの球速
- *   serve:   サーブの球速
- *   speed:   走る速さ
- *   reach:   打球判定の広さ
- *   control: 狙いの正確さ（1で誤差最小）
- *   volley:  前衛の反応の良さ
- */
-function makeStats(overrides) {
-  return Object.assign({
-    power: 1.0,
-    serve: 1.0,
-    speed: 1.0,
-    reach: 1.0,
-    control: 1.0,
-    volley: 1.0,
-  }, overrides || {});
-}
-
-const playerStats = {
-  back:  makeStats(),
-  front: makeStats(),
-};
-const cpuStats = {
-  back:  makeStats({ power: 0.95, control: 0.90 }), // 足の制限は TUNING.ai / move.cpuBackSpeed 側で行う
-  front: makeStats({ volley: 0.7 }),
-};
-
-/* ---- 試合状態 ---- */
-const POINT_LABELS = ["0", "1", "2", "3"];
-const POINTS_TO_WIN_GAME = 4;       // 4ポイント先取（3-3はデュース）
-const FINAL_GAME_POINTS = 7;        // ファイナルゲームは7ポイント先取（6-6はデュース）
-const GAMES_TO_WIN_MATCH = 3;       // 5ゲームマッチ・3ゲーム先取（2-2でファイナル）
-
-// state:
-//  ready / serve-stance(トス前) / serve-toss(トス中) /
-//  rally / fault / point / gameset / matchend
-let state = "ready";
-let player = { games: 0, points: 0 };
-let cpu = { games: 0, points: 0 };
-let serveFaults = 0;     // 現在のポイントのフォルト数（0=ファースト、1=セカンド）
-let rafId = null;
-let lastTime = 0;
-let pendingSwing = 0;    // 早めにタップした時の予約スイング（秒）
-let matchTime = 0;       // 経過時間（タイミング計算用）
-
-/* ---- 攻守の割合（相方AIの積極性: 0=守り 〜 1=攻め） ---- */
-// ポイント間で保持。サーブ前フェーズのUIで変更可。観戦モードでは 0.5 固定。
-let partnerAggressiveness = 0.5;
-
-/* ---- サーブ設定（打つ前にパワーと回転量を設定する） ---- */
-// serveType: トスは常に統一トス。打つ瞬間のボタン+Space状態で4種に決まる。
-//   左クリック=flat / 右クリック=slice / Space+左=underCut / Space+右=attackCut
-let serveType = "flat";
+import {
+  screens, startBtn, retryBtn, canvas, ctx, messageOverlay, messageText,
+  playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
+  hintText, shotControls, chargeBtn, servePowerControls, serveSpinControls,
+  aggressionControls, shotSelectControls, moveStick, moveStickKnob,
+  positionControls, formationControls, spectatorToggle, controlsPanel,
+  mouseAim, makeStats, playerStats, cpuStats,
+  state, player, cpu, serveFaults, rafId, lastTime, pendingSwing, matchTime,
+  setState, setServeFaults, incServeFaults, setRafId, setLastTime, setPendingSwing, setMatchTime, addMatchTime,
+  partnerAggressiveness, setPartnerAggressiveness,
+  serveType, setServeType, servePower, serveSpin, setServePower, setServeSpin,
+  serveAimCursor,
+  selectedShot, setSelectedShot,
+  cpuFrontPlan, playerFrontPlan, setCpuFrontPlan, setPlayerFrontPlan,
+  playerPosition, formation, setPlayerPosition, setFormation,
+  spectatorMode, setSpectatorMode,
+  charge, aim, serveReady,
+  receiveDone, setReceiveDone,
+  cpuServePlan, setCpuServePlan,
+  toss, makePlayer,
+  back, front, cpuBack, cpuFront, ball,
+  effects, setEffects,
+  rallyControlled, pointJustServedByFront, cpuJustServedByFront,
+  setRallyControlled, setPointJustServedByFront, setCpuJustServedByFront,
+  receiverSideAssign,
+  aiServePlan, setAiServePlan,
+  lastHitInfo, setLastHitInfo,
+  keysWasd, stick,
+  spaceHeld, setSpaceHeld,
+  ballHittableSince, setBallHittableSince,
+  pendingShot, pendingPower, pendingAimX, pendingAimY,
+  setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
+  development,
+} from "./state.js";
 
 // button(0=左/2=右) と spaceHeld(修飾キー) から4種のサーブタイプを決める。
 // ラリー中の shotFamilyForClick と対称: Space=修飾キー、左右ボタンで系統が変わる。
-function serveTypeForInput(button, space) {
+export function serveTypeForInput(button, space) {
   if (space) return button === 2 ? "attackCut" : "underCut";
   return button === 2 ? "slice" : "flat";
 }
-let servePower = "mid";  // weak / mid / strong
-let serveSpin = "mid";   // weak / mid / strong
-// サーブの狙い（着地点カーソル・ワールド座標）。マウスで対角サービスコート内を指す。
-// 立ち位置＋この狙いで左/中/右を打ち分け、サービスコート外はフォルトになる。
-const serveAimCursor = { x: 0, y: 0, set: false };
 
-/* ---- ストロークの球種（クリックで3系統に集約） ----
- * 球種は shoot / cut / lob の3つ。クリックしたボタンで決まる
- * （左クリック=shoot / 右クリック=cut / Space+クリック=lob）。
- * 内部の5種（flat/drive/slice/drop/lob）の物理はそのまま残し、
- * 打つ瞬間に「打点の高さ」「着地カーソルの深さ」で自動的に振り分ける。
- *   shoot: 高い打点=flat（速く低弾道） / 通常〜低い打点=drive（食い込む）
- *   cut:   着地カーソルが深い=slice（食い込み深い） / 浅い=drop（手前に落とす）
- *   lob:   そのまま lob
- * スマホは下部3ボタンで selectedShot を選択（PCはクリックで都度決まる）。 */
-const SHOT_FAMILY_ORDER = ["shoot", "cut", "lob"];
-let selectedShot = "shoot"; // スマホ用の選択中の「系統」（shoot / cut / lob）。PCの保険スイングにも使用
-
-// シュートで flat に切り替わる打点高さ(m)。標準打点上限(idealZHigh=1.3)付近を境に、
-// それより高ければ速いフラット、通常〜低ければ食い込むドライブ。
-const SHOOT_FLAT_Z = 1.25;
-// カットで slice に切り替わる「狙いの深さ」(ネットからの距離m)。
-// 着地カーソルがこれより手前ならドロップ（止まる）、奥ならスライス（食い込む）。
-// ため量での分岐は廃止し、深さは着地カーソルで連続的に決まる。
-const CUT_SLICE_DEPTH = 4.2;
-
-// 選択中の系統と「打点高さ・狙いの深さ」から内部の5種キーを解決する。
-// aimY は着地点カーソルのワールドy（相手コートは負）。深さ=ネット(0)からの距離。
-function resolveShotKey(family, contactZ, aimY) {
+export function resolveShotKey(family, contactZ, aimY) {
   if (family === "shoot") {
     return (contactZ != null && contactZ >= SHOOT_FLAT_Z) ? "flat" : "drive";
   }
@@ -450,28 +69,14 @@ function resolveShotKey(family, contactZ, aimY) {
 // スマッシュ成立判定: ネット前（前衛域）で打点が高いと、球種選択に関わらず
 // スマッシュ（速く鋭い下向きの決め球）になる。hitter のネットからの距離と
 // 打点高さ contactZ で判定する。
-function isSmashContact(hitter, contactZ) {
+export function isSmashContact(hitter, contactZ) {
   const sm = TUNING.smash;
   const netDist = Math.abs(hitter.y); // ネット(y=0)からの距離
   return contactZ >= sm.minZ && netDist <= sm.netDist;
 }
 
-// 系統ごとの表示メタ（HUD・カーソルの色とラベル）。色はシュート系/カット系/ロブで分ける
-const SHOT_FAMILY_META = {
-  shoot: { label: "シュート", color: "#FB923C" }, // オレンジ系（flat/drive）
-  cut:   { label: "カット",   color: "#38BDF8" }, // ブルー系（slice/drop）
-  lob:   { label: "ロブ",     color: "#FACC15" }, // イエロー
-};
-
-/* ---- 相手前衛の作戦（プレイヤーが打つたびに抽選） ---- */
-// base（センターライン基準の定位置） / poach（邪魔しに行く） /
-// straight（ストレートを守る） / middle（ミドルを張る）
-let cpuFrontPlan = "base";
-// 味方（player側）前衛の作戦。観戦モードでは相手前衛と対称に動かすために使う。
-let playerFrontPlan = "base";
-
 // 前衛の作戦を確率で抽選（両チーム共通）。
-function pickFrontPlan() {
+export function pickFrontPlan() {
   const ai = TUNING.ai;
   const r = Math.random();
   if (r < ai.frontPoachChance) return "poach";
@@ -480,141 +85,26 @@ function pickFrontPlan() {
   return "base";
 }
 
-function clamp01(v) { return Math.max(0, Math.min(1, v)); }
-function lerp(a, b, k) { return a + (b - a) * k; }
-
-/* ---- ポジション・陣形（試合開始前に選択） ---- */
-let playerPosition = "back"; // back（後衛を操作） / front（前衛を操作）
-let formation = "ganko";     // ganko / double-back / double-front
-
-// 観戦モード（AI対AI）: trueのとき、rallyControlled（本来の操作キャラ）も
-// AIが移動・狙い・スイング・サーブまで自走させる。4人全員AIで試合が進む。
-let spectatorMode = false;
-
-// 陣形ごとの定位置（自チームのみ。相手は雁行陣固定）
-const FORMATIONS = {
-  "ganko":        { back: { x: 0,    y: TUNING.pos.backY }, front: { x: TUNING.pos.frontSideX, y: TUNING.pos.frontY } },
-  "double-back":  { back: { x: -2.2, y: TUNING.pos.backY }, front: { x: 2.2, y: TUNING.pos.backY } },
-  "double-front": { back: { x: -2.0, y: 4.2 },             front: { x: 2.0, y: TUNING.pos.frontY } },
-};
-
-/* ---- ため（チャージ）状態 ----
- * 打点ゾーンに入ると自動でため開始。狙いはため中のマウス/スティックで
- * 着地点カーソルを動かして決める。未操作ならデフォルト（ミドル深め）へ打つ。
- * 球種は左クリック=シュート/右クリック=カット/Space+クリック=ロブで決まる。
- * source: "auto"（打点ゾーン自動開始）/ "Space"等（旧経路の後方互換用）。 */
-const charge = {
-  active: false,
-  start: 0,      // ため開始時の matchTime
-  source: null,
-};
-
-/* ---- 着地点カーソル（ワールド座標・相手コート上） ---- */
-const aim = {
-  x: 0,
-  y: -9.0, // ため開始時に TUNING.aim.defaultY でリセットされる
-};
-
-/* ---- サーブ前のレシーブ準備状態 ---- */
-const serveReady = {
-  timer: 0,     // serve-stance 開始からの経過秒
-  still: 0,     // レシーブ側プレイヤーが静止している秒数
-  ready: false, // レシーバー準備完了（CPUはこれを待って打つ／プレイヤーはトス可能になる）
-};
-
-// サーブ後にレシーブ（最初の返球）が済んだか。
-// これが false の間、両チームの前衛はポジション移動・ポーチ判断をしない
-let receiveDone = true;
-
-// CPUサーブの事前プラン（種類を打つ前にプレイヤーへ表示するため先に抽選する）
-let cpuServePlan = null;
-
-function chargeAmount() {
+export function chargeAmount() {
   if (!charge.active) return 0;
   return Math.max(0, Math.min(1, (matchTime - charge.start) / TUNING.charge.maxTime));
 }
-
-/* ---- サーブのトス管理 ---- */
-const TOSS_RISE_TIME = 0.48;  // トスが頂点に達するまでの時間
-const TOSS_HOLD_TIME = 0.85;  // 頂点付近で打てる猶予（これを過ぎると落下してフォルト）
-const toss = {
-  active: false,
-  t: 0,
-  startX: 0,
-  startY: 0,
-  baseZ: 0.9,
-  apexZ: 3.1,
-};
-
-/* ---- 選手 ----
- * facing: -1 = 奥向き（プレイヤー側）, +1 = 手前向き（CPU側）
- * フォアハンド側: プレイヤーは画面右(x+)、CPUは画面左(x-)
- */
-function makePlayer(opts) {
-  return Object.assign({
-    x: 0, y: 0, homeX: 0, homeY: 0,
-    color: "#6366F1", skin: "#F1C7A8", label: "",
-    facing: -1,
-    pose: "idle",      // idle / ready / swing / serve / toss
-    swingSide: "fore", // fore / back
-    swingT: 0,
-    role: "back",      // back / front（その時点でのコート上の役割表示用）
-    stats: makeStats(),
-  }, opts);
+export function updateMouseAimFromEvent(e) {
+  const c = clientToCanvas(e.clientX, e.clientY);
+  const w = unproject(c.sx, c.sy);
+  if (w) { mouseAim.x = w.x; mouseAim.y = w.y; mouseAim.valid = true; }
 }
-
-const back = makePlayer({
-  homeX: 0, homeY: TUNING.pos.backY, color: "#6366F1", label: "あなた", facing: -1,
-  stats: playerStats.back,
-});
-const front = makePlayer({
-  homeX: TUNING.pos.frontSideX, homeY: TUNING.pos.frontY, color: "#A5B4FC", label: "前衛", facing: -1,
-  stats: playerStats.front,
-});
-const cpuBack = makePlayer({
-  homeX: 0, homeY: -TUNING.pos.backY, color: "#1E1B4B", label: "相手後衛", facing: 1,
-  stats: cpuStats.back,
-});
-const cpuFront = makePlayer({
-  homeX: -TUNING.pos.frontSideX, homeY: -TUNING.pos.frontY, color: "#4338CA", label: "相手前衛", facing: 1,
-  stats: cpuStats.front,
-});
-
-const PLAYER_X_LIMIT = 8.0;
-const HIT_REACH = 2.1;      // 後衛の打球判定リーチ（m, 寛容め）
-const CPU_REACH = 2.0;
-const VOLLEY_REACH = 1.7;   // 前衛のボレー判定
-
-/* ---- ボール ---- */
-const ball = {
-  x: 0, y: 12, z: 0.5,
-  vx: 0, vy: 0, vz: 0,
-  bounces: 0,
-  lastHitter: "cpu",  // "player" / "cpu"（チーム単位）
-  serving: false,     // サーブのボール（1バウンド目でイン判定）
-  spin: "flat",       // flat / slice / drive（バウンド後の挙動が変わる）
-  spinMag: 1,         // 回転の強さ（バウンドの変化量を強調）
-  trailColor: "#DFFF4F", // 球種ごとの軌道色（視認性）
-  originX: 0, originY: 12, // 打った位置（前衛AIのコース読みに使う）
-  lastHitTime: 0,     // 打たれた時刻（AI後衛の反応遅延に使う）
-  flashT: 0,
-  trail: [],
-  frontChecked: false,    // プレイヤー前衛のボレー判定を1回だけ行う
-  cpuFrontChecked: false, // CPU前衛のポーチ判定を1回だけ行う
-};
-
-let effects = []; // { type:"ripple"|"text", x,y(ワールド), t, ttl, text, color }
 
 /* ===========================================================
  * 画面・スコア表示
  * =========================================================== */
 
-function showScreen(name) {
+export function showScreen(name) {
   Object.values(screens).forEach((s) => (s.hidden = true));
   screens[name].hidden = false;
 }
 
-function showMessage(text) {
+export function showMessage(text) {
   // インプレー（ラリー）中は画面中央の文字を出さない（ボレー/スマッシュ等の告知を抑制）。
   // ポイント/ゲーム/フォルト等は state が rally 以外になってから呼ばれるので表示される。
   if (state === "rally") return;
@@ -623,7 +113,7 @@ function showMessage(text) {
 }
 
 // 操作パネルの表示切替: serve=サーブ設定（種類/パワー/回転） / rally=球種選択
-function setControlMode(mode) {
+export function setControlMode(mode) {
   const serveMode = mode === "serve";
   servePowerControls.hidden = !serveMode;
   serveSpinControls.hidden = !serveMode;
@@ -635,15 +125,15 @@ function setControlMode(mode) {
   }
 }
 
-function hideMessage() {
+export function hideMessage() {
   messageOverlay.hidden = true;
 }
 
-function isFinalGame() {
+export function isFinalGame() {
   return player.games === GAMES_TO_WIN_MATCH - 1 && cpu.games === GAMES_TO_WIN_MATCH - 1;
 }
 
-function pointLabel(points, opponentPoints) {
+export function pointLabel(points, opponentPoints) {
   if (isFinalGame()) {
     return String(points); // ファイナルゲームは数字表示（7点先取・6-6デュース）
   }
@@ -654,7 +144,7 @@ function pointLabel(points, opponentPoints) {
   return POINT_LABELS[Math.min(points, 3)];
 }
 
-function updateScoreboard() {
+export function updateScoreboard() {
   playerScoreEl.textContent = pointLabel(player.points, cpu.points);
   cpuScoreEl.textContent = pointLabel(cpu.points, player.points);
   playerGamesEl.textContent = player.games;
@@ -681,7 +171,7 @@ function updateScoreboard() {
  * ・対角のサービスコートに入らなければフォルト（2本制）。
  * =========================================================== */
 
-function serverTeamNow() {
+export function serverTeamNow() {
   if (isFinalGame()) {
     const block = Math.floor((player.points + cpu.points) / 2);
     return (block % 2 === 0) ? "player" : "cpu";
@@ -691,7 +181,7 @@ function serverTeamNow() {
 }
 
 // そのチームの中で「2人目のサーバー（前衛側）」が打つ番かどうか
-function serverIsSecondOfPair() {
+export function serverIsSecondOfPair() {
   const block = Math.floor((player.points + cpu.points) / 2);
   if (isFinalGame()) {
     // 2ポイントごとに4人が順に交代: [自1人目, 相1人目, 自2人目, 相2人目] の繰り返し
@@ -706,17 +196,17 @@ function serverIsSecondOfPair() {
 // ファイナルゲームでは「後衛/前衛」の区別自体が薄れるが、
 // 表示・配置の都合上、この関数はサーブする選手が
 // homeで前衛ポジションの選手かどうかを返す。
-function serverIsFrontPlayer() {
+export function serverIsFrontPlayer() {
   return serverIsSecondOfPair();
 }
 
 // ポイント数の合計が偶数なら「サーバーから見て右」、奇数なら左
-function serveFromRight() {
+export function serveFromRight() {
   return (player.points + cpu.points) % 2 === 0;
 }
 
 // サーバーの立ち位置（ベースライン後方0.6m、センターマーク〜サイドラインの間）
-function servePosition(team) {
+export function servePosition(team) {
   const right = serveFromRight();
   const sx = TUNING.pos.serveSideX;
   const y = COURT.halfL + TUNING.pos.serveBackY;
@@ -729,7 +219,7 @@ function servePosition(team) {
 }
 
 // サーブが入るべき対角サービスコート（相手コート側）
-function serviceBox(team) {
+export function serviceBox(team) {
   const right = serveFromRight();
   if (team === "player") {
     // プレイヤーが画面右から打つ → 対角は相手コートの画面左側
@@ -743,7 +233,7 @@ function serviceBox(team) {
 }
 
 // サーブ狙いカーソルを自陣サーバーの対角サービスコート中央へ初期化する
-function resetServeAimCursor() {
+export function resetServeAimCursor() {
   const box = serviceBox("player");
   serveAimCursor.x = (box.x1 + box.x2) / 2;
   serveAimCursor.y = (box.y1 + box.y2) / 2;
@@ -752,7 +242,7 @@ function resetServeAimCursor() {
 
 // サーブ狙いカーソルをサービスコート内（わずかに外まで許容）にクランプする。
 // コート外まで動かせばフォルトになる（立ち位置＋狙いで左/中/右を打ち分ける）。
-function clampServeAimCursor() {
+export function clampServeAimCursor() {
   const box = serviceBox("player");
   const m = 0.6; // サービスライン/センター/サイドから外へ少し出せる余地（フォルト判断の幅）
   serveAimCursor.x = Math.max(box.x1 - m, Math.min(box.x2 + m, serveAimCursor.x));
@@ -762,7 +252,7 @@ function clampServeAimCursor() {
 // 相手（サーバー側）のサーブ種類を返す。CPUサーブは事前抽選 cpuServePlan、
 // 自陣サーブ（自分/相方）はトス→打つ瞬間のクリックで決まるため、
 // レシーブ位置取りの基準としては直前の serveType（デフォルト"flat"）を使う。
-function incomingServeType(receiverTeam) {
+export function incomingServeType(receiverTeam) {
   if (receiverTeam === "player") {
     return cpuServePlan ? cpuServePlan.type : "flat";
   }
@@ -771,7 +261,7 @@ function incomingServeType(receiverTeam) {
 
 // サーブ種類 → レシーバーが前に出るか／下がるか。
 // slice・underCutは浅く落ちる球なので前進、flat・attackCutは速く伸びるので後方で待つ。
-function serveComesShort(type) {
+export function serveComesShort(type) {
   return type === "slice" || type === "underCut";
 }
 
@@ -795,15 +285,11 @@ function serveComesShort(type) {
 
 // チームごと: その担当者が受け持つ自陣サービスコートのx符号（+1=画面右側 / -1=左側）。
 // 「後衛はクロス（自陣デュースサイド）・前衛は逆クロス（自陣アドサイド）」で固定。
-const receiverSideAssign = {
-  player: { back: 1, front: -1 },
-  cpu:    { back: -1, front: 1 },
-};
 
 // レシーブ権の再設定（サーブ権が交代したゲーム開始時に呼ぶ）。
 // 「後衛=クロス/デュースサイド、前衛=逆クロス/アドサイド」で固定のため、
 // 陣形（front.homeX）に関係なく常に同じ値を再設定する。
-function assignReceiverSides() {
+export function assignReceiverSides() {
   receiverSideAssign.player.back = 1;
   receiverSideAssign.player.front = -1;
 
@@ -813,7 +299,7 @@ function assignReceiverSides() {
 
 // このポイントでレシーブするのは、サーブが入るサービスコートの側を
 // 受け持つプレイヤー（その側を1ゲーム通して固定で担当する）。
-function receiverPlayerFor(team) {
+export function receiverPlayerFor(team) {
   // team = レシーブ側チーム。サーブは serviceBox(servingTeam) に入る。
   const servingTeam = team === "player" ? "cpu" : "player";
   const box = serviceBox(servingTeam);
@@ -830,7 +316,7 @@ function receiverPlayerFor(team) {
 //   さらにサーブ種類で前後位置を変える:
 //     アンダーカット告知 → サービスライン付近まで前に出て構える
 //     オーバーサーブ告知 → ベースライン付近まで下がって待つ
-function receivePosition(team) {
+export function receivePosition(team) {
   const box = serviceBox(team === "player" ? "cpu" : "player");
   const cx = (box.x1 + box.x2) / 2; // 対角サービスコートの左右中央
   const type = incomingServeType(team);
@@ -846,19 +332,19 @@ function receivePosition(team) {
  * 試合進行
  * =========================================================== */
 
-function applyFormation() {
+export function applyFormation() {
   const f = FORMATIONS[formation] || FORMATIONS["ganko"];
   back.homeX = f.back.x;  back.homeY = f.back.y;
   front.homeX = f.front.x; front.homeY = f.front.y;
 }
 
-function startMatch() {
+export function startMatch() {
   player.points = 0; player.games = 0;
   cpu.points = 0; cpu.games = 0;
-  serveFaults = 0;
+  setServeFaults(0);
   applyFormation();
   assignReceiverSides();
-  rallyControlled = (playerPosition === "front") ? front : back;
+  setRallyControlled((playerPosition === "front") ? front : back);
   if (controlsPanel) controlsPanel.hidden = spectatorMode;
   if (moveStick) moveStick.hidden = spectatorMode;
   if (spectatorMode) {
@@ -882,16 +368,13 @@ function startMatch() {
 
 // 操作キャラは試合を通じて固定（ポジション選択で決まる）。
 // 相方の番のサーブはAIが自動で打つ。
-let rallyControlled = back;
-let pointJustServedByFront = false;
-let cpuJustServedByFront = false;
 
-function resetPlayersForPoint() {
+export function resetPlayersForPoint() {
   const team = serverTeamNow();
   const frontServes = serverIsFrontPlayer();
   const sp = servePosition(team);
-  pointJustServedByFront = (team === "player" && frontServes);
-  cpuJustServedByFront = (team === "cpu" && frontServes);
+  setPointJustServedByFront((team === "player" && frontServes));
+  setCpuJustServedByFront((team === "cpu" && frontServes));
 
   // 全員いったん定位置へ
   back.x = back.homeX;  back.y = back.homeY;
@@ -950,12 +433,12 @@ function resetPlayersForPoint() {
   ball.spinMag = 1;
   ball.trailColor = "#DFFF4F";
   ball.trail = [];
-  pendingSwing = 0;
+  setPendingSwing(0);
   charge.active = false;
   charge.source = null;
   serveAimCursor.set = false; // サーブ狙いカーソルは初回参照時にサービスコート中央へ
-  cpuFrontPlan = "base";
-  receiveDone = false;
+  setCpuFrontPlan("base");
+  setReceiveDone(false);
   serveReady.timer = 0;
   serveReady.still = 0;
   serveReady.ready = false;
@@ -964,7 +447,7 @@ function resetPlayersForPoint() {
   [back, front, cpuBack, cpuFront].forEach((p) => { p.pose = "idle"; p.swingT = 0; });
 }
 
-function currentServer() {
+export function currentServer() {
   const team = serverTeamNow();
   const frontServes = serverIsFrontPlayer();
   if (team === "player") return frontServes ? front : back;
@@ -972,11 +455,11 @@ function currentServer() {
 }
 
 // プレイヤーチームのサーブで、操作キャラ自身がサーバーかどうか
-function playerIsServer() {
+export function playerIsServer() {
   return serverTeamNow() === "player" && currentServer() === rallyControlled;
 }
 
-function startServe(isFirstPointOfGame) {
+export function startServe(isFirstPointOfGame) {
   hideMessage();
   resetPlayersForPoint();
 
@@ -990,9 +473,9 @@ function startServe(isFirstPointOfGame) {
   const sideText = serveFromRight() ? "右サイド" : "左サイド";
   const serveNoText = serveFaults > 0 ? "セカンドサーブ" : "";
   let who;
-  state = "serve-stance";
+  setState("serve-stance");
   server.pose = "idle";
-  cpuServePlan = null;
+  setCpuServePlan(null);
   if (team === "player") {
     if (playerIsServer() && !spectatorMode) {
       who = "自分のサーブ";
@@ -1008,7 +491,7 @@ function startServe(isFirstPointOfGame) {
     setControlMode("rally");
     // サーブの種類を打つ前に抽選してプレイヤーへ表示する
     // （前進が必要な球種なら前へ詰める、という判断と移動の時間を確保する）
-    cpuServePlan = pickServePlan(serveFaults === 0);
+    setCpuServePlan(pickServePlan(serveFaults === 0));
     hintText.textContent = spectatorMode
       ? "観戦中… 相手チームがサーブする（" + TUNING.serve.types[cpuServePlan.type].label + "）"
       : serveComesShort(cpuServePlan.type)
@@ -1048,11 +531,9 @@ function startServe(isFirstPointOfGame) {
 
 // トスは常に統一トス（base→apex）。打点ゾーンは打つ瞬間のボタンで4種に
 // 振り分けるため、トス自体の高さはサーブ種類に依存しない。
-const TOSS_BASE_Z = 0.9;
-const TOSS_APEX_Z = 3.1;
 
-function startToss(server) {
-  state = "serve-toss";
+export function startToss(server) {
+  setState("serve-toss");
   toss.active = true;
   toss.t = 0;
   toss.startX = server.x;
@@ -1066,14 +547,14 @@ function startToss(server) {
   }
 }
 
-function tossHeight() {
+export function tossHeight() {
   // 放物線でトスの高さを計算（頂点 = apexZ、TOSS_RISE_TIMEで頂点）
   const t = toss.t;
   const riseV = (toss.apexZ - toss.baseZ) / TOSS_RISE_TIME + 0.5 * G * TOSS_RISE_TIME;
   return toss.baseZ + riseV * t - 0.5 * G * t * t;
 }
 
-function updateToss(dt) {
+export function updateToss(dt) {
   if (!toss.active) return;
   toss.t += dt;
   const server = currentServer();
@@ -1096,7 +577,7 @@ function updateToss(dt) {
 }
 
 // トス中の打点品質: 適正高さ(ideal)に近いほど1、ゾーン端で0
-function serveContactQuality(z, zone) {
+export function serveContactQuality(z, zone) {
   if (z >= zone.ideal) {
     return clamp01(1 - (z - zone.ideal) / Math.max(0.05, zone.max - zone.ideal));
   }
@@ -1109,7 +590,7 @@ function serveContactQuality(z, zone) {
 //   serve-stance: どちらのボタン/Space状態でもトス（トスは常に統一トス）
 //   serve-toss:   左クリック=フラット / 右クリック=スライス /
 //                  Space+左クリック=アンダーカット / Space+右クリック=攻撃カット
-function playerServeAction(button) {
+export function playerServeAction(button) {
   if (!playerIsServer() || spectatorMode) return;
   if (state === "serve-stance") {
     // 相手レシーバーの準備が整うまでトスを上げられない
@@ -1125,7 +606,7 @@ function playerServeAction(button) {
     }
     // トスは常に統一トス。4種は打つ瞬間のボタン+Spaceで決まる。
     // serveType はレシーブ位置取りの基準にもなるため、トス開始時にデフォルトへ戻す
-    serveType = "flat";
+    setServeType("flat");
     startToss(currentServer());
     return;
   }
@@ -1135,11 +616,11 @@ function playerServeAction(button) {
   }
 }
 
-function launchPlayerServe(type) {
+export function launchPlayerServe(type) {
   if (state !== "serve-toss" || !playerIsServer() || spectatorMode) return;
   const server = currentServer();
   const z = Math.max(0, tossHeight());
-  serveType = type;
+  setServeType(type);
   const zone = TUNING.serve.types[type].zone;
 
   toss.active = false;
@@ -1152,7 +633,7 @@ function launchPlayerServe(type) {
   }
 
   hideMessage();
-  state = "rally";
+  setState("rally");
   setControlMode("rally");
   hintText.textContent = "WASDで移動・マウスで狙い。打点ゾーンで左クリック=シュート/右クリック=カット/Space+クリック=ロブ";
 
@@ -1171,10 +652,9 @@ function launchPlayerServe(type) {
  * 4種から抽選: ファーストは攻め（flat/slice/attackCut中心）、
  * セカンドは安全寄り（underCut中心）に偏らせる。 */
 
-let aiServePlan = null;
 
 // ファースト/セカンドに応じて4種からサーブプランを抽選する。
-function pickServePlan(first) {
+export function pickServePlan(first) {
   let type;
   if (first) {
     const r = Math.random();
@@ -1195,30 +675,30 @@ function pickServePlan(first) {
   };
 }
 
-function aiStartToss(team) {
+export function aiStartToss(team) {
   if (state !== "serve-stance" || serverTeamNow() !== team) return;
   const server = currentServer();
   // CPUは事前抽選したプラン（プレイヤーに表示済み）をそのまま使う。
   // 相方サーブはここで抽選
-  aiServePlan = (team === "cpu" && cpuServePlan) ? cpuServePlan : pickServePlan(serveFaults === 0);
+  setAiServePlan((team === "cpu" && cpuServePlan) ? cpuServePlan : pickServePlan(serveFaults === 0));
   startToss(server);
   setTimeout(function () {
     if (state === "serve-toss" && serverTeamNow() === team) aiLaunchServe(team);
   }, Math.round(TOSS_RISE_TIME * 1000) + 60);
 }
 
-function aiLaunchServe(team) {
+export function aiLaunchServe(team) {
   if (state !== "serve-toss") return;
   hideMessage();
   toss.active = false;
-  state = "rally";
+  setState("rally");
   hintText.textContent = (team === "cpu")
     ? "レシーブ！ WASD移動・マウスで狙い。左クリック=シュート/右クリック=カット/Space+クリック=ロブ"
     : "ラリー再開。WASD移動・マウスで狙い。左クリック=シュート/右クリック=カット/Space+クリック=ロブ";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "underCut", power: "mid", spin: "mid" };
-  aiServePlan = null;
+  setAiServePlan(null);
   const zone = TUNING.serve.types[plan.type].zone;
   launchServeBall(team, server, server.stats, {
     type: plan.type,
@@ -1233,7 +713,7 @@ function aiLaunchServe(team) {
 
 /* ---- サーブ打球の生成（事前設定のパワー・回転 × 打点品質） ---- */
 
-function launchServeBall(team, server, stats, cfg) {
+export function launchServeBall(team, server, stats, cfg) {
   const s = TUNING.serve;
   const tcfg = s.types[cfg.type] || s.types.flat;
   const box = serviceBox(team);
@@ -1290,12 +770,12 @@ function launchServeBall(team, server, stats, cfg) {
   ball.bounces = 0;
   ball.frontChecked = true;     // サーブには前衛は触らない
   ball.cpuFrontChecked = true;
-  receiveDone = false;          // レシーブが返るまで前衛はポジション移動しない
+  setReceiveDone(false);          // レシーブが返るまで前衛はポジション移動しない
   launchBall(server.x, server.y, fromZ, tx, ty, speed);
 }
 
 /* ---- 物理: ターゲットに1バウンド目が落ちる初速を球速から逆算 ---- */
-function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
+export function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
   const dist = Math.max(1.0, Math.hypot(tx - fromX, ty - fromY));
   const T = dist / speed;
   ball.x = fromX; ball.y = fromY; ball.z = fromZ;
@@ -1312,7 +792,7 @@ function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
 }
 
 // ネット通過時の高さ（届かない場合はnull）
-function netClearance(fromX, fromY, fromZ, tx, ty, speed) {
+export function netClearance(fromX, fromY, fromZ, tx, ty, speed) {
   const dist = Math.max(1.0, Math.hypot(tx - fromX, ty - fromY));
   const T = dist / speed;
   const vy = (ty - fromY) / T;
@@ -1339,16 +819,15 @@ function netClearance(fromX, fromY, fromZ, tx, ty, speed) {
  * ためた時間が長いほど鋭い角度を狙え、球速も少し上がる。
  * =========================================================== */
 
-const IDEAL_HIT_DELAY = 0.14; // ため中の自動スイングが発動する打点タイミング（秒）
 
 // フォア/バック判定: プレイヤー（奥向き）は画面右(x+)がフォア、CPUは画面左(x-)がフォア
-function isBackhandFor(side, hitterX, ballX) {
+export function isBackhandFor(side, hitterX, ballX) {
   if (side === "player") return ballX < hitterX - 0.1;
   return ballX > hitterX + 0.1;
 }
 
 // 狙い（ワールドx）とヒッターの立ち位置から表示用の呼び名を決める
-function courseLabelFor(hitterX, targetX) {
+export function courseLabelFor(hitterX, targetX) {
   const dx = targetX - hitterX;
   if (Math.abs(dx) < 1.2) return "まっすぐ";
   if (Math.abs(hitterX) < 0.6) return dx < 0 ? "左へ！" : "右へ！";
@@ -1357,7 +836,7 @@ function courseLabelFor(hitterX, targetX) {
 }
 
 /* ---- 打点の評価: 横距離・前後・高さ → 角度幅/球速/精度の係数 ---- */
-function evaluateContact(side, hitter, contactZ) {
+export function evaluateContact(side, hitter, contactZ) {
   const c = TUNING.contact;
   const backhand = isBackhandFor(side, hitter.x, ball.x);
   const foreSign = side === "player" ? 1 : -1;       // フォア側のx方向
@@ -1428,9 +907,8 @@ function evaluateContact(side, hitter, contactZ) {
   };
 }
 
-let lastHitInfo = null; // 動作確認用（デバッグフックで参照）
 
-function hitBall(opts) {
+export function hitBall(opts) {
   const side = opts.side;
   const hitter = opts.hitter;
   const stats = hitter.stats;
@@ -1530,18 +1008,18 @@ function hitBall(opts) {
   ball.serving = false;
   ball.frontChecked = (side === "cpu") ? false : true;
   ball.cpuFrontChecked = (side === "player") ? false : true;
-  receiveDone = true; // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
+  setReceiveDone(true); // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
   launchBall(hitter.x, hitter.y, fromZ, tx, ty, speed);
 
   // 打球を受ける側チームの前衛に作戦を抽選する（両チーム対称）。
   // player が打つ→相手(cpu)前衛、cpu が打つ→味方(player)前衛。
   // 味方前衛のポーチは観戦モードでのみ自走（人間モードは partnerAggressiveness 側で制御）。
   if (side === "player") {
-    cpuFrontPlan = pickFrontPlan();
-    playerFrontPlan = "base";
+    setCpuFrontPlan(pickFrontPlan());
+    setPlayerFrontPlan("base");
   } else {
-    cpuFrontPlan = "base";
-    playerFrontPlan = spectatorMode ? pickFrontPlan() : "base";
+    setCpuFrontPlan("base");
+    setPlayerFrontPlan(spectatorMode ? pickFrontPlan() : "base");
   }
 
   startSwing(hitter, backhand ? "back" : "fore");
@@ -1556,13 +1034,13 @@ function hitBall(opts) {
     });
   }
 
-  lastHitInfo = {
+  setLastHitInfo({
     side: side, shot: shotKey, course: opts.course != null ? opts.course : null,
     aimX: opts.aimX != null ? opts.aimX : null,
     aimY: opts.aimY != null ? opts.aimY : null,
     tx: tx, ty: ty, speed: speed, byPlayer: !!opts.byPlayer,
     contact: ev,
-  };
+  });
 
   // 打球時のフィードバック表示（コース + 打点品質）
   if (opts.byPlayer && side === "player" && hitter === rallyControlled) {
@@ -1589,7 +1067,7 @@ function hitBall(opts) {
   }
 }
 
-function startSwing(p, side) {
+export function startSwing(p, side) {
   p.pose = "swing";
   p.swingSide = side;
   p.swingT = 0.32;
@@ -1599,11 +1077,11 @@ function startSwing(p, side) {
  * 得点処理
  * =========================================================== */
 
-function awardPoint(toPlayer, reason) {
+export function awardPoint(toPlayer, reason) {
   if (state === "point" || state === "gameset" || state === "matchend") return;
   if (toPlayer) player.points++;
   else cpu.points++;
-  serveFaults = 0;
+  setServeFaults(0);
 
   const winPts = isFinalGame() ? FINAL_GAME_POINTS : POINTS_TO_WIN_GAME;
   const pP = player.points;
@@ -1612,14 +1090,14 @@ function awardPoint(toPlayer, reason) {
   if (cP >= winPts && cP - pP >= 2) { finishGame(false); return; }
 
   updateScoreboard();
-  state = "point";
+  setState("point");
   showMessage((toPlayer ? "ポイント！" : "相手のポイント") + (reason ? "\n" + reason : ""));
   setTimeout(function () {
     if (state === "point") startServe(false);
   }, TUNING.tempo.pointDelay);
 }
 
-function finishGame(playerWon) {
+export function finishGame(playerWon) {
   if (playerWon) player.games++;
   else cpu.games++;
   player.points = 0;
@@ -1627,7 +1105,7 @@ function finishGame(playerWon) {
   updateScoreboard();
 
   if (player.games >= GAMES_TO_WIN_MATCH || cpu.games >= GAMES_TO_WIN_MATCH) {
-    state = "matchend";
+    setState("matchend");
     showMessage(playerWon ? "ゲーム獲得！" : "ゲームを落とした");
     setTimeout(function () {
       endMatch(player.games >= GAMES_TO_WIN_MATCH);
@@ -1635,7 +1113,7 @@ function finishGame(playerWon) {
     return;
   }
 
-  state = "gameset";
+  setState("gameset");
   // ゲームをまたぐ（サーブ権交代）→ レシーブ受け持ちを再設定
   assignReceiverSides();
   showMessage(playerWon ? "ゲーム獲得！" : "ゲームを落とした");
@@ -1644,9 +1122,9 @@ function finishGame(playerWon) {
   }, TUNING.tempo.gameDelay);
 }
 
-function endMatch(playerWon) {
+export function endMatch(playerWon) {
   cancelAnimationFrame(rafId);
-  rafId = null;
+  setRafId(null);
   showScreen("result");
   if (playerWon) {
     resultTitle.textContent = "WIN!";
@@ -1663,15 +1141,15 @@ function endMatch(playerWon) {
  * サーブのフォルト処理（2本制）
  * =========================================================== */
 
-function serveFault(reason) {
-  serveFaults++;
+export function serveFault(reason) {
+  incServeFaults();
   if (serveFaults >= 2) {
     const receiverIsPlayer = serverTeamNow() === "cpu";
-    serveFaults = 0;
+    setServeFaults(0);
     awardPoint(receiverIsPlayer, "ダブルフォルト");
     return;
   }
-  state = "fault";
+  setState("fault");
   showMessage("フォルト\n" + reason);
   setTimeout(function () {
     if (state === "fault") startServe(false);
@@ -1684,18 +1162,17 @@ function serveFault(reason) {
 
 // オンザライン（ライン上）はイン。ボール半径＋ライン幅相当の余裕を持たせ、
 // 着地点がラインに掛かっていればインと判定する。
-const LINE_IN_MARGIN = 0.12;
 
-function insideCourt(x, y) {
+export function insideCourt(x, y) {
   return Math.abs(x) <= COURT.halfW + LINE_IN_MARGIN && Math.abs(y) <= COURT.halfL + LINE_IN_MARGIN;
 }
 
-function insideBox(x, y, box) {
+export function insideBox(x, y, box) {
   var m = LINE_IN_MARGIN;
   return x >= box.x1 - m && x <= box.x2 + m && y >= box.y1 - m && y <= box.y2 + m;
 }
 
-function handleBounce() {
+export function handleBounce() {
   ball.z = 0;
   ball.bounces++;
   ball.flashT = 0.22;
@@ -1735,7 +1212,7 @@ function handleBounce() {
   ball.vy *= friction;
 }
 
-function checkNet(prevY) {
+export function checkNet(prevY) {
   if ((prevY > 0) === (ball.y > 0)) return false;
   // ネット面通過時の高さを補間
   const t = prevY / (prevY - ball.y);
@@ -1753,7 +1230,7 @@ function checkNet(prevY) {
 }
 
 // 現在の速度から次の着地点を予測
-function predictLanding() {
+export function predictLanding() {
   const vz = ball.vz;
   const z = Math.max(ball.z, 0);
   const t = (vz + Math.sqrt(vz * vz + 2 * G * z)) / G;
@@ -1765,7 +1242,7 @@ function predictLanding() {
 // 速さから予測する。後衛はこの点に構えると最も高い打点で打てる。
 //   slice: 反発小→低く滑る（頂点は低く、手前寄り）
 //   drive/flat: 反発大→高く弾む（頂点が高く、奥寄り）
-function predictHighContact() {
+export function predictHighContact() {
   const L = predictLanding();
   if (!L) return null;
   const vzLand = Math.abs(ball.vz - G * L.t); // 着地時の落下速度の大きさ
@@ -1799,29 +1276,23 @@ function predictHighContact() {
  * - スマホ: スティックで移動（ため/トス中はスティックが狙いへ切替）、下部ボタンタップでスイング
  * =========================================================== */
 
-const keysWasd  = { left: false, right: false, up: false, down: false };
-const stick = { active: false, dx: 0, dy: 0 }; // dx,dy は -1..1（dy: 正=自陣ベースライン方向）
 
 // Space = ロブ修飾キー。押している間にクリックすると球種がロブになる。
-let spaceHeld = false;
 
 // 自由移動できるy方向の範囲（操作キャラクターの役割に応じて変える）
-const Y_RANGE_BACK  = { min: 1.0, max: 17.0 };
-const Y_RANGE_FRONT = { min: 0.6, max: 17.0 };
 
-let ballHittableSince = -1; // matchTime。-1なら現在は打てる状態でない
 
-function setControlledX(p, x) {
+export function setControlledX(p, x) {
   p.x = Math.max(-PLAYER_X_LIMIT, Math.min(PLAYER_X_LIMIT, x));
 }
 
-function setControlledY(p, y) {
+export function setControlledY(p, y) {
   const range = (p === front) ? Y_RANGE_FRONT : Y_RANGE_BACK;
   p.y = Math.max(range.min, Math.min(range.max, y));
 }
 
 // 後方互換用（デバッグフックから使用）
-function setBackX(x) { setControlledX(back, x); }
+export function setBackX(x) { setControlledX(back, x); }
 
 document.addEventListener("keydown", function (e) {
   // 矢印キーは廃止（移動=WASD・狙い=マウスへ移行）。誤スクロール防止のため無害化のみ。
@@ -1842,7 +1313,7 @@ document.addEventListener("keydown", function (e) {
   // 押している間にクリックすると球種がロブになる。
   if (e.code === "Space") {
     e.preventDefault();
-    spaceHeld = true;
+    setSpaceHeld(true);
   }
 });
 
@@ -1851,14 +1322,14 @@ document.addEventListener("keyup", function (e) {
   if (e.code === "KeyD") keysWasd.right = false;
   if (e.code === "KeyW") keysWasd.up = false;
   if (e.code === "KeyS") keysWasd.down = false;
-  if (e.code === "Space") spaceHeld = false;
+  if (e.code === "Space") setSpaceHeld(false);
 });
 
 /* ---- ため（チャージ）の開始・自動化 ---- */
 
 // 打点ゾーンに入ったら自動でため開始（離して打つ操作は廃止）。
 // WASD移動はため中も常に有効（操作ロックなし）。
-function startCharge(source) {
+export function startCharge(source) {
   if (state !== "rally" || charge.active) return;
   charge.active = true;
   charge.start = matchTime;
@@ -1872,7 +1343,7 @@ function startCharge(source) {
 // マウスボタン（左=シュート/右=カット、Space併用でロブ）でスイング。
 // ・打点ゾーン内（canPlayerHit）なら即スイング
 // ・ゾーン手前で早めにクリックしたときは予約スイング（ゾーン到達時に同じ球種で自動スイング）
-function attemptSwing(family) {
+export function attemptSwing(family) {
   if (state !== "rally" || spectatorMode) return;
   const power = chargeAmount();
   if (canPlayerHit(rallyControlled)) {
@@ -1880,23 +1351,23 @@ function attemptSwing(family) {
     charge.source = null;
     playerHitBall(family, power, aim.x, aim.y);
   } else if (ballIncomingToPlayer() && distToBall(rallyControlled) < 6.0) {
-    pendingSwing = 0.35;
-    pendingShot = family;
-    pendingPower = power;
-    pendingAimX = aim.x;
-    pendingAimY = aim.y;
+    setPendingSwing(0.35);
+    setPendingShot(family);
+    setPendingPower(power);
+    setPendingAimX(aim.x);
+    setPendingAimY(aim.y);
   }
 }
 
-function shotFamilyForClick(button) {
+export function shotFamilyForClick(button) {
   if (spaceHeld) return "lob";
   return button === 2 ? "cut" : "shoot";
 }
 
 /* ---- 球種の選択（スマホ専用の3ボタンUI。PCはマウスボタンで決まる） ---- */
-function selectShot(family) {
+export function selectShot(family) {
   if (SHOT_FAMILY_ORDER.indexOf(family) < 0) return;
-  selectedShot = family;
+  setSelectedShot(family);
   if (shotSelectControls) {
     shotSelectControls.querySelectorAll(".ctrl-btn").forEach(function (b) {
       b.classList.toggle("is-active", b.dataset.shotsel === family);
@@ -1907,7 +1378,7 @@ function selectShot(family) {
 // 狙いの更新: PCはマウスが指すコート地点へ着地カーソルを追従、スマホはスティック。
 //   ラリーのため中 → aim（相手コート内にクランプ）
 //   サーブのトス前/トス中 → serveAimCursor（対角サービスコート±わずかにクランプ）
-function updateAimInputs(dt) {
+export function updateAimInputs(dt) {
   if (spectatorMode) return; // 観戦モードはマウス/スティック入力を使わない（全員AI）
   if (state === "rally" && charge.active) {
     const c = TUNING.aim;
@@ -1962,14 +1433,14 @@ shotSelectControls.addEventListener("click", function (e) {
 servePowerControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
   if (!btn) return;
-  servePower = btn.dataset.servePower;
+  setServePower(btn.dataset.servePower);
   setActiveButton(servePowerControls, btn);
 });
 
 serveSpinControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
   if (!btn) return;
-  serveSpin = btn.dataset.serveSpin;
+  setServeSpin(btn.dataset.serveSpin);
   setActiveButton(serveSpinControls, btn);
 });
 
@@ -1978,7 +1449,7 @@ if (aggressionControls) {
   aggressionControls.addEventListener("click", function (e) {
     const btn = e.target.closest(".ctrl-btn");
     if (!btn || btn.dataset.aggression == null) return;
-    partnerAggressiveness = parseFloat(btn.dataset.aggression);
+    setPartnerAggressiveness(parseFloat(btn.dataset.aggression));
     setActiveButton(aggressionControls, btn);
   });
 }
@@ -1987,14 +1458,14 @@ if (aggressionControls) {
 positionControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
   if (!btn) return;
-  playerPosition = btn.dataset.position;
+  setPlayerPosition(btn.dataset.position);
   setActiveButton(positionControls, btn);
 });
 
 formationControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
   if (!btn) return;
-  formation = btn.dataset.formation;
+  setFormation(btn.dataset.formation);
   setActiveButton(formationControls, btn);
 });
 
@@ -2002,7 +1473,7 @@ formationControls.addEventListener("click", function (e) {
 // （rallyControlledもAIが操作するため、操作キャラの選択は表示上の意味のみ）。
 if (spectatorToggle) {
   spectatorToggle.addEventListener("click", function () {
-    spectatorMode = !spectatorMode;
+    setSpectatorMode(!spectatorMode);
     spectatorToggle.dataset.spectator = spectatorMode ? "on" : "off";
     spectatorToggle.classList.toggle("is-active", spectatorMode);
     spectatorToggle.textContent = spectatorMode ? "観戦モード: ON（4人ともAI）" : "観戦: AI対AI に切替";
@@ -2013,14 +1484,14 @@ if (spectatorToggle) {
   });
 }
 
-function setActiveButton(group, activeBtn) {
+export function setActiveButton(group, activeBtn) {
   group.querySelectorAll(".ctrl-btn").forEach((b) => b.classList.remove("is-active"));
   activeBtn.classList.add("is-active");
 }
 
 /* ---- バーチャルスティック（スマホの移動操作） ---- */
 
-function stickVectorFromEvent(e) {
+export function stickVectorFromEvent(e) {
   const rect = moveStick.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -2032,7 +1503,7 @@ function stickVectorFromEvent(e) {
   return { dx: dx, dy: dy };
 }
 
-function updateStickKnob(dx, dy) {
+export function updateStickKnob(dx, dy) {
   const radius = moveStick.getBoundingClientRect().width / 2;
   moveStickKnob.style.transform =
     "translate(" + (dx * radius * 0.55) + "px, " + (dy * radius * 0.55) + "px)";
@@ -2094,20 +1565,16 @@ canvas.addEventListener("pointerdown", function (e) {
   attemptSwing(shotFamilyForClick(button));
 });
 
-let pendingShot = "drive";
-let pendingPower = 0;
-let pendingAimX = 0;
-let pendingAimY = -9.0;
 
-function ballIncomingToPlayer() {
+export function ballIncomingToPlayer() {
   return ball.lastHitter === "cpu" && ball.bounces < 2;
 }
 
-function distToBall(p) {
+export function distToBall(p) {
   return Math.hypot(ball.x - p.x, ball.y - p.y);
 }
 
-function canPlayerHit(p) {
+export function canPlayerHit(p) {
   const cp = p || rallyControlled;
   if (!ballIncomingToPlayer()) return false;
   if (ball.serving && ball.bounces === 0) return false; // サーブはワンバウンドしてから
@@ -2115,8 +1582,8 @@ function canPlayerHit(p) {
   return distToBall(cp) <= HIT_REACH * cp.stats.reach;
 }
 
-function playerHitBall(shot, chargePower, aimX, aimY) {
-  pendingSwing = 0;
+export function playerHitBall(shot, chargePower, aimX, aimY) {
+  setPendingSwing(0);
   hitBall({
     hitter: rallyControlled,
     side: "player",
@@ -2127,7 +1594,7 @@ function playerHitBall(shot, chargePower, aimX, aimY) {
     contactZ: ball.z,
     byPlayer: true, // 実際の打点位置で角度幅・球速・ミス率を決める
   });
-  ballHittableSince = -1;
+  setBallHittableSince(-1);
 }
 
 /* ===========================================================
@@ -2140,7 +1607,7 @@ function playerHitBall(shot, chargePower, aimX, aimY) {
  * 定位置で動き、操作キャラが届かないボールを返球する。
  * =========================================================== */
 
-function moveToward(p, tx, ty, maxDist) {
+export function moveToward(p, tx, ty, maxDist) {
   const dx = tx - p.x;
   const dy = ty - p.y;
   const d = Math.hypot(dx, dy);
@@ -2151,7 +1618,7 @@ function moveToward(p, tx, ty, maxDist) {
 }
 
 // 相方がいま「自分のサーブを打つ前」かどうか（AIサーバーは動かさない）
-function partnerIsServingNow(partner) {
+export function partnerIsServingNow(partner) {
   return (state === "serve-stance" || state === "serve-toss") &&
     serverTeamNow() === "player" && currentServer() === partner;
 }
@@ -2160,7 +1627,7 @@ function partnerIsServingNow(partner) {
 // side: "player"(自陣y+側) または "cpu"(自陣y-側)
 // p: 移動させる選手オブジェクト
 // ロール（前衛/後衛）は side に応じた myFront/myBack で判定する。
-function moveAutoAI(p, side, dt) {
+export function moveAutoAI(p, side, dt) {
   const speed = TUNING.move.aiSpeed * p.stats.speed;
   const myFront  = side === "player" ? front    : cpuFront;
   const myBack   = side === "player" ? back     : cpuBack;
@@ -2343,14 +1810,14 @@ function moveAutoAI(p, side, dt) {
 }
 
 // 味方パートナー（プレイヤーが操作していない方）の自動移動
-function updatePartner(dt) {
+export function updatePartner(dt) {
   const partner = (rallyControlled === back) ? front : back;
   moveAutoAI(partner, "player", dt);
 }
 
 // 観戦モード: 操作キャラ（rallyControlled）もAIが移動させる。
 // 共通移動ロジック（moveAutoAI）を自チーム（player側）として適用する。
-function updateRallyControlledAI(dt) {
+export function updateRallyControlledAI(dt) {
   if (!spectatorMode) return;
   moveAutoAI(rallyControlled, "player", dt);
 }
@@ -2359,7 +1826,7 @@ function updateRallyControlledAI(dt) {
 // CPU後衛のコース選択（cpuTryReturn）と同じ考え方で、相手前衛のいない側を
 // 主体に狙う。球種はシュート/カット/ロブを状況に応じて振り分け、
 // 着地点(aimX/aimY)に変換してbyPlayer経路（hitBall）へ渡す。
-function chooseAiHitForRallyControlled() {
+export function chooseAiHitForRallyControlled() {
   const cp = rallyControlled;
 
   // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す。
@@ -2391,7 +1858,7 @@ function chooseAiHitForRallyControlled() {
   return { shot: family, aimX: aimX, aimY: aimY };
 }
 
-function updateCpuBack(dt) {
+export function updateCpuBack(dt) {
   moveAutoAI(cpuBack, "cpu", dt);
 }
 
@@ -2401,7 +1868,7 @@ function updateCpuBack(dt) {
 // （サーブ含む）は飛んでいる球ではなく相手後衛の現在位置を基準にする。
 // （飛行中の自球xを使うと、球がコートを横切るのに合わせて展開判定/定位置が
 //   左右に振れてしまうため）。
-function opponentHitterPos(side) {
+export function opponentHitterPos(side) {
   if (side === "cpu") {
     // CPUから見た相手＝プレイヤー側
     if (ball.lastHitter === "player") return { x: ball.originX, y: ball.originY };
@@ -2430,12 +1897,12 @@ function opponentHitterPos(side) {
  * =========================================================== */
 
 // その展開判定で使う「自陣後衛」のx符号（操作キャラ/AIに関わらずコート上の後衛役）
-function ownBackPlayer(side) { return side === "cpu" ? cpuBack : back; }
-function ownFrontPlayer(side) { return side === "cpu" ? cpuFront : front; }
+export function ownBackPlayer(side) { return side === "cpu" ? cpuBack : back; }
+export function ownFrontPlayer(side) { return side === "cpu" ? cpuFront : front; }
 
 // 相手の打球がこちらのどのサイドへ向かっているか（着地予測のx符号）。
 // 予測できないときは相手打点の符号で代用する。
-function incomingSideSign(side) {
+export function incomingSideSign(side) {
   const incoming = (side === "cpu") ? (ball.lastHitter === "player")
                                     : (ball.lastHitter === "cpu");
   if (incoming) {
@@ -2448,16 +1915,15 @@ function incomingSideSign(side) {
 }
 
 // 展開状態（チームごと）。"cross" / "straight"。ヒステリシス付きで更新する。
-const development = { player: "cross", cpu: "cross" };
 
 // side から見た「相手後衛」
-function oppBackPlayer(side) { return side === "cpu" ? back : cpuBack; }
+export function oppBackPlayer(side) { return side === "cpu" ? back : cpuBack; }
 
 // 展開判定: 自陣後衛と相手後衛のx符号（コート左右サイド）を比較する。
 //   後衛同士が対角（逆サイド）= クロス展開
 //   後衛同士が同サイド         = ストレート展開
 //   ヒステリシス: 両後衛ともセンター付近（|x| < devHysteresis）のとき切替保留。
-function updateDevelopment(side) {
+export function updateDevelopment(side) {
   const ownBackP = ownBackPlayer(side);
   const oppBackP = oppBackPlayer(side);
   const ownBackSign = ownBackP.x >= 0 ? 1 : -1;
@@ -2476,7 +1942,7 @@ function updateDevelopment(side) {
 // 展開に応じた前衛のx定位置。
 //   クロス: 後衛がいない側（-ownBackSign）のネット前。|x|<=3.0 でクランプ。
 //   ストレート: 後衛と同サイドでセンターより内側（線上の内側）。
-function frontDevX(side) {
+export function frontDevX(side) {
   const dev = updateDevelopment(side);
   const ownBackSign = ownBackPlayer(side).x >= 0 ? 1 : -1;
   if (dev === "straight") {
@@ -2494,7 +1960,7 @@ function frontDevX(side) {
 // 展開に応じた後衛のx定位置。
 //   クロス: クロス側の残り範囲の真ん中（既存セオリー）。
 //   ストレート: ストレート側ライン担当（同サイドのライン際寄り）。
-function backDevX(side) {
+export function backDevX(side) {
   const dev = updateDevelopment(side);
   if (dev === "straight") {
     const ownBackSign = ownBackPlayer(side).x >= 0 ? 1 : -1;
@@ -2508,7 +1974,7 @@ function backDevX(side) {
 //   気持ち一歩“外側”（利き腕の肩がその線に乗る程度）に立つ。
 //   side が守るコートのセンターマークは ±COURT.halfL。
 //   frontY はその前衛のネット前定位置y。
-function frontTheoryX(side, frontY) {
+export function frontTheoryX(side, frontY) {
   const op = opponentHitterPos(side);
   const cy = side === "cpu" ? -COURT.halfL : COURT.halfL; // 自コートのセンターマーク
   let lineX = 0;
@@ -2530,7 +1996,7 @@ function frontTheoryX(side, frontY) {
 //   残ったクロス側範囲の“真ん中”（コート中央ではなくクロス側寄り）に立つ。
 //   ストレート＝相手後衛の打点と同じ側、クロス＝その反対側。
 //   side="cpu" なら自コートは y<0、相手＝プレイヤー。
-function backCrossX(side) {
+export function backCrossX(side) {
   const op = opponentHitterPos(side);
   // 相手から見たストレートは相手打点と同じ符号側。クロスはその反対。
   // こちら（守る側）の自陣では、相手打点 op.x の符号と反対側がクロス。
@@ -2540,14 +2006,14 @@ function backCrossX(side) {
 }
 
 // 互換: 旧名（CPU前衛のセオリーX）
-function cpuFrontTheoryX() {
+export function cpuFrontTheoryX() {
   return frontTheoryX("cpu", cpuFront.homeY);
 }
 
 // 前衛が相手後衛の前後の動きへ「鏡のように」対応した定位置y（歩幅の約半分追従）。
 //   side="cpu": 自陣はy<0、相手後衛はy>0側。相手が前に詰める(yが小さく)ほど前衛も前へ。
 //   homeY からの追従量は frontMirror で制御。
-function frontMirrorY(side, homeY) {
+export function frontMirrorY(side, homeY) {
   const op = opponentHitterPos(side);
   const baseDepth = COURT.halfL; // 相手後衛の標準の深さ（ベースライン）
   const opDepth = Math.abs(op.y); // 相手後衛のネットからの距離
@@ -2559,7 +2025,7 @@ function frontMirrorY(side, homeY) {
   return sign * newAbs;
 }
 
-function updateCpuFront(dt) {
+export function updateCpuFront(dt) {
   moveAutoAI(cpuFront, "cpu", dt);
 }
 
@@ -2567,7 +2033,7 @@ function updateCpuFront(dt) {
 // AI打球の共通ロジック（playerチーム・cpuチーム共通）。
 // side: "player"(自陣y+側) または "cpu"(自陣y-側)
 // 両チームで同一ロジック・同一パラメータ。対称性から自動的に互角になる。
-function tryReturnAI(side) {
+export function tryReturnAI(side) {
   const opponentSide = side === "player" ? "cpu" : "player";
   if (ball.lastHitter !== opponentSide || state !== "rally") return;
 
@@ -2691,8 +2157,8 @@ function tryReturnAI(side) {
 }
 
 // 後方互換ラッパー（メインループから呼ばれる）
-function cpuTryReturn() { tryReturnAI("cpu"); }
-function partnerTryReturn() {
+export function cpuTryReturn() { tryReturnAI("cpu"); }
+export function partnerTryReturn() {
   if (!spectatorMode) {
     // 人間モード: 操作キャラが届かないときだけパートナーが返す
     const partner = (rallyControlled === back) ? front : back;
@@ -2809,7 +2275,7 @@ function partnerTryReturn() {
 // 現在の移動入力を得る。確定操作: 移動=WASD（左手）専用。
 // 狙い（着地カーソル/サーブ狙い）はマウスが担当し、移動とは独立。
 // スマホはスティックで移動（ため中/トス中はスティックが狙いへ切り替わる）。
-function inputVector() {
+export function inputVector() {
   const aiming = (charge.active && state === "rally") || state === "serve-toss";
   let dx = 0, dy = 0;
   if (keysWasd.left) dx -= 1;
@@ -2827,7 +2293,7 @@ function inputVector() {
 
 // サーブ前、サーバー以外の3人（両前衛・レシーバー）が所定位置へ到達したか。
 // 各自の目標は AI 移動と同じ定位置。サーバーは既にサーブ位置にいる前提。
-function nonServerPlayersInPosition() {
+export function nonServerPlayersInPosition() {
   const server = currentServer();
   const tol = 0.6; // 到達とみなす許容距離(m)
   // 人が操作するキャラ（rallyControlled）は自由移動なので位置判定の対象外。
@@ -2856,7 +2322,7 @@ function nonServerPlayersInPosition() {
  *   レシーブ側の静止/猶予を満たして初めて serveReady.ready=true。
  * CPUサーブ: プレイヤー（レシーブ側）が静止し全員整列するまで打たない。
  * 相方サーブ / プレイヤーサーブ: AIの準備時間（aiReady）＋全員整列を待つ。 */
-function updateServeReady(dt) {
+export function updateServeReady(dt) {
   const cfg = TUNING.serveReady;
   serveReady.timer += dt;
   if (serveReady.ready) return;
@@ -2888,8 +2354,8 @@ function updateServeReady(dt) {
   }
 }
 
-function update(dt) {
-  matchTime += dt;
+export function update(dt) {
+  addMatchTime(dt);
 
   // サーブの構え中: レシーバーの準備が整ってからサーブが始まる
   if (state === "serve-stance") {
@@ -2936,10 +2402,10 @@ function update(dt) {
     }
   });
 
-  effects = effects.filter(function (ef) {
+  setEffects(effects.filter(function (ef) {
     ef.t += dt;
     return ef.t < ef.ttl;
-  });
+  }));
   if (ball.flashT > 0) ball.flashT -= dt;
 
   // トスの更新（プレイヤー・CPU共通）
@@ -2979,7 +2445,7 @@ function update(dt) {
 
   // 予約スイング（アシスト）: 早めに離した直後の猶予内にゾーンへ入れば打つ
   if (pendingSwing > 0) {
-    pendingSwing -= dt;
+    setPendingSwing(pendingSwing - dt);
     if (canPlayerHit(rallyControlled)) playerHitBall(pendingShot, pendingPower, pendingAimX, pendingAimY);
   }
 
@@ -2988,14 +2454,14 @@ function update(dt) {
   const cp = rallyControlled;
   const hittable = canPlayerHit(cp);
   if (hittable) {
-    if (ballHittableSince < 0) ballHittableSince = matchTime;
+    if (ballHittableSince < 0) setBallHittableSince(matchTime);
     if (cp.pose !== "swing") {
       cp.pose = "ready";
       cp.swingSide = isBackhandFor("player", cp.x, ball.x) ? "back" : "fore";
     }
     if (!charge.active) startCharge("auto");
   } else {
-    ballHittableSince = -1;
+    setBallHittableSince(-1);
     if (cp.pose === "ready") cp.pose = "idle";
     if (charge.active && charge.source === "auto") {
       charge.active = false;
@@ -3014,7 +2480,7 @@ function update(dt) {
     if (spectatorMode) {
       // 観戦モード: 打球は tryReturnAI("player") に委譲（partnerTryReturn経由）
       // ここでは charge のみリセットして二重打球を防ぐ
-      ballHittableSince = -1;
+      setBallHittableSince(-1);
     } else {
       playerHitBall(selectedShot, power, aim.x, aim.y);
     }
@@ -3037,7 +2503,7 @@ function update(dt) {
  * 描画
  * =========================================================== */
 
-function draw() {
+export function draw() {
   ctx.clearRect(0, 0, W, H);
   drawBackground();
   drawCourt();
@@ -3065,7 +2531,7 @@ function draw() {
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
-function drawControlLegend() {
+export function drawControlLegend() {
   if (state === "ready" || spectatorMode) return;
   const isServer = (state === "serve-stance" || state === "serve-toss") && playerIsServer();
 
@@ -3095,7 +2561,7 @@ function drawControlLegend() {
   const bx = W - boxW - 6, by = 6;
 
   ctx.fillStyle = "rgba(30,27,75,0.55)";
-  roundRect(bx, by, boxW, boxH, 6);
+  roundRect(ctx, bx, by, boxW, boxH, 6);
   ctx.fill();
 
   lines.forEach(function (l, i) {
@@ -3115,7 +2581,7 @@ function drawControlLegend() {
 }
 
 /* ---- 相手サーブの種類を打つ前に表示（サーバー頭上のバッジ） ---- */
-function drawServeTypeBadge() {
+export function drawServeTypeBadge() {
   if (state !== "serve-stance" && state !== "serve-toss") return;
   if (serverTeamNow() !== "cpu" || !cpuServePlan) return;
   const server = currentServer();
@@ -3126,7 +2592,7 @@ function drawServeTypeBadge() {
   ctx.font = "700 11px sans-serif";
   const tw = ctx.measureText(text).width;
   ctx.fillStyle = "rgba(30,27,75,0.78)";
-  roundRect(p.x - tw / 2 - 7, p.y - 12, tw + 14, 18, 6);
+  roundRect(ctx, p.x - tw / 2 - 7, p.y - 12, tw + 14, 18, 6);
   ctx.fill();
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.2;
@@ -3137,14 +2603,14 @@ function drawServeTypeBadge() {
 }
 
 /* ---- HUD: サーブ設定 / レシーバー準備状態を常時表示 ---- */
-function drawHud() {
+export function drawHud() {
   if (state === "ready") return;
 
   if ((state === "serve-stance" || state === "serve-toss") && playerIsServer() && !spectatorMode) {
     const lv = { weak: "弱", mid: "中", strong: "強" };
     const text = "パワー" + (lv[servePower] || "中") + "  回転" + (lv[serveSpin] || "中");
     ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(6, 6, 140, 22, 6);
+    roundRect(ctx, 6, 6, 140, 22, 6);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = "700 10px sans-serif";
@@ -3163,7 +2629,7 @@ function drawHud() {
     const tcfg = TUNING.serve.types[cpuServePlan.type];
     const text = "相手サーブ: " + tcfg.label;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(6, 6, 158, 22, 6);
+    roundRect(ctx, 6, 6, 158, 22, 6);
     ctx.fill();
     ctx.fillStyle = tcfg.color;
     ctx.font = "700 11px sans-serif";
@@ -3178,7 +2644,7 @@ function drawHud() {
   }
 }
 
-function drawBackground() {
+export function drawBackground() {
   // 中継映像風の背景: 相手ベースラインの上端あたり（画面上から約18%）を地平線として
   // 上に空＋スタンドの帯、下にコート周りの芝を敷く。
   const horizon = project(0, -COURT.halfL, 0).y; // 奥ベースラインの画面Y（≈99）
@@ -3204,7 +2670,7 @@ function drawBackground() {
   ctx.fillRect(0, horizon, W, H - horizon);
 }
 
-function courtLine(x1, y1, x2, y2) {
+export function courtLine(x1, y1, x2, y2) {
   const a = project(x1, y1, 0);
   const b = project(x2, y2, 0);
   ctx.beginPath();
@@ -3213,7 +2679,7 @@ function courtLine(x1, y1, x2, y2) {
   ctx.stroke();
 }
 
-function drawCourt() {
+export function drawCourt() {
   const c = COURT;
 
   const p1 = project(-c.halfW, -c.halfL, 0);
@@ -3270,7 +2736,7 @@ function drawCourt() {
   }
 }
 
-function drawNet() {
+export function drawNet() {
   const c = COURT;
   const postL0 = project(-c.halfW - 0.3, 0, 0);
   const postL1 = project(-c.halfW - 0.3, 0, c.netH);
@@ -3308,7 +2774,7 @@ function drawNet() {
   ctx.beginPath(); ctx.moveTo(postR0.x, postR0.y); ctx.lineTo(postR1.x, postR1.y); ctx.stroke();
 }
 
-function drawLandingMarker() {
+export function drawLandingMarker() {
   if (state !== "rally") return;
   if (ball.bounces >= 2) return;
   const landing = predictLanding();
@@ -3339,7 +2805,7 @@ function drawLandingMarker() {
 }
 
 /* ---- 着地点カーソル（ため中の狙い・ゴーストリング） ---- */
-function drawAimCursor() {
+export function drawAimCursor() {
   if (spectatorMode) return; // 観戦モードはマウス操作の狙いカーソルを表示しない
   // サーブの構え/トス中（自分がサーバー）は、対角サービスコート上に狙いカーソルを表示
   if ((state === "serve-stance" || state === "serve-toss") && playerIsServer() && serveAimCursor.set) {
@@ -3372,7 +2838,7 @@ function drawAimCursor() {
 }
 
 /* ---- サーブの狙いカーソル（対角サービスコート上） ---- */
-function drawServeAimCursor() {
+export function drawServeAimCursor() {
   const box = serviceBox("player");
   const inBox = serveAimCursor.x >= box.x1 && serveAimCursor.x <= box.x2 &&
     serveAimCursor.y >= box.y1 && serveAimCursor.y <= box.y2;
@@ -3392,7 +2858,7 @@ function drawServeAimCursor() {
   ctx.stroke();
 }
 
-function drawGroundEffects() {
+export function drawGroundEffects() {
   effects.forEach(function (ef) {
     if (ef.type !== "ripple") return;
     const p = project(ef.x, ef.y, 0);
@@ -3406,7 +2872,7 @@ function drawGroundEffects() {
   });
 }
 
-function drawTextEffects() {
+export function drawTextEffects() {
   effects.forEach(function (ef) {
     if (ef.type !== "text") return;
     const k = ef.t / ef.ttl;
@@ -3423,7 +2889,7 @@ function drawTextEffects() {
   });
 }
 
-function drawTimingGauge() {
+export function drawTimingGauge() {
   if (state === "serve-toss" && toss.active && playerIsServer() && !spectatorMode) {
     // サーブの打点ゲージ（縦）: トスは統一トスのため、4種すべての
     // 適正打点を表示する。左=フラット/右=スライス/Space+左=アンダーカット/Space+右=攻撃カット
@@ -3434,7 +2900,7 @@ function drawTimingGauge() {
 
     // ゲージの土台（無彩色の細いトラックのみ。色付きゾーンは出さない）
     ctx.fillStyle = "rgba(255,255,255,0.22)";
-    roundRect(gx, gTop, gw, gBottom - gTop, 4);
+    roundRect(ctx, gx, gTop, gw, gBottom - gTop, 4);
     ctx.fill();
 
     // 適正打点マーカー: 4種それぞれの ideal を1本ずつ表示
@@ -3480,11 +2946,11 @@ function drawTimingGauge() {
     const gw = Math.min(420, W - 120);
     const gx = (W - gw) / 2, gy = H - 18, gh = 8;
     ctx.fillStyle = "rgba(255,255,255,0.35)";
-    roundRect(gx, gy, gw, gh, 4);
+    roundRect(ctx, gx, gy, gw, gh, 4);
     ctx.fill();
 
     ctx.fillStyle = k >= 1 ? "#F59E0B" : "#6366F1";
-    roundRect(gx, gy, Math.max(6, gw * k), gh, 4);
+    roundRect(ctx, gx, gy, Math.max(6, gw * k), gh, 4);
     ctx.fill();
 
     ctx.font = "700 11px sans-serif";
@@ -3496,7 +2962,7 @@ function drawTimingGauge() {
 }
 
 /* ---- ボール ---- */
-function drawBallShadow() {
+export function drawBallShadow() {
   if (state === "ready") return;
   const p = project(ball.x, ball.y, 0);
   const r = Math.max(2, 0.16 * p.s * (1 + Math.min(ball.z, 4) * 0.12));
@@ -3506,7 +2972,7 @@ function drawBallShadow() {
   ctx.fill();
 }
 
-function drawBall() {
+export function drawBall() {
   // 軌道（トレイル）は球種ごとの色で描く（視認性向上）
   ball.trail.forEach(function (tp, i) {
     const p = project(tp.x, tp.y, tp.z);
@@ -3550,7 +3016,7 @@ function drawBall() {
 }
 
 /* ---- 簡易人型の選手 ---- */
-function drawHumanoid(pl) {
+export function drawHumanoid(pl) {
   const g = project(pl.x, pl.y, 0);
   const s = g.s; // px/m
 
@@ -3583,7 +3049,7 @@ function drawHumanoid(pl) {
 
   ctx.fillStyle = pl.color;
   const tw = 0.46 * s;
-  roundRect(-tw / 2, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
+  roundRect(ctx, -tw / 2, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
   ctx.fill();
 
   const shoulderY = torsoTop + 0.12 * s;
@@ -3674,7 +3140,7 @@ function drawHumanoid(pl) {
     const bw = 0.95 * s;
     const by = headCy - headR - 0.62 * s;
     ctx.fillStyle = color;
-    roundRect(-bw / 2, by, bw, 0.36 * s, 0.1 * s);
+    roundRect(ctx, -bw / 2, by, bw, 0.36 * s, 0.1 * s);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = "700 " + Math.max(8, 0.24 * s) + "px sans-serif";
@@ -3694,46 +3160,33 @@ function drawHumanoid(pl) {
   }
 }
 
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
-}
 
 /* ===========================================================
  * ループ・画面遷移
  * =========================================================== */
 
-function loop(now) {
+export function loop(now) {
   const dt = Math.min((now - lastTime) / 1000 || 0.016, 0.05);
-  lastTime = now;
+  setLastTime(now);
   update(dt);
   draw();
-  rafId = requestAnimationFrame(loop);
+  setRafId(requestAnimationFrame(loop));
 }
 
 startBtn.addEventListener("click", function () {
   startMatch();
   if (!rafId) {
-    lastTime = performance.now();
-    matchTime = 0;
-    rafId = requestAnimationFrame(loop);
+    setLastTime(performance.now());
+    setMatchTime(0);
+    setRafId(requestAnimationFrame(loop));
   }
 });
 
 retryBtn.addEventListener("click", function () {
   showScreen("ready");
   cancelAnimationFrame(rafId);
-  rafId = null;
-  state = "ready";
+  setRafId(null);
+  setState("ready");
 });
 
 draw();
