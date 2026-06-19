@@ -171,9 +171,9 @@ main {
  * （width:100%固定だと高さ制限時に横へ間延びして台形が歪むため使わない） */
 .court-wrap {
   position: relative;
-  /* 利用可能な高さから幅を逆算（16/9倍）し、画面幅も超えない範囲で最大化 */
-  width: min(960px, 100%, calc((100dvh - 240px) * 16 / 9));
-  aspect-ratio: 16 / 9;
+  /* 縦長(2:3)。利用可能な高さから幅を逆算（2/3倍）し、画面幅も超えない範囲で最大化 */
+  width: min(540px, 100%, calc((100dvh - 300px) * 2 / 3));
+  aspect-ratio: 2 / 3;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(30, 27, 75, .12);
@@ -327,16 +327,15 @@ footer a:hover { color: var(--color-text); }
   h1 { font-size: 16px; }
   .kicker { margin-bottom: 2px; }
   .screen { gap: 8px; }
-  .court-wrap { width: min(960px, 100%, calc((100dvh - 180px) * 16 / 9)); }
+  .court-wrap { width: min(540px, 100%, calc((100dvh - 220px) * 2 / 3)); }
   footer { padding-top: 4px; }
 }
 
-/* 縦画面（スマホ）は当面fallback。崩れない最低限の調整のみ。
- * canvasは16:9固定なので、縦持ちでもwrapは16:9を保ち（潰さない）、操作系は縦積みに戻す。 */
+/* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作系は縦積み。 */
 @media (orientation: portrait) {
-  #app { max-width: 480px; }
+  #app { max-width: 560px; }
   .court-wrap {
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 2 / 3;
     max-height: none;
   }
   .controls { flex-direction: column; flex-wrap: nowrap; }
