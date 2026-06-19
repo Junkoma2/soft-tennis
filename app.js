@@ -288,11 +288,11 @@ const G = 9.8; // 重力 m/s^2
 const CAM = {
   y: 30.0,       // 自陣ベースライン(11.885)後方のカメラ距離
   z: 11.0,       // カメラ高さ
-  pitch: 0.5,    // 俯角（縦長キャンバス用にやや立てる）
+  pitch: 0.62,   // 俯角（縦長用にやや立てる。遠側コートの圧縮を緩和）
   fov: 1300,     // 焦点距離相当（縦長でコート幅が収まるよう）
-  horizonY: 610, // 投影の縦オフセット（縦長で奥行きを画面に収める）
-  cos: Math.cos(0.5),
-  sin: Math.sin(0.5),
+  horizonY: 560, // 投影の縦オフセット（縦長で奥行きを画面に収める）
+  cos: Math.cos(0.62),
+  sin: Math.sin(0.62),
 };
 
 function project(x, y, z) {
@@ -615,6 +615,9 @@ function showScreen(name) {
 }
 
 function showMessage(text) {
+  // インプレー（ラリー）中は画面中央の文字を出さない（ボレー/スマッシュ等の告知を抑制）。
+  // ポイント/ゲーム/フォルト等は state が rally 以外になってから呼ばれるので表示される。
+  if (state === "rally") return;
   messageText.textContent = text;
   messageOverlay.hidden = false;
 }
@@ -1509,7 +1512,7 @@ function hitBall(opts) {
   speed = Math.max(4.0, speed);
 
   // ネット越えアシスト: 打点が悪いときは補正なし（ネットのリスクが残る）
-  const assist = shotKey !== "drop" && (!ev ? !backhand : ev.overall > 0.35);
+  const assist = shotKey !== "drop" && (!ev ? true : ev.overall > 0.35);
   if (assist) {
     let tries = 0;
     while (tries < 5) {
