@@ -215,16 +215,16 @@ const TUNING = {
   //   friction: バウンド時の前方速度の維持率（低い=止まる）
   //   restitution: 跳ね返り係数（低い=低く滑る）
   spin: {
-    slice: { friction: 0.52, restitution: 0.26 }, // スライス/カット: 止まる・低く滑る
-    drive: { friction: 0.9,  restitution: 0.45 }, // ドライブ: 相手へ食い込む
-    flat:  { friction: 0.76, restitution: 0.52 }, // 無回転（ロブなど）
+    slice: { friction: 0.52, restitution: 0.30 }, // スライス/カット: 止まる・低く滑る
+    drive: { friction: 0.9,  restitution: 0.58 }, // ドライブ: 順回転でやや高く弾む（高めの打点）
+    flat:  { friction: 0.76, restitution: 0.55 }, // 無回転: 中
   },
   // 軌道の自然なブレ（打球時に高さ/横へわずかなランダムを加える）
   jitter: { z: 0.5, x: 0.25 },
   // AI制限（前衛がコースを守り、後衛が走って拾う構図を成立させる）
   ai: {
     backReactionDelay: 0.3,  // 相手後衛が打球に反応するまでの遅延(秒)
-    backReach: 2.2,          // 後衛の打球リーチ(m)。観戦モードでのラリー成立に必要な広さ
+    backReach: 2.55,         // 後衛の打球リーチ(m)。高く弾む球も拾えるよう広め
     backChaseSpeed: 1.0,     // 追走速度の倍率（move.cpuBackSpeedに乗る）
     frontPoachChance: 0.30,         // 前衛がポーチ（邪魔しに行く）確率
     frontGuardStraightChance: 0.25, // ストレートを守る確率
@@ -1717,7 +1717,7 @@ function handleBounce() {
   const flat = TUNING.spin.flat;
   const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
   const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
-  const restitution = Math.max(0.12, Math.min(0.6, flat.restitution + (sp.restitution - flat.restitution) * k));
+  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
   ball.vz = -ball.vz * restitution;
   ball.vx *= friction;
   ball.vy *= friction;
@@ -1747,6 +1747,29 @@ function predictLanding() {
   const t = (vz + Math.sqrt(vz * vz + 2 * G * z)) / G;
   if (!isFinite(t) || t <= 0) return null;
   return { x: ball.x + ball.vx * t, y: ball.y + ball.vy * t, t: t };
+}
+
+// バウンド後にボールが最も高くなる点（頂点）を、球種(スピン)の反発・摩擦と
+// 速さから予測する。後衛はこの点に構えると最も高い打点で打てる。
+//   slice: 反発小→低く滑る（頂点は低く、手前寄り）
+//   drive/flat: 反発大→高く弾む（頂点が高く、奥寄り）
+function predictHighContact() {
+  const L = predictLanding();
+  if (!L) return null;
+  const vzLand = Math.abs(ball.vz - G * L.t); // 着地時の落下速度の大きさ
+  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
+  const flat = TUNING.spin.flat;
+  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
+  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
+  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
+  const vzOut = vzLand * restitution;       // バウンド後の上向き初速
+  const tApex = vzOut / G;                   // 頂点までの時間
+  return {
+    x: L.x + ball.vx * friction * tApex,     // 頂点でのx（横速度はバウンドで friction 倍）
+    y: L.y + ball.vy * friction * tApex,     // 頂点でのy
+    apexZ: (vzOut * vzOut) / (2 * G),         // バウンド頂点の高さ
+    landing: L,
+  };
 }
 
 /* ===========================================================
@@ -2170,12 +2193,12 @@ function moveAutoAI(p, side, dt) {
         ty = homeSign > 0 ? Math.min(COURT.halfL + 3.0, Math.max(4.0, ball.y + ball.vy * 0.2))
                           : Math.max(-(COURT.halfL + 3.0), Math.min(-4.0, ball.y + ball.vy * 0.2));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
-        // サーブもバウンド地点へ走り込まず、軌道の延長線上の奥で待って迎える。
-        const behindDepth = Math.min(COURT.halfL + 2.6, Math.abs(landing.y) + Math.max(0.4, Math.abs(ball.vy) * 0.2));
-        const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
-        const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
-        tx = ball.x + ball.vx * Math.max(0, tProj);
-        ty = targetDepth;
+        // サーブも球種・速さからバウンド後の頂点を予測し、そこで高い打点で迎える。
+        const hc = predictHighContact();
+        let depth = hc ? Math.abs(hc.y) : Math.abs(landing.y) + 0.6;
+        depth = Math.min(COURT.halfL + 2.6, Math.max(Math.abs(landing.y), depth));
+        tx = Math.max(-COURT.halfW, Math.min(COURT.halfW, hc ? hc.x : landing.x));
+        ty = homeSign > 0 ? depth : -depth;
       }
       moveToward(p, tx, ty, speed * 1.25 * dt);
       p.x = Math.max(-5.2, Math.min(5.2, p.x));
@@ -2281,20 +2304,17 @@ function moveAutoAI(p, side, dt) {
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
-        // バウンド地点へ走り込まない。バウンド後もボールは奥へ進むので、その到達点
-        // （= バウンド地点 + バウンド後の進み）まで見越して、打球の「軌道の延長線上」の
-        // 奥に構える。これで打つ瞬間に後退せず、前へ踏み込みながら高い打点で打てる。
-        // 浮き球（ロブ）は高く弾んで更に奥まで来るので、最低オフセット・係数を大きめに。
-        // ロブはストレートロブも後衛の責任範囲なので横はサイドライン付近まで許容する。
-        const minBehind = isLob ? 0.8 : 0.4;
-        const vyCoef = isLob ? 0.3 : 0.2;
-        const behindDepth = Math.min(COURT.halfL + 2.6, Math.abs(landing.y) + Math.max(minBehind, Math.abs(ball.vy) * vyCoef));
-        const targetDepth = homeSign > 0 ? behindDepth : -behindDepth;
-        const tProj = (Math.abs(ball.vy) > 0.1) ? (targetDepth - ball.y) / ball.vy : 0;
-        let txProj = ball.x + ball.vx * Math.max(0, tProj);
+        // 球種(スピン)の反発・摩擦と速さから「バウンド後にボールが最も高くなる点(頂点)」を
+        // 予測し、そこに構える。これでバウンド地点へ走り込まず、最も高い打点で打てる。
+        // ドライブ/フラットは高く弾むので奥め、スライスは低く滑るので手前、と自動で変わる。
+        const hc = predictHighContact();
+        let depth = hc ? Math.abs(hc.y) : Math.abs(landing.y) + 0.6;
+        // バウンドより手前にはしない・コート後方に出すぎない
+        depth = Math.min(COURT.halfL + 2.6, Math.max(Math.abs(landing.y), depth));
+        const hx = hc ? hc.x : landing.x;
         const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
-        tx = Math.max(-xCap, Math.min(xCap, txProj));
-        ty = targetDepth;
+        tx = Math.max(-xCap, Math.min(xCap, hx));
+        ty = homeSign > 0 ? depth : -depth;
       }
       moveToward(myBack, tx, ty, speed * 1.2 * dt);
     } else if (state === "rally" && myJustServedByFront) {
