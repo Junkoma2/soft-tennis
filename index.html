@@ -27,7 +27,7 @@
         <p class="description">
           ダブルスのソフトテニス対戦です。ポジションと陣形を選び、ためて打ち分けましょう。<br />
           <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。<br />
-          操作しない相方はAIが動かします。
+          操作しない相方はAIが動かします。「観戦: AI対AI に切替」を選ぶと4人全員AIが操作し、観戦だけで試合が進みます。
         </p>
         <div class="control-group" id="position-controls">
           <span class="control-label">ポジション</span>
@@ -40,13 +40,18 @@
           <button class="ctrl-btn" data-formation="double-back" type="button">ダブル後衛</button>
           <button class="ctrl-btn" data-formation="double-front" type="button">ダブル前衛</button>
         </div>
+        <div class="control-group" id="spectator-controls">
+          <span class="control-label">モード</span>
+          <button class="ctrl-btn" id="spectator-toggle" data-spectator="off" type="button">観戦: AI対AI に切替</button>
+        </div>
         <div class="rules">
           <p><strong>移動</strong>　<strong>WASD（左手）</strong>（スマホ：左下スティック）。打点ゾーン中も移動できます</p>
           <p><strong>狙い</strong>　<strong>マウス（右手）</strong>。コート上でマウスを動かすと、マウスが指す地点へ着地点カーソルが追従します。ため中もサーブ時もマウスで狙います</p>
           <p><strong>打つ</strong>　ボールが打点ゾーンに入ると自動で「ため」が始まります。<strong>左クリック=シュート（フラット/ドライブ）、右クリック=カット（スライス/ドロップ）、Spaceを押しながらクリック=ロブ</strong>でその場でスイング（未操作ならミドル深めへ自動で打つ）</p>
           <p><strong>球種</strong>　シュートは<strong>高いとフラット・低いとドライブ</strong>、カットは<strong>深いとスライス・浅いとドロップ</strong>に変化</p>
           <p><strong>スマッシュ</strong>　ネット前で高い球（ロブ等）を捉えると<strong>自動でスマッシュ</strong>（速く鋭く叩き込む決め球）になります</p>
-          <p><strong>サーブ</strong>　パワー・回転を選ぶ → <strong>マウスで対角サービスコート内の狙う場所</strong>を指す → 左クリックでトス → 適正打点で<strong>左クリック=フラット、右クリック=スライス、Space+左クリック=アンダーカット（セカンド向け安全球）、Space+右クリック=攻撃的カット（速くて鋭いが難しい）</strong>。コート外狙いはフォルト。相手のサーブは種類が打つ前に表示されます</p>
+          <p><strong>サーブ</strong>　パワー・回転・攻守を選ぶ → <strong>マウスで対角サービスコート内の狙う場所</strong>を指す → 左クリックでトス → 適正打点で<strong>左クリック=フラット、右クリック=スライス、Space+左クリック=アンダーカット（セカンド向け安全球）、Space+右クリック=攻撃的カット（速くて鋭いが難しい）</strong>。コート外狙いはフォルト。相手のサーブは種類が打つ前に表示されます</p>
+          <p><strong>攻守</strong>　相方AIの積極性。後衛を操作するとき=相方前衛のポーチ頻度と動き出しを制御。前衛を操作するとき=相方後衛のストレート/抜きコース選択を制御。値はポイント間で保持されます</p>
           <p>カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ。細かい操作は試合中のヒントで案内します</p>
         </div>
         <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
@@ -70,7 +75,7 @@
         </div>
 
         <div class="court-wrap">
-          <canvas id="court" width="960" height="540"></canvas>
+          <canvas id="court" width="720" height="1080"></canvas>
           <div id="message-overlay" class="message-overlay" hidden>
             <p id="message-text"></p>
           </div>
@@ -79,7 +84,7 @@
           </div>
         </div>
 
-        <div class="controls">
+        <div class="controls" id="controls">
           <div class="control-group" id="serve-power-controls" hidden>
             <span class="control-label">パワー</span>
             <button class="ctrl-btn" data-serve-power="weak" type="button">弱</button>
@@ -91,6 +96,14 @@
             <button class="ctrl-btn" data-serve-spin="weak" type="button">弱</button>
             <button class="ctrl-btn is-active" data-serve-spin="mid" type="button">中</button>
             <button class="ctrl-btn" data-serve-spin="strong" type="button">強</button>
+          </div>
+          <div class="control-group" id="aggression-controls" hidden>
+            <span class="control-label">攻守</span>
+            <button class="ctrl-btn" data-aggression="0" type="button">守り</button>
+            <button class="ctrl-btn" data-aggression="0.25" type="button">やや守</button>
+            <button class="ctrl-btn is-active" data-aggression="0.5" type="button">中</button>
+            <button class="ctrl-btn" data-aggression="0.75" type="button">やや攻</button>
+            <button class="ctrl-btn" data-aggression="1" type="button">攻め</button>
           </div>
           <div class="control-group" id="shot-select-controls">
             <span class="control-label">球種（スマホ）</span>
@@ -120,7 +133,7 @@
     </footer>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="main.js"></script>
   <script src="version.js"></script>
 </body>
 </html>
