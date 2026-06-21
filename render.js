@@ -165,29 +165,26 @@ export function drawHud() {
 }
 
 export function drawBackground() {
-  // 中継映像風の背景: 相手ベースラインの上端あたり（画面上から約18%）を地平線として
-  // 上に空＋スタンドの帯、下にコート周りの芝を敷く。
-  const horizon = project(0, -COURT.halfL, 0).y; // 奥ベースラインの画面Y（≈99）
+  // 中継映像風の背景: 奥ベースラインのさらに外側（バックランオフ）まで芝を伸ばし、
+  // その先（地平線）に空を置く。ランオフ＝コート外の余白で、壁のような帯は作らない。
+  const RUNOFF = 6.4; // ITF推奨の後方余白相当（m）
+  const skylineY = project(0, -(COURT.halfL + RUNOFF), 0).y; // 地平線の画面Y（奥ベースラインより上）
 
   // 空グラデーション（上部）
-  const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+  const sky = ctx.createLinearGradient(0, 0, 0, skylineY);
   sky.addColorStop(0, "#BFD9F2");
   sky.addColorStop(1, "#E8F1FA");
   ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, horizon);
+  ctx.fillRect(0, 0, W, skylineY);
 
-  // スタンドを示す濃緑の帯＋等間隔の縦リブ（観客席の質感）
-  const standH = 30;
-  ctx.fillStyle = "#14532D";
-  ctx.fillRect(0, horizon - standH, W, standH);
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  for (let i = 0; i < 30; i++) {
-    ctx.fillRect(i * (W / 30), horizon - standH, 1.5, standH);
-  }
-
-  // コート外周（芝/サーフェスの地色）
+  // コート外周（芝/サーフェスの地色）: 地平線からランオフを含めて下まで一面に敷く
   ctx.fillStyle = "#1f7a3f";
-  ctx.fillRect(0, horizon, W, H - horizon);
+  ctx.fillRect(0, skylineY, W, H - skylineY);
+
+  // 地平線にごく控えめなフェード（壁ではなく境界の馴染ませ程度）
+  const fadeH = 4;
+  ctx.fillStyle = "rgba(0,0,0,0.06)";
+  ctx.fillRect(0, skylineY, W, fadeH);
 }
 
 export function courtLine(x1, y1, x2, y2) {
