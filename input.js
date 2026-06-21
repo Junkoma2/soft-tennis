@@ -1,5 +1,5 @@
 import {
-  TUNING, COURT,
+  TUNING, COURT, FORMATIONS,
   PLAYER_X_LIMIT, Y_RANGE_BACK, Y_RANGE_FRONT, HIT_REACH, SHOT_FAMILY_ORDER,
 } from "./config.js";
 
@@ -10,9 +10,9 @@ import {
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
   serveAimCursor, chargeBtn, servePowerControls, serveSpinControls,
   setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
-  setPlayerPosition, formationControls, setFormation,
+  setPlayerPosition, formationControls, setFormation, formation,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
-  playerPicker, pickerPlayerBack, pickerPlayerFront, playerPosition,
+  playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
 } from "./state.js";
@@ -227,6 +227,7 @@ formationControls.addEventListener("click", function (e) {
   if (!btn) return;
   setFormation(btn.dataset.formation);
   setActiveButton(formationControls, btn);
+  updatePickerPositions();
 });
 
 // 操作方法（入力デバイス）の選択。デフォルトはswipe（マウス追従の狙いを無効化し、
@@ -245,6 +246,36 @@ if (inputModeControls) {
  * YOUは自チーム内で常に最大1人（片方をYOUにすると他方は自動でAI）。
  * 両方AIなら観戦モード（spectatorMode=true）。
  * 相手チーム（奥）のマーカーは常にAI・タップ不可。 */
+// ワールド座標(m)→ミニコート上の位置(%)へマッピング。
+// x: -halfW..halfW を 8%..92% に、自陣y(0..halfL)を 50%..92%、
+// 相手陣y(0..-halfL)を 50%..8% に対応させる（ネット=50%、コート外周に余白を残す）。
+function worldXToPercent(x) {
+  const t = (x + COURT.halfW) / (2 * COURT.halfW);
+  return 16 + Math.max(0, Math.min(1, t)) * 68;
+}
+function worldYToPercent(y) {
+  const t = Math.max(0, Math.min(1, Math.abs(y) / COURT.halfL));
+  const span = 50 - 16; // ネット(50%)からベースライン(16or84%)までの距離
+  return y >= 0 ? 50 + t * span : 50 - t * span;
+}
+
+// 陣形(formation)に応じて、開始画面ミニコートの4マーカーを定位置へ再配置する。
+// 自チームは config.js の FORMATIONS（選んだ陣形）、相手は雁行陣固定（FORMATIONSの
+// 値をx反転・y反転して対称配置）。
+function updatePickerPositions() {
+  const f = FORMATIONS[formation] || FORMATIONS["ganko"];
+  const oppo = FORMATIONS["ganko"];
+  const place = (el, x, y) => {
+    if (!el) return;
+    el.style.left = worldXToPercent(x) + "%";
+    el.style.top = worldYToPercent(y) + "%";
+  };
+  place(pickerPlayerBack, f.back.x, f.back.y);
+  place(pickerPlayerFront, f.front.x, f.front.y);
+  place(pickerCpuBack, -oppo.back.x, -oppo.back.y);
+  place(pickerCpuFront, -oppo.front.x, -oppo.front.y);
+}
+
 function updatePickerUi() {
   const youIsBack = !spectatorMode && playerPosition === "back";
   const youIsFront = !spectatorMode && playerPosition === "front";
@@ -277,6 +308,7 @@ if (playerPicker) {
     selectPickerPosition(btn.dataset.position);
   });
   updatePickerUi();
+  updatePickerPositions();
 }
 
 export function setActiveButton(group, activeBtn) {

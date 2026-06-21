@@ -317,12 +317,12 @@ main {
 .player-picker-court {
   position: relative;
   width: 100%;
-  max-width: 220px;
+  max-width: 320px;
   aspect-ratio: 3 / 4;
   background: var(--color-court);
   border: 2px solid var(--color-court-line);
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .player-picker-net {
@@ -338,57 +338,79 @@ main {
 
 .picker-marker {
   position: absolute;
-  width: 38px;
-  height: 38px;
-  margin: -19px 0 0 -19px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  padding: 0;
+  width: 64px;
+  min-height: 64px;
+  margin: -32px 0 0 -32px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  background: var(--color-text-secondary);
+  padding: 4px 2px 5px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
   cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,.3);
   -webkit-tap-highlight-color: transparent;
 }
 
-.picker-marker .picker-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  background: var(--color-text-secondary);
-  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+.picker-marker .picker-avatar {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.picker-marker .picker-avatar svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.picker-marker .picker-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.picker-marker .picker-role {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,.85);
+  letter-spacing: .02em;
 }
 
 .picker-marker .picker-tag {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,.5);
   letter-spacing: .03em;
 }
 
-/* 自陣（手前） */
-.picker-marker-self#picker-player-back { left: 50%; top: 82%; }
+/* 自陣（手前）・相手陣（奥）の位置は input.js が陣形に応じて
+ * left/top（%）をインラインで設定する。ここではデフォルト位置のみ用意。 */
+.picker-marker-self#picker-player-back { left: 50%; top: 84%; }
 .picker-marker-self#picker-player-front { left: 22%; top: 62%; }
 
-/* 相手陣（奥）。常にAI・操作不可 */
-.picker-marker-cpu#picker-cpu-back { left: 50%; top: 18%; }
+.picker-marker-cpu#picker-cpu-back { left: 50%; top: 16%; }
 .picker-marker-cpu#picker-cpu-front { left: 78%; top: 38%; }
 
-.picker-marker-cpu { cursor: default; }
-.picker-marker-cpu .picker-dot { background: var(--color-text-secondary); opacity: .65; }
+.picker-marker-cpu { cursor: default; opacity: .7; }
 
-.picker-marker-self.is-you .picker-dot {
+.picker-marker-self.is-you {
   background: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-light), 0 1px 3px rgba(0,0,0,.3);
+  box-shadow: 0 0 0 3px var(--color-primary-light), 0 2px 5px rgba(0,0,0,.3);
 }
 
 .picker-marker:active { transform: scale(.95); }
-.picker-marker-self:active { transform: translate(-50%, -50%) scale(.95); }
 
 .hint {
   font-size: 12px;
