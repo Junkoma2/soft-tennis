@@ -28,14 +28,45 @@ import { distToBall, canPlayerHit } from "./input.js";
  * 定位置で動き、操作キャラが届かないボールを返球する。
  * =========================================================== */
 
-export function moveToward(p, tx, ty, maxDist) {
+// 呼び出し側は従来どおり moveToward(p, tx, ty, maxDist) の形のまま使う
+// （maxDist = 目標速さ*dt として渡されてくる。呼び出し側は変更不要）。
+// 内部では maxDist/dt から目標速さを逆算し、速度(p.vx/p.vy)へ軽い加減速で
+// 追従させてから位置を更新する＝慣性。dt は引数で明示的に受け取る。
+export function moveToward(p, tx, ty, maxDist, dt) {
   const dx = tx - p.x;
   const dy = ty - p.y;
   const d = Math.hypot(dx, dy);
-  if (d < 0.01) return;
-  const step = Math.min(d, maxDist);
-  p.x += (dx / d) * step;
-  p.y += (dy / d) * step;
+  if (dt === undefined || dt <= 0) {
+    // dt 未指定の呼び出し（保険）: 従来の直接移動にフォールバック
+    if (d < 0.01) return;
+    const step = Math.min(d, maxDist);
+    p.x += (dx / d) * step;
+    p.y += (dy / d) * step;
+    return;
+  }
+  const targetSpeed = maxDist / dt;
+  let targetVx = 0, targetVy = 0;
+  if (d >= 0.01) {
+    // 目標までの距離が今フレームの到達距離以下なら行き過ぎないよう速度を落とす
+    const desired = Math.min(targetSpeed, d / dt);
+    targetVx = (dx / d) * desired;
+    targetVy = (dy / d) * desired;
+  }
+  p.vx = approachVelocity(p.vx || 0, targetVx, dt);
+  p.vy = approachVelocity(p.vy || 0, targetVy, dt);
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+}
+
+function approachVelocity(cur, target, dt) {
+  const accel = TUNING.move.accel;
+  const decel = TUNING.move.decel;
+  const accelerating = Math.abs(target) > Math.abs(cur) && Math.sign(target) === Math.sign(cur || target);
+  const rate = accelerating ? accel : decel;
+  const diff = target - cur;
+  const maxStep = rate * dt;
+  if (Math.abs(diff) <= maxStep) return target;
+  return cur + Math.sign(diff) * maxStep;
 }
 
 // 相方がいま「自分のサーブを打つ前」かどうか（AIサーバーは動かさない）
@@ -71,7 +102,7 @@ export function moveAutoAI(p, side, dt) {
       serverTeamNow() === opponentTeam) {
     if (p === receiverPlayerFor(myTeam)) {
       const rp = receivePosition(myTeam);
-      moveToward(p, rp.x, rp.y, speed * 1.2 * dt);
+      moveToward(p, rp.x, rp.y, speed * 1.2 * dt, dt);
     }
     return;
   }
@@ -100,7 +131,7 @@ export function moveAutoAI(p, side, dt) {
         tx = Math.max(-COURT.halfW, Math.min(COURT.halfW, hc ? hc.x : landing.x));
         ty = homeSign > 0 ? depth : -depth;
       }
-      moveToward(p, tx, ty, speed * 1.25 * dt);
+      moveToward(p, tx, ty, speed * 1.25 * dt, dt);
       p.x = Math.max(-7.5, Math.min(7.5, p.x));
     }
     return;
@@ -111,7 +142,7 @@ export function moveAutoAI(p, side, dt) {
   const myJustServedByFront = side === "player" ? pointJustServedByFront : cpuJustServedByFront;
   if (p === myFront && !receiveDone) {
     if (state === "rally" && myJustServedByFront && formation !== "double-back") {
-      moveToward(myFront, myFront.homeX * (myBack.x > 0 ? -1 : 1), myFront.homeY, speed * 1.4 * dt);
+      moveToward(myFront, myFront.homeX * (myBack.x > 0 ? -1 : 1), myFront.homeY, speed * 1.4 * dt, dt);
       myFront.x = Math.max(-4.6, Math.min(4.6, myFront.x));
     }
     return;
@@ -125,7 +156,7 @@ export function moveAutoAI(p, side, dt) {
     // 前衛
     if (formation === "double-back") {
       const targetX = myBack.x > 0 ? -2.2 : 2.2;
-      moveToward(myFront, targetX, myFront.homeY, speed * dt);
+      moveToward(myFront, targetX, myFront.homeY, speed * dt, dt);
     } else if (state === "rally" && ball.lastHitter === opponentTeam && !ball.serving) {
       // 相手が打った瞬間も、基本は展開（クロス/ストレート）に応じた定位置を保つ。
       // 届くポーチのときだけネットへ踏み込む（常時ボール追従で同サイド/隅へ暴れさせない）。
@@ -177,14 +208,14 @@ export function moveAutoAI(p, side, dt) {
           }
         }
       }
-      moveToward(myFront, frontTargetX, frontTy, speed * frontDash * dt);
+      moveToward(myFront, frontTargetX, frontTy, speed * frontDash * dt, dt);
     } else if (state === "rally") {
       // 自分チームにボールがある間は展開に応じたセオリー位置へ戻る
       const tx = Math.max(-4.4, Math.min(4.4, frontDevX(myTeam)));
       const retSpeed = (side === "cpu" && !spectatorMode) ? speed * 0.8 : speed * dash;
-      moveToward(myFront, tx, frontMirrorY(myTeam, myFront.homeY), retSpeed * dt);
+      moveToward(myFront, tx, frontMirrorY(myTeam, myFront.homeY), retSpeed * dt, dt);
     } else {
-      moveToward(myFront, myFront.homeX * (myBack.x > 0 ? -1 : 1), myFront.homeY, speed * dash * dt);
+      moveToward(myFront, myFront.homeX * (myBack.x > 0 ? -1 : 1), myFront.homeY, speed * dash * dt, dt);
     }
     myFront.x = Math.max(-4.6, Math.min(4.6, myFront.x));
   } else {
@@ -216,15 +247,15 @@ export function moveAutoAI(p, side, dt) {
         tx = Math.max(-xCap, Math.min(xCap, hx));
         ty = homeSign > 0 ? depth : -depth;
       }
-      moveToward(myBack, tx, ty, speed * 1.2 * dt);
+      moveToward(myBack, tx, ty, speed * 1.2 * dt, dt);
     } else if (state === "rally" && myJustServedByFront) {
       // 前衛パートナーがサーブした回: 後衛はカバー位置へ
       const targetX = myFront.x > 0 ? -1.6 : 1.6;
-      moveToward(myBack, targetX, homeBackY * 1.02, speed * dt);
+      moveToward(myBack, targetX, homeBackY * 1.02, speed * dt, dt);
     } else {
       // 自分側にボールがある間は展開に応じた定位置へ戻る
       const retSpeed = (side === "cpu" && !spectatorMode) ? speed * 0.55 : speed;
-      moveToward(myBack, backDevX(myTeam), homeBackY, retSpeed * dt);
+      moveToward(myBack, backDevX(myTeam), homeBackY, retSpeed * dt, dt);
     }
     myBack.x = Math.max(-7.5, Math.min(7.5, myBack.x));
   }
