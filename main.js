@@ -289,18 +289,27 @@ export function resetPlayersForPoint() {
 
 /* ---- 物理: ターゲットに1バウンド目が落ちる初速を球速から逆算 ---- */
 export function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
-  const dist = Math.max(1.0, Math.hypot(tx - fromX, ty - fromY));
+  // ワープ防止: 打者位置(fromX/fromY)へボールを瞬間移動させず、ボールの
+  // 「実際の現在位置」から発射する。打球判定はリーチ(HIT_REACH)内で成立する
+  // ため、ボールが打者から離れた位置にあるまま代入すると横に飛ぶ＝ワープして
+  // 見えた。現在位置を始点にすることで前フレームから連続して遷移する。
+  // サーブ構え中などボールが未投入のときは渡された位置にフォールバックする。
+  const ballLive = state === "rally" || state === "serve-toss";
+  const startX = ballLive ? ball.x : fromX;
+  const startY = ballLive ? ball.y : fromY;
+  const startZ = ballLive ? Math.max(0.3, ball.z) : fromZ;
+  const dist = Math.max(1.0, Math.hypot(tx - startX, ty - startY));
   const T = dist / speed;
-  ball.x = fromX; ball.y = fromY; ball.z = fromZ;
-  ball.vx = (tx - fromX) / T;
-  ball.vy = (ty - fromY) / T;
-  ball.vz = (0.5 * G * T * T - fromZ) / T;
+  ball.x = startX; ball.y = startY; ball.z = startZ;
+  ball.vx = (tx - startX) / T;
+  ball.vy = (ty - startY) / T;
+  ball.vz = (0.5 * G * T * T - startZ) / T;
   // 球の高さにわずかなランダムブレを加えて自然にする
   ball.vz += (Math.random() - 0.5) * TUNING.jitter.z;
   ball.bounces = 0;
   ball.trail = [];
-  ball.originX = fromX;
-  ball.originY = fromY;
+  ball.originX = startX;
+  ball.originY = startY;
   ball.lastHitTime = matchTime;
 }
 

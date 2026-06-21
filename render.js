@@ -650,6 +650,7 @@ export function drawHumanoid(pl) {
   let armAngle;
   let racketLen = 0.62 * s;
   let torsoTwist = 0; // 胴の左右の振れ（描画のみ・軽め）
+  let foreWrap = 0; // フォア フォロースルーが首へ巻き付く度合い(0→1)
   if (pl.pose === "swing" && pl.swingT > 0) {
     // k=0: 打球判定が発生した瞬間（hitBall→startSwing呼び出し時点）。
     // k=1: スイング表示終了。当たり判定・タイミングはここでは一切変えず、
@@ -680,6 +681,10 @@ export function drawHumanoid(pl) {
       // 序盤はわずかに戻る（テイクバックの余韻）→中盤で加速して振り抜く→
       // 利き手側から前へ、反対肩方向まで大きく振り抜いて収まる（フォロースルーの減速）。
       armAngle = (-0.9 + progress * 1.85);
+      // 振り抜き本体の後半(t>0.5)から、ラケットを反対側の首元へ巻き付ける
+      // フィニッシュへ移行する（インハイ前衛の体の回転に乗ったフォロースルー）。
+      const tt = Math.max(0, (k - 0.18) / (1 - 0.18));
+      foreWrap = Math.max(0, Math.min(1, (tt - 0.5) / 0.5));
     } else {
       // バックハンド（片手）: 利き腕は持ち替えず、体を捻って胸の前で打つ。
       // テイクバックはコンパクト（armAngle -0.5付近）にとどめ、
@@ -722,11 +727,19 @@ export function drawHumanoid(pl) {
   const armReach = isReadyPose ? 0.13 * s : 0.3 * s;
   const armX = racketDir * Math.cos(armAngle);
   const armY = Math.sin(armAngle);
-  const handX = racketDir * armReach * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
+  let handX = racketDir * armReach * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
   // レディ姿勢はグリップ（手元）を胸の高さまで下げ、ラケット全体が顔にかからない
   // ようにする（PR#24で前面描画にした結果ヘッドが顔に被っていたための調整）。
   const readyHandDrop = isReadyPose ? 0.32 * s : 0;
-  const handY = shoulderY + armReach * armY + readyHandDrop;
+  let handY = shoulderY + armReach * armY + readyHandDrop;
+
+  // フォア フォロースルー: 手を利き手側→反対の首元へ横切らせ、肩口まで
+  // 引き上げる（ラケットが首に巻き付くフィニッシュ）。位置を線形補間。
+  if (foreWrap > 0) {
+    const w = foreWrap;
+    handX = handX * (1 - w) + (-racketDir * 0.14 * s) * w; // 反対肩〜首元へ
+    handY = handY * (1 - w) + (shoulderY - 0.06 * s) * w;  // 肩口の高さへ
+  }
 
   // ラケット先端の向き: 通常はarmX/armYと同じ（利き腕の伸び方向）。
   // レディ姿勢のみ例外で、グリップは利き手・スロートは非利き手で支える両手持ちのため、
@@ -737,6 +750,11 @@ export function drawHumanoid(pl) {
     racketTipX = -racketDir * 0.85;
     // 上向きは維持するが弱めにする（ヘッドが顔の高さまで上がらないように）。
     racketTipY = -0.25;
+  } else if (foreWrap > 0) {
+    // 巻き付きフィニッシュ: ヘッドを反対肩の上・背中側へ向けて立てる。
+    const w = foreWrap;
+    racketTipX = racketTipX * (1 - w) + (-racketDir * 0.55) * w;
+    racketTipY = racketTipY * (1 - w) + (-0.95) * w; // 上向き
   }
 
   // facing=-1（背を向けている＝プレイヤー側）のときは、両手とも体の奥側
