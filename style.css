@@ -202,6 +202,9 @@ main {
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(30, 27, 75, .12);
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #court {
@@ -285,6 +288,9 @@ main {
   cursor: pointer;
   transition: background .12s, color .12s, border-color .12s;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .ctrl-btn.is-active {
@@ -353,6 +359,9 @@ main {
   cursor: pointer;
   box-shadow: 0 2px 5px rgba(0,0,0,.3);
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .picker-marker .picker-avatar {
@@ -578,6 +587,9 @@ footer a:hover { color: var(--color-text); }
   border: 2px solid rgba(255, 255, 255, 0.4);
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .move-stick-knob {
