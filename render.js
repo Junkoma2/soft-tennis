@@ -592,8 +592,11 @@ export function drawHumanoid(pl) {
   }
 
   // 前衛は重心を高め（膝を浅く）、後衛・移動中・スプリットステップはやや低めに。
-  const stanceCrouch = (isFrontRole ? 0.04 : 0.07) + splitSquat + (isMoving ? stepLift : 0);
+  // athleticな低い土台にするため全体的に膝の曲げを深くする（前衛も従来より低く）。
+  const stanceCrouch = (isFrontRole ? 0.07 : 0.1) + splitSquat + (isMoving ? stepLift : 0);
   const legH = (0.5 - stanceCrouch) * s;
+  // 上体の前傾: 重心がつま先寄りに見えるよう、胴を少し前方へオフセット
+  const torsoLean = 0.05 * s;
   const torsoTop = (isFrontRole ? -1.21 : -1.18) * s + stanceCrouch * s * 0.6;
   const torsoBottom = -legH;
   const headR = 0.23 * s;
@@ -623,10 +626,10 @@ export function drawHumanoid(pl) {
   ctx.lineWidth = Math.max(1.5, 0.09 * s);
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(-0.12 * s, torsoBottom);
-  ctx.lineTo(-0.16 * s - stepSwing * stepReach, -leftFootZ);
-  ctx.moveTo(0.12 * s, torsoBottom);
-  ctx.lineTo(0.16 * s + stepSwing * stepReach, -rightFootZ);
+  ctx.moveTo(-0.15 * s, torsoBottom);
+  ctx.lineTo(-0.22 * s - stepSwing * stepReach, -leftFootZ);
+  ctx.moveTo(0.15 * s, torsoBottom);
+  ctx.lineTo(0.22 * s + stepSwing * stepReach, -rightFootZ);
   ctx.stroke();
 
   // このプレイヤーがちょうどサーブを打っている最中か（描画の演出選択のみに使う。
@@ -645,9 +648,12 @@ export function drawHumanoid(pl) {
     const k = 1 - pl.swingT / 0.32;
     let progress;
     if (k < 0.18) {
-      // ごく短い「引き」の余韻（当たった直後、ラケットが一瞬戻る動き）
+      // ごく短い「引き」の余韻（当たった直後、ラケットが一瞬戻る動き）。
+      // フォアはテイクバックの「溜め」を大きく見せ、バックは小さく留めて
+      // フォアと体感差をつける（打点での角度=k=0時点の値は変えない）。
       const t = k / 0.18;
-      progress = -0.06 * Math.sin(t * Math.PI);
+      const takebackAmp = isServeSwing ? 0.06 : (swingDir === 1 ? 0.1 : 0.04);
+      progress = -takebackAmp * Math.sin(t * Math.PI);
     } else {
       // 振り抜き本体: ease-out（最初速く、終盤で減速）でフォロースルーへ
       const t = (k - 0.18) / (1 - 0.18);
@@ -663,21 +669,25 @@ export function drawHumanoid(pl) {
       // フォアハンド: テイクバック→振り抜き→フォロースルーの抑揚をつける非線形カーブ。
       // armAngleProgress(k): k=0で-0.9（従来と同じ＝当たり判定の瞬間の見た目は変えない）、
       // 序盤はわずかに戻る（テイクバックの余韻）→中盤で加速して振り抜く→
-      // 終盤はわずかに戻って収まる（フォロースルーの減速）。
-      armAngle = (-0.9 + progress * 1.7);
+      // 利き手側から前へ、反対肩方向まで大きく振り抜いて収まる（フォロースルーの減速）。
+      armAngle = (-0.9 + progress * 1.85);
     } else {
       // バックハンド（片手）: 利き腕は持ち替えず、体を捻って胸の前で打つ。
       // テイクバックはコンパクト（armAngle -0.5付近）にとどめ、
-      // インパクト〜フォロースルーで体の前を横切るように振り抜く（0.95付近で収める。
-      // フォアより小さい振り幅＝硬式的なワイパーにしない）。
-      armAngle = (-0.5 + progress * 1.45);
+      // インパクト〜フォロースルーで体の前を横切り、胸の前で収まる（0.85付近。
+      // フォアより明確に小さい振り幅＝硬式的なワイパーにしない）。
+      armAngle = (-0.5 + progress * 1.35);
     }
-    // 胴の軽い捻り: 振り抜きに合わせてわずかに前へ（やりすぎない量）
-    torsoTwist = Math.max(0, Math.min(1, k)) * 0.05 * swingDir * foreDir;
+    // 胴の軽い捻り: 振り抜きに合わせてわずかに前へ（やりすぎない量）。
+    // フォアは横向きの溜め→振り抜きを大きめに、バックは体の前でコンパクトに収める
+    // ことでフォア/バックの見た目を区別する。
+    const twistAmp = isServeSwing ? 0.05 : (swingDir === 1 ? 0.07 : 0.035);
+    torsoTwist = Math.max(0, Math.min(1, k)) * twistAmp * swingDir * foreDir;
   } else if (pl.pose === "ready" || pl.pose === "idle") {
     // 構え（レディポジション）。スイング後の"idle"もここに合わせることで、
     // 打った直後すぐ構えに戻ったように見せる（タイミング値は変更しない、見た目の収束のみ）。
-    armAngle = -0.55;
+    // ラケットを胸の前・低めに収めるコンパクトな構え（肘を曲げ、体に近づける）。
+    armAngle = 0.25;
   } else if (pl.pose === "toss") {
     // トス〜テイクバック: トスを上げた直後からラケット側はすでに後方・低めへ
     // 沈み込み始める（アンダーカットサーブのテイクバック準備）。
@@ -688,13 +698,28 @@ export function drawHumanoid(pl) {
 
   ctx.fillStyle = pl.color;
   const tw = 0.46 * s;
-  roundRect(ctx, -tw / 2 + torsoTwist * s, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
+  // 前傾を見た目で表現: 胴の上端をわずかに前方へずらし、重心がつま先寄りに
+  // 見えるようにする（当たり判定には無関係の描画オフセット。下端は脚に揃えたまま）。
+  roundRect(ctx, -tw / 2 + torsoTwist * s + torsoLean, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
   ctx.fill();
 
+  const isReadyPose = pl.pose === "ready" || pl.pose === "idle";
+  // レディ姿勢は肘を曲げてコンパクトに＝肩からの腕の伸ばし幅を狭める（胸の前に収める）。
+  const armReach = isReadyPose ? 0.13 * s : 0.3 * s;
   const armX = racketDir * Math.cos(armAngle);
   const armY = Math.sin(armAngle);
-  const handX = racketDir * 0.3 * s * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
-  const handY = shoulderY + 0.3 * s * armY;
+  const handX = racketDir * armReach * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
+  const handY = shoulderY + armReach * armY;
+
+  // ラケット先端の向き: 通常はarmX/armYと同じ（利き腕の伸び方向）。
+  // レディ姿勢のみ例外で、グリップは利き手・スロートは非利き手で支える両手持ちのため、
+  // ラケットヘッドは体の前を横切って非利き手側・やや上を向く（armX/armYとは別方向）。
+  let racketTipX = armX;
+  let racketTipY = armY;
+  if (isReadyPose) {
+    racketTipX = -racketDir * 0.85;
+    racketTipY = -0.55;
+  }
 
   ctx.strokeStyle = pl.skin;
   ctx.lineWidth = Math.max(1.5, 0.08 * s);
@@ -717,8 +742,9 @@ export function drawHumanoid(pl) {
   ctx.lineTo(handX, handY);
   ctx.stroke();
 
-  const rx = handX + armX * racketLen * 0.55;
-  const ry = handY + armY * racketLen * 0.55 - 0.1 * s;
+  const racketLenDraw = isReadyPose ? racketLen * 0.82 : racketLen;
+  const rx = handX + racketTipX * racketLenDraw * 0.55;
+  const ry = handY + racketTipY * racketLenDraw * 0.55 - 0.1 * s;
   ctx.strokeStyle = "#7C3AED";
   ctx.lineWidth = Math.max(1.2, 0.05 * s);
   ctx.beginPath();
@@ -728,7 +754,7 @@ export function drawHumanoid(pl) {
   ctx.fillStyle = "rgba(255,255,255,0.85)";
   ctx.strokeStyle = "#7C3AED";
   ctx.beginPath();
-  ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(armY, armX), 0, Math.PI * 2);
+  ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(racketTipY, racketTipX), 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 
