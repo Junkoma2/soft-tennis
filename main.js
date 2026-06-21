@@ -17,7 +17,7 @@ import {
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
   hintText, shotControls, chargeBtn, servePowerControls, serveSpinControls,
   aggressionControls, shotSelectControls, moveStick, moveStickKnob,
-  positionControls, formationControls, spectatorToggle, controlsPanel,
+  formationControls, controlsPanel,
   mouseAim, makeStats, playerStats, cpuStats,
   state, player, cpu, serveFaults, rafId, lastTime, pendingSwing, matchTime,
   setState, setServeFaults, incServeFaults, setRafId, setLastTime, setPendingSwing, setMatchTime, addMatchTime,

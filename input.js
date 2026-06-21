@@ -10,8 +10,9 @@ import {
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
   serveAimCursor, chargeBtn, servePowerControls, serveSpinControls,
   setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
-  positionControls, setPlayerPosition, formationControls, setFormation,
-  spectatorToggle, setSpectatorMode, startBtn, moveStick, moveStickKnob,
+  setPlayerPosition, formationControls, setFormation,
+  setSpectatorMode, startBtn, moveStick, moveStickKnob,
+  playerPicker, pickerPlayerBack, pickerPlayerFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
 } from "./state.js";
@@ -221,14 +222,6 @@ if (aggressionControls) {
   });
 }
 
-// 開始画面: ポジション（後衛/前衛）と陣形の選択
-positionControls.addEventListener("click", function (e) {
-  const btn = e.target.closest(".ctrl-btn");
-  if (!btn) return;
-  setPlayerPosition(btn.dataset.position);
-  setActiveButton(positionControls, btn);
-});
-
 formationControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
   if (!btn) return;
@@ -247,19 +240,43 @@ if (inputModeControls) {
   });
 }
 
-// 観戦モード（AI対AI）の切替。ONのときはポジション選択を無効化する
-// （rallyControlledもAIが操作するため、操作キャラの選択は表示上の意味のみ）。
-if (spectatorToggle) {
-  spectatorToggle.addEventListener("click", function () {
-    setSpectatorMode(!spectatorMode);
-    spectatorToggle.dataset.spectator = spectatorMode ? "on" : "off";
-    spectatorToggle.classList.toggle("is-active", spectatorMode);
-    spectatorToggle.textContent = spectatorMode ? "観戦モード: ON（4人ともAI）" : "観戦: AI対AI に切替";
-    positionControls.querySelectorAll(".ctrl-btn").forEach(function (b) {
-      b.disabled = spectatorMode;
-    });
-    startBtn.textContent = spectatorMode ? "観戦を始める" : "試合を始める";
+/* ---- 開始画面: 操作キャラ ピッカー（簡易ミニコート） ----
+ * 自チーム（手前）の後衛/前衛マーカーをタップでYOU⇔AI切替。
+ * YOUは自チーム内で常に最大1人（片方をYOUにすると他方は自動でAI）。
+ * 両方AIなら観戦モード（spectatorMode=true）。
+ * 相手チーム（奥）のマーカーは常にAI・タップ不可。 */
+function updatePickerUi() {
+  const youIsBack = !spectatorMode && playerPosition === "back";
+  const youIsFront = !spectatorMode && playerPosition === "front";
+  if (pickerPlayerBack) {
+    pickerPlayerBack.classList.toggle("is-you", youIsBack);
+    pickerPlayerBack.querySelector(".picker-tag").textContent = youIsBack ? "YOU" : "AI";
+  }
+  if (pickerPlayerFront) {
+    pickerPlayerFront.classList.toggle("is-you", youIsFront);
+    pickerPlayerFront.querySelector(".picker-tag").textContent = youIsFront ? "YOU" : "AI";
+  }
+  startBtn.textContent = spectatorMode ? "観戦を始める" : "試合を始める";
+}
+
+function selectPickerPosition(position) {
+  // 同じマーカーを再タップしたらAIに戻す（=観戦化）。違うマーカーならそちらをYOUにする。
+  if (!spectatorMode && playerPosition === position) {
+    setSpectatorMode(true);
+  } else {
+    setSpectatorMode(false);
+    setPlayerPosition(position);
+  }
+  updatePickerUi();
+}
+
+if (playerPicker) {
+  playerPicker.addEventListener("click", function (e) {
+    const btn = e.target.closest(".picker-marker-self");
+    if (!btn || btn.disabled) return;
+    selectPickerPosition(btn.dataset.position);
   });
+  updatePickerUi();
 }
 
 export function setActiveButton(group, activeBtn) {

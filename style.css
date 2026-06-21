@@ -302,6 +302,94 @@ main {
   cursor: not-allowed;
 }
 
+/* ---- 操作キャラ ピッカー（簡易ミニコート） ---- */
+.player-picker-group {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.player-picker {
+  display: flex;
+  justify-content: center;
+}
+
+.player-picker-court {
+  position: relative;
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 3 / 4;
+  background: var(--color-court);
+  border: 2px solid var(--color-court-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.player-picker-net {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-court-line);
+  opacity: .85;
+  transform: translateY(-1px);
+}
+
+.picker-marker {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  margin: -19px 0 0 -19px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.picker-marker .picker-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--color-text-secondary);
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+
+.picker-marker .picker-tag {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.5);
+  letter-spacing: .03em;
+}
+
+/* 自陣（手前） */
+.picker-marker-self#picker-player-back { left: 50%; top: 82%; }
+.picker-marker-self#picker-player-front { left: 22%; top: 62%; }
+
+/* 相手陣（奥）。常にAI・操作不可 */
+.picker-marker-cpu#picker-cpu-back { left: 50%; top: 18%; }
+.picker-marker-cpu#picker-cpu-front { left: 78%; top: 38%; }
+
+.picker-marker-cpu { cursor: default; }
+.picker-marker-cpu .picker-dot { background: var(--color-text-secondary); opacity: .65; }
+
+.picker-marker-self.is-you .picker-dot {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light), 0 1px 3px rgba(0,0,0,.3);
+}
+
+.picker-marker:active { transform: scale(.95); }
+.picker-marker-self:active { transform: translate(-50%, -50%) scale(.95); }
+
 .hint {
   font-size: 12px;
   color: var(--color-text-secondary);
