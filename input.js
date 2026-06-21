@@ -396,6 +396,7 @@ canvas.addEventListener("pointerdown", function (e) {
   if (e.pointerType === "mouse") {
     const button = e.button;
     if (button !== 0 && button !== 2) return; // 中ボタン等は無視
+    e.preventDefault(); // ドラッグによるテキスト選択ハイライトを防ぐ
     // swipeモードでは狙いをマウス位置に合わせない（直近のスワイプ/デフォルト狙いのまま打つ）。
     if (inputMode === "mouse") updateMouseAimFromEvent(e); // 押した瞬間の地点を即狙いへ反映
     if (state === "serve-stance" || state === "serve-toss") {
