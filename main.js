@@ -912,7 +912,9 @@ export function update(dt) {
   }
 
   // ボール物理（メートル・秒）
+  const prevX = ball.x;
   const prevY = ball.y;
+  const prevZ = ball.z;
   ball.x += ball.vx * dt;
   ball.y += ball.vy * dt;
   ball.z += ball.vz * dt;
@@ -924,6 +926,13 @@ export function update(dt) {
   if (checkNet(prevY)) return;
 
   if (ball.z <= 0 && ball.vz < 0) {
+    // z=0を跨いだフレームの実際の着地点(x,y)を線形補間で求め、
+    // 通り過ぎた分の誤差を消してからin/out判定する
+    if (prevZ > 0) {
+      const t = prevZ / (prevZ - ball.z);
+      ball.x = prevX + (ball.x - prevX) * t;
+      ball.y = prevY + (ball.y - prevY) * t;
+    }
     handleBounce();
     if (state !== "rally") return;
   }
