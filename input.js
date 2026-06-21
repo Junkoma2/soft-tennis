@@ -373,7 +373,7 @@ canvas.addEventListener("pointermove", function (e) {
   const worldPerPxX = (COURT.halfW * 2) / rect.width;
   const worldPerPxY = (COURT.halfL * 2) / rect.height;
   swipe.aimX = aim.x + dx * worldPerPxX * SWIPE_AIM_SENSITIVITY;
-  swipe.aimY = aim.y - dy * worldPerPxY * SWIPE_AIM_SENSITIVITY; // 上スワイプ(dy<0)で奥(より負のy)へ
+  swipe.aimY = aim.y + dy * worldPerPxY * SWIPE_AIM_SENSITIVITY; // 上スワイプ(dy<0)で奥(より負のy)へ
 
   // 既存のクランプ（updateAimInputsと同じマージン）に収める（プレビュー段階でも見た目を合わせる）
   swipe.aimX = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, swipe.aimX));
