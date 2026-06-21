@@ -192,12 +192,12 @@ export const TUNING = {
     reachSpeedDrop: 0.2,  // 泳ぎ最大時の球速低下
     // 前後の打点ズレ → 引っ張り/流しの変化
     frontPullBoost: 0.3,  // 前すぎ: 引っ張り方向が強くなる
-    frontFlowDrop: 0.5,   // 前すぎ: 流し方向の角度がつかない
+    frontFlowDrop: 0.25,  // 前すぎ: 流し方向の角度がつかない
     backFlowBoost: 0.25,  // 後ろ: 流し方向が強くなる
     backPullDrop: 0.5,    // 後ろ: 引っ張り方向の角度がつかない
     frontSpeedBoost: 0.06, // 前すぎ: 低弾道で速くなりやすい
     backSpeedDrop: 0.18,   // 後ろ: 弱い球になりやすい
-    driftFront: 0.6,     // 前すぎ打点で引っ張り側へ流れる量(m)
+    driftFront: 0.35,    // 前すぎ打点で引っ張り側へ流れる量(m)
     driftBack: 0.5,      // 後ろ打点で流し側へ流れる量(m)
   },
   // スマッシュ（ネット前で高い球を上から叩き込む決め球）
