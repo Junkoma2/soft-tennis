@@ -586,6 +586,20 @@ export function startSwing(p, side) {
   p.swingT = 0.32;
 }
 
+// 現在速度cur を 目標速度target へ、加速度(accel)/減速度(decel)で dt 秒分だけ近づける。
+// 目標へ向かう（加速）か遠ざかる/止める（減速）かでレートを切り替える＝軽い慣性。
+export function approachVelocity(cur, target, dt) {
+  const accel = TUNING.move.accel;
+  const decel = TUNING.move.decel;
+  // 目標と同方向に伸ばす（加速）か、0または反対方向へ寄せる（減速）かを判定
+  const accelerating = Math.abs(target) > Math.abs(cur) && Math.sign(target) === Math.sign(cur || target);
+  const rate = accelerating ? accel : decel;
+  const diff = target - cur;
+  const maxStep = rate * dt;
+  if (Math.abs(diff) <= maxStep) return target;
+  return cur + Math.sign(diff) * maxStep;
+}
+
 /* ===========================================================
  * 得点処理
  * =========================================================== */
@@ -867,16 +881,18 @@ export function update(dt) {
 
   if (mover) {
     const v = inputVector();
-    if (v.dx !== 0 || v.dy !== 0) {
-      const charging = charge.active && state === "rally";
-      const slow = charging ? TUNING.charge.moveSlow : 1;
-      const speed = TUNING.move.playerSpeed * mover.stats.speed * slow;
-      setControlledX(mover, mover.x + v.dx * speed * dt);
-      // サーブの構え・トス中は左右だけ動ける（打点の左右調整）
-      if (state !== "serve-toss" && state !== "serve-stance") {
-        setControlledY(mover, mover.y + v.dy * speed * dt);
-      }
-    }
+    const charging = charge.active && state === "rally";
+    const slow = charging ? TUNING.charge.moveSlow : 1;
+    const speed = TUNING.move.playerSpeed * mover.stats.speed * slow;
+    const allowY = state !== "serve-toss" && state !== "serve-stance";
+    // 目標速度（入力ベクトル*速度）へ軽い加減速で滑らかに追従させる（慣性）。
+    // 入力なしの軸は目標0へ減速で止まる。最高速にはすぐ乗る軽さに留める。
+    const targetVx = v.dx * speed;
+    const targetVy = allowY ? v.dy * speed : 0;
+    mover.vx = approachVelocity(mover.vx, targetVx, dt);
+    mover.vy = approachVelocity(mover.vy, targetVy, dt);
+    if (mover.vx !== 0) setControlledX(mover, mover.x + mover.vx * dt);
+    if (allowY && mover.vy !== 0) setControlledY(mover, mover.y + mover.vy * dt);
     // サーブ構え/トス中はセンターライン(x=0)を越えられないよう自分側の半面にクランプする
     // （越えるとルール上不可。CPU側はai.js側で元々越えない実装）
     if (state === "serve-stance" || state === "serve-toss") {

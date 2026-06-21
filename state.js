@@ -192,7 +192,7 @@ export const toss = {
  */
 export function makePlayer(opts) {
   return Object.assign({
-    x: 0, y: 0, homeX: 0, homeY: 0,
+    x: 0, y: 0, vx: 0, vy: 0, homeX: 0, homeY: 0,
     color: "#6366F1", skin: "#F1C7A8", label: "",
     facing: -1,
     pose: "idle",      // idle / ready / swing / serve / toss

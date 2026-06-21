@@ -564,17 +564,33 @@ export function drawHumanoid(pl) {
   ctx.lineTo(0.16 * s, 0);
   ctx.stroke();
 
-  ctx.fillStyle = pl.color;
-  const tw = 0.46 * s;
-  roundRect(ctx, -tw / 2, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
-  ctx.fill();
-
   const shoulderY = torsoTop + 0.12 * s;
   let armAngle;
   let racketLen = 0.62 * s;
+  let torsoTwist = 0; // 胴の左右の振れ（描画のみ・軽め）
   if (pl.pose === "swing" && pl.swingT > 0) {
+    // k=0: 打球判定が発生した瞬間（hitBall→startSwing呼び出し時点）。
+    // k=1: スイング表示終了。当たり判定・タイミングはここでは一切変えず、
+    // 同じ0→1の進行を非線形カーブに通すだけ（見た目の演出のみ）。
     const k = 1 - pl.swingT / 0.32;
-    armAngle = (-0.9 + k * 1.7);
+    // テイクバック→振り抜き→フォロースルーの抑揚をつける非線形カーブ。
+    // armAngleProgress(k): k=0で-0.9（従来と同じ＝当たり判定の瞬間の見た目は変えない）、
+    // 序盤はわずかに戻る（テイクバックの余韻）→中盤で加速して振り抜く→
+    // 終盤はわずかに戻って収まる（フォロースルーの減速）。
+    let progress;
+    if (k < 0.18) {
+      // ごく短い「引き」の余韻（当たった直後、ラケットが一瞬戻る動き）
+      const t = k / 0.18;
+      progress = -0.06 * Math.sin(t * Math.PI);
+    } else {
+      // 振り抜き本体: ease-out（最初速く、終盤で減速）でフォロースルーへ
+      const t = (k - 0.18) / (1 - 0.18);
+      const eased = 1 - Math.pow(1 - t, 2.2);
+      progress = eased;
+    }
+    armAngle = (-0.9 + progress * 1.7);
+    // 胴の軽い捻り: 振り抜きに合わせてわずかに前へ（やりすぎない量）
+    torsoTwist = Math.max(0, Math.min(1, k)) * 0.05 * sideDir;
   } else if (pl.pose === "ready") {
     armAngle = -0.55;
   } else if (pl.pose === "serve" || pl.pose === "toss") {
@@ -582,6 +598,11 @@ export function drawHumanoid(pl) {
   } else {
     armAngle = 0.6;
   }
+
+  ctx.fillStyle = pl.color;
+  const tw = 0.46 * s;
+  roundRect(ctx, -tw / 2 + torsoTwist * s, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
+  ctx.fill();
 
   const armX = sideDir * Math.cos(armAngle);
   const armY = Math.sin(armAngle);
