@@ -709,7 +709,10 @@ export function drawHumanoid(pl) {
   const armX = racketDir * Math.cos(armAngle);
   const armY = Math.sin(armAngle);
   const handX = racketDir * armReach * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
-  const handY = shoulderY + armReach * armY;
+  // レディ姿勢はグリップ（手元）を胸の高さまで下げ、ラケット全体が顔にかからない
+  // ようにする（PR#24で前面描画にした結果ヘッドが顔に被っていたための調整）。
+  const readyHandDrop = isReadyPose ? 0.32 * s : 0;
+  const handY = shoulderY + armReach * armY + readyHandDrop;
 
   // ラケット先端の向き: 通常はarmX/armYと同じ（利き腕の伸び方向）。
   // レディ姿勢のみ例外で、グリップは利き手・スロートは非利き手で支える両手持ちのため、
@@ -718,7 +721,8 @@ export function drawHumanoid(pl) {
   let racketTipY = armY;
   if (isReadyPose) {
     racketTipX = -racketDir * 0.85;
-    racketTipY = -0.55;
+    // 上向きは維持するが弱めにする（ヘッドが顔の高さまで上がらないように）。
+    racketTipY = -0.25;
   }
 
   // facing=-1（背を向けている＝プレイヤー側）のときは、両手とも体の奥側
@@ -759,7 +763,7 @@ export function drawHumanoid(pl) {
 
     const racketLenDraw = isReadyPose ? racketLen * 0.82 : racketLen;
     const rx = handX + racketTipX * racketLenDraw * 0.55;
-    const ry = handY + racketTipY * racketLenDraw * 0.55 - 0.1 * s;
+    const ry = handY + racketTipY * racketLenDraw * 0.55 - (isReadyPose ? 0.02 : 0.1) * s;
     ctx.strokeStyle = "#7C3AED";
     ctx.lineWidth = Math.max(1.2, 0.05 * s);
     ctx.beginPath();
