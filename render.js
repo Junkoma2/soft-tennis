@@ -711,6 +711,16 @@ export function drawHumanoid(pl) {
   const handX = racketDir * armReach * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
   const handY = shoulderY + armReach * armY;
 
+  // ラケット先端の向き: 通常はarmX/armYと同じ（利き腕の伸び方向）。
+  // レディ姿勢のみ例外で、グリップは利き手・スロートは非利き手で支える両手持ちのため、
+  // ラケットヘッドは体の前を横切って非利き手側・やや上を向く（armX/armYとは別方向）。
+  let racketTipX = armX;
+  let racketTipY = armY;
+  if (isReadyPose) {
+    racketTipX = -racketDir * 0.85;
+    racketTipY = -0.55;
+  }
+
   ctx.strokeStyle = pl.skin;
   ctx.lineWidth = Math.max(1.5, 0.08 * s);
   ctx.beginPath();
@@ -733,8 +743,8 @@ export function drawHumanoid(pl) {
   ctx.stroke();
 
   const racketLenDraw = isReadyPose ? racketLen * 0.82 : racketLen;
-  const rx = handX + armX * racketLenDraw * 0.55;
-  const ry = handY + armY * racketLenDraw * 0.55 - 0.1 * s;
+  const rx = handX + racketTipX * racketLenDraw * 0.55;
+  const ry = handY + racketTipY * racketLenDraw * 0.55 - 0.1 * s;
   ctx.strokeStyle = "#7C3AED";
   ctx.lineWidth = Math.max(1.2, 0.05 * s);
   ctx.beginPath();
@@ -744,7 +754,7 @@ export function drawHumanoid(pl) {
   ctx.fillStyle = "rgba(255,255,255,0.85)";
   ctx.strokeStyle = "#7C3AED";
   ctx.beginPath();
-  ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(armY, armX), 0, Math.PI * 2);
+  ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(racketTipY, racketTipX), 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 
