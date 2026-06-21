@@ -7,6 +7,7 @@ export const screens = {
   result: document.getElementById("screen-result"),
 };
 
+export const appRoot    = document.getElementById("app");
 export const startBtn   = document.getElementById("start-btn");
 export const retryBtn   = document.getElementById("retry-btn");
 export const canvas     = document.getElementById("court");

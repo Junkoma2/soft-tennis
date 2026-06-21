@@ -763,16 +763,15 @@ export function predictHighContact() {
  * =========================================================== */
 
 // 現在の移動入力を得る。確定操作: 移動=WASD（左手）専用。
-// 狙い（着地カーソル/サーブ狙い）はマウスが担当し、移動とは独立。
-// スマホはスティックで移動（ため中/トス中はスティックが狙いへ切り替わる）。
+// 狙い（着地カーソル/サーブ狙い）はマウス/スワイプが担当し、移動とは独立。
+// スマホは左スティックが常に移動専用（狙いはコート上のスワイプに一本化）。
 export function inputVector() {
-  const aiming = (charge.active && state === "rally") || state === "serve-toss";
   let dx = 0, dy = 0;
   if (keysWasd.left) dx -= 1;
   if (keysWasd.right) dx += 1;
   if (keysWasd.up) dy -= 1;   // 上/Wはネット方向（yが減る）
   if (keysWasd.down) dy += 1; // 下/Sは自陣ベースライン方向（yが増える）
-  if (!aiming && stick.active) {
+  if (stick.active) {
     dx += stick.dx;
     dy += stick.dy; // スティック下方向 = 自陣ベースライン方向
   }
@@ -878,6 +877,16 @@ export function update(dt) {
         setControlledY(mover, mover.y + v.dy * speed * dt);
       }
     }
+    // サーブ構え/トス中はセンターライン(x=0)を越えられないよう自分側の半面にクランプする
+    // （越えるとルール上不可。CPU側はai.js側で元々越えない実装）
+    if (state === "serve-stance" || state === "serve-toss") {
+      const margin = 0.05; // ごく小さなマージン（センターにぴたり寄れる程度）
+      if (serveFromRight()) {
+        mover.x = Math.max(margin, Math.min(COURT.halfW, mover.x));
+      } else {
+        mover.x = Math.max(-COURT.halfW, Math.min(-margin, mover.x));
+      }
+    }
     // サーブの構え中はボールがサーバーに追従する（置き去り防止）
     if (state === "serve-stance") {
       ball.x = mover.x;
@@ -968,21 +977,17 @@ export function update(dt) {
     }
   }
 
-  // ため中にクリックせずゾーンを通り過ぎた場合の保険スイング。
-  // デフォルト球種（selectedShot。PCは未操作なら"shoot"）・デフォルト狙いで打つ。
-  // 観戦モードはAIがコース・球種を選んで同じ経路（playerHitBall）でスイングする。
-  if (charge.active && hittable && ballHittableSince >= 0 &&
+  // 観戦モードのみ: AIがコース・球種を選んで同じ経路（playerHitBall）でスイングする。
+  // 非観戦時は自動スイングしない（廃止）。スイングはプレイヤー入力
+  // （PC=クリック / スマホ=スワイプ or タップ）でのみ発動する。ため自体は
+  // ゾーンを過ぎても入力が来るまで維持する（chargeAmountは0〜1にクランプ済み）。
+  if (spectatorMode && charge.active && hittable && ballHittableSince >= 0 &&
       matchTime - ballHittableSince >= IDEAL_HIT_DELAY) {
-    const power = chargeAmount();
     charge.active = false;
     charge.source = null;
-    if (spectatorMode) {
-      // 観戦モード: 打球は tryReturnAI("player") に委譲（partnerTryReturn経由）
-      // ここでは charge のみリセットして二重打球を防ぐ
-      setBallHittableSince(-1);
-    } else {
-      playerHitBall(selectedShot, power, aim.x, aim.y);
-    }
+    // 観戦モード: 打球は tryReturnAI("player") に委譲（partnerTryReturn経由）
+    // ここでは charge のみリセットして二重打球を防ぐ
+    setBallHittableSince(-1);
   }
 
   partnerTryReturn();
