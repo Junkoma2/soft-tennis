@@ -260,20 +260,29 @@ function worldYToPercent(y) {
 }
 
 // 陣形(formation)に応じて、開始画面ミニコートの4マーカーを定位置へ再配置する。
-// 自チームは config.js の FORMATIONS（選んだ陣形）、相手は雁行陣固定（FORMATIONSの
-// 値をx反転・y反転して対称配置）。
+// FORMATIONSの座標（実試合の初期配置）をそのまま使うと、両チームの後衛が中央付近で
+// 縦に重なってしまうため、見た目専用に「1ポイント目の雁行陣」的な対角配置へ補正する：
+// 後衛同士が対角（左上⇔右下）、前衛は自分の後衛と逆サイドのネット寄りに配置する。
+// ※ FORMATIONSのx座標が0付近（後衛が中央寄り）の場合はサイドへオフセットして重なりを避ける。
 function updatePickerPositions() {
   const f = FORMATIONS[formation] || FORMATIONS["ganko"];
-  const oppo = FORMATIONS["ganko"];
+  const SIDE_OFFSET = 2.5; // 後衛が中央寄り(|x|が小さい)陣形向けの最小サイド振り
+  const sideSign = (x) => (x === 0 ? 1 : Math.sign(x));
+  // 自チーム（手前）: 後衛を右寄り、前衛を後衛と逆サイドのネット寄りに配置
+  const playerBackX = Math.abs(f.back.x) < SIDE_OFFSET ? sideSign(f.back.x) * SIDE_OFFSET : f.back.x;
+  const playerFrontX = -sideSign(playerBackX) * Math.max(SIDE_OFFSET, Math.abs(f.front.x));
+  // 相手チーム（奥）: 自チームと対角になるよう左右反転、前衛も後衛と逆サイド
+  const cpuBackX = -playerBackX;
+  const cpuFrontX = -playerFrontX;
   const place = (el, x, y) => {
     if (!el) return;
     el.style.left = worldXToPercent(x) + "%";
     el.style.top = worldYToPercent(y) + "%";
   };
-  place(pickerPlayerBack, f.back.x, f.back.y);
-  place(pickerPlayerFront, f.front.x, f.front.y);
-  place(pickerCpuBack, -oppo.back.x, -oppo.back.y);
-  place(pickerCpuFront, -oppo.front.x, -oppo.front.y);
+  place(pickerPlayerBack, playerBackX, f.back.y);
+  place(pickerPlayerFront, playerFrontX, f.front.y);
+  place(pickerCpuBack, cpuBackX, -f.back.y);
+  place(pickerCpuFront, cpuFrontX, -f.front.y);
 }
 
 function updatePickerUi() {
