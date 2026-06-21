@@ -981,8 +981,14 @@ export function update(dt) {
   cpuTryReturn();
   if (state !== "rally") return;
 
-  // 安全網: 大きく場外に出たボール
-  if (Math.abs(ball.x) > 9 || ball.y > 16 || ball.y < -16) {
+  // 安全網: 大きく場外に出たボール（一般的なコートのサイド/バック余白(ITF推奨)）
+  const outX = COURT.halfW + 3.66;
+  const outY = COURT.halfL + 6.40;
+  const escaping =
+    (ball.y > outY && ball.vy > 0) ||
+    (ball.y < -outY && ball.vy < 0) ||
+    (Math.abs(ball.x) > outX && ball.vx * ball.x > 0);
+  if (escaping) {
     const hitterIsPlayer = ball.lastHitter === "player";
     if (ball.bounces >= 1) awardPoint(ball.y < 0, "ツーバウンド");
     else awardPoint(!hitterIsPlayer, hitterIsPlayer ? "アウト" : "相手のアウト");
