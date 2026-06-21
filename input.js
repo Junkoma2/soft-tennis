@@ -52,7 +52,23 @@ import {
 // スマホ: コート上スワイプのタップ/スワイプ判定しきい値（クライアントpx）
 const SWIPE_THRESHOLD_PX = 10;
 // スワイプ量(画面px・コート幅/全長基準の正規化量)→狙い移動量の感度。TUNINGは変更しない方針のためここで定義。
+// 中央付近（小さいスワイプ）は直進しやすく、大きくスワイプしたときだけ角度がつくように、
+// 線形ではなく「中央を寝かせた」非線形カーブで反応させる（狙いを付けやすくマイルドにする）。
 const SWIPE_AIM_SENSITIVITY = 1.4;
+// 非線形カーブの指数（1=線形。大きいほど中央が寝て、外側で急に立ち上がる）。
+const SWIPE_AIM_CURVE_POWER = 1.8;
+// カーブを適用する基準距離（ワールドm）。この距離を超えるスワイプ換算量を1として正規化し、
+// カーブを通してから再スケールする。
+const SWIPE_AIM_CURVE_RANGE = 2.4;
+
+// 小さいスワイプ＝小さい角度変化、大きいスワイプ＝大きい角度変化となるよう、
+// 線形のスワイプ換算量に非線形カーブをかける（符号は保持）。
+function applySwipeAimCurve(linearDelta) {
+  const sign = linearDelta < 0 ? -1 : 1;
+  const norm = Math.min(1, Math.abs(linearDelta) / SWIPE_AIM_CURVE_RANGE);
+  const curved = Math.pow(norm, SWIPE_AIM_CURVE_POWER);
+  return sign * curved * SWIPE_AIM_CURVE_RANGE;
+}
 
 export function setControlledX(p, x) {
   p.x = Math.max(-PLAYER_X_LIMIT, Math.min(PLAYER_X_LIMIT, x));
@@ -447,7 +463,9 @@ canvas.addEventListener("pointermove", function (e) {
   const c = TUNING.aim;
   const worldPerPxX = (COURT.halfW * 2) / rect.width;
   const worldPerPxY = (COURT.halfL * 2) / rect.height;
-  swipe.aimX = aim.x + dx * worldPerPxX * SWIPE_AIM_SENSITIVITY;
+  // 横方向（左右の角度）は非線形カーブを通し、中央付近の小さいスワイプでは
+  // 角度がほとんどつかず直進しやすく、大きくスワイプしたときだけ角度がつくようにする。
+  swipe.aimX = aim.x + applySwipeAimCurve(dx * worldPerPxX * SWIPE_AIM_SENSITIVITY);
   swipe.aimY = aim.y + dy * worldPerPxY * SWIPE_AIM_SENSITIVITY; // 上スワイプ(dy<0)で奥(より負のy)へ
 
   // 既存のクランプ（updateAimInputsと同じマージン）に収める（プレビュー段階でも見た目を合わせる）
@@ -529,7 +547,7 @@ if (appRoot) {
     if (rect.width === 0 || rect.height === 0) return;
     const worldPerPxX = (COURT.halfW * 2) / rect.width;
     const worldPerPxY = (COURT.halfL * 2) / rect.height;
-    serveAimCursor.x = serveSwipe.baseX + dx * worldPerPxX * SWIPE_AIM_SENSITIVITY;
+    serveAimCursor.x = serveSwipe.baseX + applySwipeAimCurve(dx * worldPerPxX * SWIPE_AIM_SENSITIVITY);
     serveAimCursor.y = serveSwipe.baseY + dy * worldPerPxY * SWIPE_AIM_SENSITIVITY;
     clampServeAimCursor();
   });

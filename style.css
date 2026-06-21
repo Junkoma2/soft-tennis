@@ -535,7 +535,9 @@ footer a:hover { color: var(--color-text); }
   .court-wrap {
     order: 2;
     flex-shrink: 0;
-    /* 高さ基準: 画面の高さから#appの上下paddingを引いて逆算 */
+    /* 高さ基準: 画面の高さから#appの上下paddingを引いて逆算。
+     * 試合映像を見やすくすることを最優先に、コートの表示面積をできるだけ確保する
+     * （操作パネルは横幅を絞って余白を最小限にする）。 */
     height: 100%;
     width: min(100%, calc((100dvh - 12px) * 2 / 3));
   }
@@ -545,7 +547,9 @@ footer a:hover { color: var(--color-text); }
     flex-direction: column;
     flex-wrap: nowrap;
     width: auto;
-    max-width: 200px;
+    /* コート表示を最大化するため、操作パネルの幅をさらに切り詰める
+     * （ポイント表示やボタンは上下に集約し、左右の専有を減らす）。 */
+    max-width: 132px;
     height: 100%;
     overflow-y: auto;
     justify-content: flex-start;

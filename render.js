@@ -78,7 +78,9 @@ export function drawControlLegend() {
   const boxW = maxW + 30;
   const lineH = 16;
   const boxH = lines.length * lineH + 6;
-  const bx = W - boxW - 6, by = 6;
+  // プレイエリアの視認性を優先し、左右端ではなく上部中央へ集約して表示する
+  // （HUD/ゲージなど他の上部表示と被らないよう少し下にずらす）。
+  const bx = (W - boxW) / 2, by = 56;
 
   ctx.fillStyle = "rgba(30,27,75,0.55)";
   roundRect(ctx, bx, by, boxW, boxH, 6);
@@ -129,17 +131,20 @@ export function drawHud() {
   if ((state === "serve-stance" || state === "serve-toss") && playerIsServer() && !spectatorMode) {
     const lv = { weak: "弱", mid: "中", strong: "強" };
     const text = "パワー" + (lv[servePower] || "中") + "  回転" + (lv[serveSpin] || "中");
+    // プレイエリアを広く見せるため、左右端ではなく上部中央へ集約する。
+    const boxW = 140;
+    const bx = (W - boxW) / 2, by = 6;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(ctx, 6, 6, 140, 22, 6);
+    roundRect(ctx, bx, by, boxW, 22, 6);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = "700 10px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(text, 14, 21);
+    ctx.textAlign = "center";
+    ctx.fillText(text, bx + boxW / 2, by + 15);
     // レシーバーの準備状態（準備が整うまでトス不可）
     ctx.fillStyle = serveReady.ready ? "rgba(16,185,129,0.9)" : "rgba(255,255,255,0.7)";
     ctx.font = "600 9px sans-serif";
-    ctx.fillText(serveReady.ready ? "レシーバー準備OK" : "レシーバー準備中…", 14, 40);
+    ctx.fillText(serveReady.ready ? "レシーバー準備OK" : "レシーバー準備中…", bx + boxW / 2, by + 34);
     return;
   }
 
@@ -148,17 +153,19 @@ export function drawHud() {
       serverTeamNow() === "cpu" && cpuServePlan) {
     const tcfg = TUNING.serve.types[cpuServePlan.type];
     const text = "相手サーブ: " + tcfg.label;
+    const boxW = 158;
+    const bx = (W - boxW) / 2, by = 6;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(ctx, 6, 6, 158, 22, 6);
+    roundRect(ctx, bx, by, boxW, 22, 6);
     ctx.fill();
     ctx.fillStyle = tcfg.color;
     ctx.font = "700 11px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(text, 14, 21);
+    ctx.textAlign = "center";
+    ctx.fillText(text, bx + boxW / 2, by + 15);
     if (state === "serve-stance" && !serveReady.ready) {
       ctx.fillStyle = "rgba(255,255,255,0.7)";
       ctx.font = "600 9px sans-serif";
-      ctx.fillText("静止するとサーブが来る", 14, 40);
+      ctx.fillText("静止するとサーブが来る", bx + boxW / 2, by + 34);
     }
     return;
   }
@@ -410,9 +417,11 @@ export function drawTimingGauge() {
   if (state === "serve-toss" && toss.active && playerIsServer() && !spectatorMode) {
     // サーブの打点ゲージ（縦）: トスは統一トスのため、4種すべての
     // 適正打点を表示する。左=フラット/右=スライス/Space+左=アンダーカット/Space+右=攻撃カット
+    // 打点の高さを示す縦ゲージは構造上、画面の上下に集約できないため右端から
+    // 少し内側に寄せ、プレイエリア（コート）側の余白をできるだけ広く保つ。
     const st = TUNING.serve.types;
     const zMax = 3.4;
-    const gx = W - 24, gTop = 70, gBottom = H - 70, gw = 10;
+    const gx = W - 16, gTop = 90, gBottom = H - 90, gw = 8;
     const zToY = function (z) { return gBottom - (gBottom - gTop) * Math.min(1, z / zMax); };
 
     // ゲージの土台（無彩色の細いトラックのみ。色付きゾーンは出さない）
@@ -688,6 +697,11 @@ export function drawHumanoid(pl) {
     // 打った直後すぐ構えに戻ったように見せる（タイミング値は変更しない、見た目の収束のみ）。
     // ラケットを胸の前・低めに収めるコンパクトな構え（肘を曲げ、体に近づける）。
     armAngle = 0.25;
+  } else if (pl.pose === "prep") {
+    // 早めの準備動作（テイクバック開始）: ボールがネットを越えて自陣に入った
+    // 直後から、構え(0.25)よりわずかに後方へラケットを引き始める中間姿勢。
+    // フォア/バックでテイクバック方向を分け、わずかに引いた角度にする。
+    armAngle = pl.swingSide === "back" ? 0.0 : -0.15;
   } else if (pl.pose === "toss") {
     // トス〜テイクバック: トスを上げた直後からラケット側はすでに後方・低めへ
     // 沈み込み始める（アンダーカットサーブのテイクバック準備）。
@@ -735,8 +749,13 @@ export function drawHumanoid(pl) {
   // ラケットは基本「体の前」にあるため、胴体・頭より後に描いて前面に出す。
   // フォロースルー（k終盤＝振り抜き後半）のときだけラケットが体の後ろ側へ
   // 回り込むので、その場合のみ頭より先に描いて隠れてよいことにする。
+  // ただし背面視点（awayFromCamera、味方キャラ）はカメラが選手の背中側を見ているため、
+  // 振り抜きで腕が体の向こう側（＝カメラから見て後ろ）へ回り込むことはない
+  // （腕は常にカメラ側＝体の手前にある）。この場合に「頭より先に描いて隠す」処理を
+  // 適用すると、腕・ラケットが体（頭の背面シルエット）に塗り潰されて体を貫通したように
+  // 見えてしまうため、背面視点では常に頭より後（前面）に描く。
   const swingK = (pl.pose === "swing" && pl.swingT > 0) ? (1 - pl.swingT / 0.32) : 0;
-  const isFollowThrough = pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
+  const isFollowThrough = !awayFromCamera && pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
 
   const drawArmsAndRacket = () => {
     ctx.strokeStyle = pl.skin;
