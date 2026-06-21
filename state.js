@@ -30,11 +30,14 @@ export const aggressionControls = document.getElementById("aggression-controls")
 export const shotSelectControls = document.getElementById("shot-select-controls");
 export const moveStick     = document.getElementById("move-stick");
 export const moveStickKnob = document.getElementById("move-stick-knob");
-export const positionControls  = document.getElementById("position-controls");
 export const formationControls = document.getElementById("formation-controls");
 export const inputModeControls = document.getElementById("input-mode-controls");
-export const spectatorToggle   = document.getElementById("spectator-toggle");
 export const controlsPanel     = document.getElementById("controls");
+export const playerPicker        = document.getElementById("player-picker");
+export const pickerPlayerBack    = document.getElementById("picker-player-back");
+export const pickerPlayerFront   = document.getElementById("picker-player-front");
+export const pickerCpuBack       = document.getElementById("picker-cpu-back");
+export const pickerCpuFront      = document.getElementById("picker-cpu-front");
 
 // マウスが最後に指していたコート地面のワールド座標（canvas外でも直前値を保持）
 export const mouseAim = { x: 0, y: -TUNING.aim.defaultY, valid: false };

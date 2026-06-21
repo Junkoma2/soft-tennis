@@ -25,14 +25,53 @@
     <main>
       <div id="screen-ready" class="screen">
         <p class="description">
-          ダブルスのソフトテニス対戦です。ポジションと陣形を選び、ためて打ち分けましょう。<br />
-          <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。<br />
-          操作しない相方はAIが動かします。「観戦: AI対AI に切替」を選ぶと4人全員AIが操作し、観戦だけで試合が進みます。
+          ダブルスのソフトテニス対戦です。手前の自分側の選手をタップして操作キャラ（YOU）を選べます。<br />
+          両方AIにすると4人全員AIが操作し、観戦だけで試合が進みます。<br />
+          <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。操作しない相方はAIが動かします。
         </p>
-        <div class="control-group" id="position-controls">
-          <span class="control-label">ポジション</span>
-          <button class="ctrl-btn is-active" data-position="back" type="button">後衛を操作</button>
-          <button class="ctrl-btn" data-position="front" type="button">前衛を操作</button>
+        <div class="control-group player-picker-group" id="player-picker-group">
+          <span class="control-label">操作キャラ（タップでYOU/AI切替）</span>
+          <div id="player-picker" class="player-picker">
+            <div class="player-picker-court">
+              <div class="player-picker-net"></div>
+              <button class="picker-marker picker-marker-cpu" id="picker-cpu-front" data-marker="cpu-front" type="button" disabled>
+                <span class="picker-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="3.4"/><path d="M5 21c0-4.4 3.1-7.5 7-7.5s7 3.1 7 7.5"/></svg>
+                </span>
+                <span class="picker-meta">
+                  <span class="picker-role">前衛</span>
+                  <span class="picker-tag">AI</span>
+                </span>
+              </button>
+              <button class="picker-marker picker-marker-cpu" id="picker-cpu-back" data-marker="cpu-back" type="button" disabled>
+                <span class="picker-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="3.4"/><path d="M5 21c0-4.4 3.1-7.5 7-7.5s7 3.1 7 7.5"/></svg>
+                </span>
+                <span class="picker-meta">
+                  <span class="picker-role">後衛</span>
+                  <span class="picker-tag">AI</span>
+                </span>
+              </button>
+              <button class="picker-marker picker-marker-self" id="picker-player-front" data-marker="player-front" data-position="front" type="button">
+                <span class="picker-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="3.4"/><path d="M5 21c0-4.4 3.1-7.5 7-7.5s7 3.1 7 7.5"/></svg>
+                </span>
+                <span class="picker-meta">
+                  <span class="picker-role">前衛</span>
+                  <span class="picker-tag">AI</span>
+                </span>
+              </button>
+              <button class="picker-marker picker-marker-self" id="picker-player-back" data-marker="player-back" data-position="back" type="button">
+                <span class="picker-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="3.4"/><path d="M5 21c0-4.4 3.1-7.5 7-7.5s7 3.1 7 7.5"/></svg>
+                </span>
+                <span class="picker-meta">
+                  <span class="picker-role">後衛</span>
+                  <span class="picker-tag">YOU</span>
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
         <div class="control-group" id="formation-controls">
           <span class="control-label">陣形</span>
@@ -44,10 +83,6 @@
           <span class="control-label">操作方法</span>
           <button class="ctrl-btn is-active" data-input-mode="swipe" type="button">スワイプ</button>
           <button class="ctrl-btn" data-input-mode="mouse" type="button">マウス</button>
-        </div>
-        <div class="control-group" id="spectator-controls">
-          <span class="control-label">モード</span>
-          <button class="ctrl-btn" id="spectator-toggle" data-spectator="off" type="button">観戦: AI対AI に切替</button>
         </div>
         <div class="rules">
           <p><strong>移動</strong>　<strong>WASD（左手）</strong>（スマホ：左下スティック）。打点ゾーン中も移動できます</p>

@@ -1,5 +1,5 @@
 import {
-  TUNING, COURT,
+  TUNING, COURT, FORMATIONS,
   PLAYER_X_LIMIT, Y_RANGE_BACK, Y_RANGE_FRONT, HIT_REACH, SHOT_FAMILY_ORDER,
 } from "./config.js";
 
@@ -10,8 +10,9 @@ import {
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
   serveAimCursor, chargeBtn, servePowerControls, serveSpinControls,
   setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
-  positionControls, setPlayerPosition, formationControls, setFormation,
-  spectatorToggle, setSpectatorMode, startBtn, moveStick, moveStickKnob,
+  setPlayerPosition, formationControls, setFormation, formation,
+  setSpectatorMode, startBtn, moveStick, moveStickKnob,
+  playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
 } from "./state.js";
@@ -221,19 +222,12 @@ if (aggressionControls) {
   });
 }
 
-// 開始画面: ポジション（後衛/前衛）と陣形の選択
-positionControls.addEventListener("click", function (e) {
-  const btn = e.target.closest(".ctrl-btn");
-  if (!btn) return;
-  setPlayerPosition(btn.dataset.position);
-  setActiveButton(positionControls, btn);
-});
-
 formationControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");
   if (!btn) return;
   setFormation(btn.dataset.formation);
   setActiveButton(formationControls, btn);
+  updatePickerPositions();
 });
 
 // 操作方法（入力デバイス）の選択。デフォルトはswipe（マウス追従の狙いを無効化し、
@@ -247,19 +241,74 @@ if (inputModeControls) {
   });
 }
 
-// 観戦モード（AI対AI）の切替。ONのときはポジション選択を無効化する
-// （rallyControlledもAIが操作するため、操作キャラの選択は表示上の意味のみ）。
-if (spectatorToggle) {
-  spectatorToggle.addEventListener("click", function () {
-    setSpectatorMode(!spectatorMode);
-    spectatorToggle.dataset.spectator = spectatorMode ? "on" : "off";
-    spectatorToggle.classList.toggle("is-active", spectatorMode);
-    spectatorToggle.textContent = spectatorMode ? "観戦モード: ON（4人ともAI）" : "観戦: AI対AI に切替";
-    positionControls.querySelectorAll(".ctrl-btn").forEach(function (b) {
-      b.disabled = spectatorMode;
-    });
-    startBtn.textContent = spectatorMode ? "観戦を始める" : "試合を始める";
+/* ---- 開始画面: 操作キャラ ピッカー（簡易ミニコート） ----
+ * 自チーム（手前）の後衛/前衛マーカーをタップでYOU⇔AI切替。
+ * YOUは自チーム内で常に最大1人（片方をYOUにすると他方は自動でAI）。
+ * 両方AIなら観戦モード（spectatorMode=true）。
+ * 相手チーム（奥）のマーカーは常にAI・タップ不可。 */
+// ワールド座標(m)→ミニコート上の位置(%)へマッピング。
+// x: -halfW..halfW を 8%..92% に、自陣y(0..halfL)を 50%..92%、
+// 相手陣y(0..-halfL)を 50%..8% に対応させる（ネット=50%、コート外周に余白を残す）。
+function worldXToPercent(x) {
+  const t = (x + COURT.halfW) / (2 * COURT.halfW);
+  return 16 + Math.max(0, Math.min(1, t)) * 68;
+}
+function worldYToPercent(y) {
+  const t = Math.max(0, Math.min(1, Math.abs(y) / COURT.halfL));
+  const span = 50 - 16; // ネット(50%)からベースライン(16or84%)までの距離
+  return y >= 0 ? 50 + t * span : 50 - t * span;
+}
+
+// 陣形(formation)に応じて、開始画面ミニコートの4マーカーを定位置へ再配置する。
+// 自チームは config.js の FORMATIONS（選んだ陣形）、相手は雁行陣固定（FORMATIONSの
+// 値をx反転・y反転して対称配置）。
+function updatePickerPositions() {
+  const f = FORMATIONS[formation] || FORMATIONS["ganko"];
+  const oppo = FORMATIONS["ganko"];
+  const place = (el, x, y) => {
+    if (!el) return;
+    el.style.left = worldXToPercent(x) + "%";
+    el.style.top = worldYToPercent(y) + "%";
+  };
+  place(pickerPlayerBack, f.back.x, f.back.y);
+  place(pickerPlayerFront, f.front.x, f.front.y);
+  place(pickerCpuBack, -oppo.back.x, -oppo.back.y);
+  place(pickerCpuFront, -oppo.front.x, -oppo.front.y);
+}
+
+function updatePickerUi() {
+  const youIsBack = !spectatorMode && playerPosition === "back";
+  const youIsFront = !spectatorMode && playerPosition === "front";
+  if (pickerPlayerBack) {
+    pickerPlayerBack.classList.toggle("is-you", youIsBack);
+    pickerPlayerBack.querySelector(".picker-tag").textContent = youIsBack ? "YOU" : "AI";
+  }
+  if (pickerPlayerFront) {
+    pickerPlayerFront.classList.toggle("is-you", youIsFront);
+    pickerPlayerFront.querySelector(".picker-tag").textContent = youIsFront ? "YOU" : "AI";
+  }
+  startBtn.textContent = spectatorMode ? "観戦を始める" : "試合を始める";
+}
+
+function selectPickerPosition(position) {
+  // 同じマーカーを再タップしたらAIに戻す（=観戦化）。違うマーカーならそちらをYOUにする。
+  if (!spectatorMode && playerPosition === position) {
+    setSpectatorMode(true);
+  } else {
+    setSpectatorMode(false);
+    setPlayerPosition(position);
+  }
+  updatePickerUi();
+}
+
+if (playerPicker) {
+  playerPicker.addEventListener("click", function (e) {
+    const btn = e.target.closest(".picker-marker-self");
+    if (!btn || btn.disabled) return;
+    selectPickerPosition(btn.dataset.position);
   });
+  updatePickerUi();
+  updatePickerPositions();
 }
 
 export function setActiveButton(group, activeBtn) {
