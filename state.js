@@ -257,6 +257,17 @@ export function setLastHitInfo(v) { lastHitInfo = v; }
 export const keysWasd  = { left: false, right: false, up: false, down: false };
 export const stick = { active: false, dx: 0, dy: 0 }; // dx,dy は -1..1（dy: 正=自陣ベースライン方向）
 
+// スマホ: コート(canvas)上のスワイプ操作（右手・狙い+打球用）。
+// active中はスワイプの移動量から決めた狙いを優先し、pointerup でスイングする。
+// タップ判定用に開始座標とポインターIDも保持する。
+export const swipe = {
+  active: false,
+  pointerId: null,
+  startX: 0, startY: 0,     // スワイプ開始のクライアント座標（しきい値判定用）
+  aimX: 0, aimY: -9.0,      // スワイプ量から計算した狙い（プレビュー用・ワールド座標）
+  moved: false,             // しきい値を超えて「スワイプ」と確定したか
+};
+
 // Space = ロブ修飾キー。押している間にクリックすると球種がロブになる。
 export let spaceHeld = false;
 export function setSpaceHeld(v) { spaceHeld = v; }

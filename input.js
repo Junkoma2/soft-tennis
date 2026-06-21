@@ -7,7 +7,7 @@ import {
   keysWasd, setSpaceHeld, spaceHeld, state, charge, matchTime, aim,
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
-  selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick,
+  selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
   serveAimCursor, chargeBtn, servePowerControls, serveSpinControls,
   setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
   positionControls, setPlayerPosition, formationControls, setFormation,
@@ -35,7 +35,9 @@ import {
  * - サーブ: 左クリックでトス（統一トス）→
  *   適正打点の高さで左クリック=フラットサーブ、右クリック=カットサーブ。
  *   マウスで対角サービスコート内の狙いを指す
- * - スマホ: スティックで移動（ため/トス中はスティックが狙いへ切替）、下部ボタンタップでスイング
+ * - スマホ: 左スティックで移動専用。右手はコート上のスワイプで狙い＋打球
+ *   （タップ＝デフォルト狙いでスイング、スワイプ＝その方向ベクトルの狙いでスイング）。
+ *   球種は下部3ボタンの選択（selectedShot）。サーブはタップでトス/フラットサーブのまま。
  * =========================================================== */
 
 
@@ -43,6 +45,11 @@ import {
 
 // 自由移動できるy方向の範囲（操作キャラクターの役割に応じて変える）
 
+
+// スマホ: コート上スワイプのタップ/スワイプ判定しきい値（クライアントpx）
+const SWIPE_THRESHOLD_PX = 10;
+// スワイプ量(画面px・コート幅/全長基準の正規化量)→狙い移動量の感度。TUNINGは変更しない方針のためここで定義。
+const SWIPE_AIM_SENSITIVITY = 1.4;
 
 export function setControlledX(p, x) {
   p.x = Math.max(-PLAYER_X_LIMIT, Math.min(PLAYER_X_LIMIT, x));
@@ -144,7 +151,11 @@ export function updateAimInputs(dt) {
   if (spectatorMode) return; // 観戦モードはマウス/スティック入力を使わない（全員AI）
   if (state === "rally" && charge.active) {
     const c = TUNING.aim;
-    if (mouseAim.valid) {
+    if (swipe.active) {
+      // スマホ: コート上のスワイプで決めた狙いを最優先（右手・打球側の指）
+      aim.x = swipe.aimX;
+      aim.y = swipe.aimY;
+    } else if (mouseAim.valid) {
       // マウスが指すコート地点をそのまま狙いに（相手コート＝負のy側へ）
       aim.x = mouseAim.x;
       aim.y = mouseAim.y;
@@ -312,19 +323,83 @@ canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 //   右クリック = カット（スライス/ドロップ） / サーブはカットサーブ
 //   Spaceを押しながらクリック = ロブ
 // 打点ゾーン中も自動でため済みのため、クリック=即スイング。
-// マウス以外（タッチ/ペン）はタップ=左クリック相当（フラット系）。
+//
+// スマホ（タッチ/ペン）はラリー中のみ「スワイプ＝狙い＋打球」（右手・二本目の指）。
+// 左手は #move-stick で移動専用のまま。サーブ中（serve-stance/serve-toss）は
+// 従来通りタップ即トス/サーブ（playerServeAction）でスコープ外。
 canvas.addEventListener("pointerdown", function (e) {
-  let button = 0;
   if (e.pointerType === "mouse") {
-    button = e.button;
+    const button = e.button;
     if (button !== 0 && button !== 2) return; // 中ボタン等は無視
     updateMouseAimFromEvent(e);        // 押した瞬間の地点を即狙いへ反映
-  }
-  if (state === "serve-stance" || state === "serve-toss") {
-    playerServeAction(button);
+    if (state === "serve-stance" || state === "serve-toss") {
+      playerServeAction(button);
+      return;
+    }
+    attemptSwing(shotFamilyForClick(button));
     return;
   }
-  attemptSwing(shotFamilyForClick(button));
+
+  // タッチ/ペン
+  if (state === "serve-stance" || state === "serve-toss") {
+    playerServeAction(0); // サーブはスコープ外＝従来通りタップでトス/サーブ
+    return;
+  }
+  if (state !== "rally") return;
+  swipe.active = true;
+  swipe.pointerId = e.pointerId;
+  swipe.startX = e.clientX;
+  swipe.startY = e.clientY;
+  swipe.moved = false;
+  swipe.aimX = aim.x;
+  swipe.aimY = aim.y;
+  canvas.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+canvas.addEventListener("pointermove", function (e) {
+  if (!swipe.active || e.pointerId !== swipe.pointerId) return;
+  e.preventDefault();
+  const dx = e.clientX - swipe.startX;
+  const dy = e.clientY - swipe.startY;
+  if (Math.hypot(dx, dy) > SWIPE_THRESHOLD_PX) swipe.moved = true;
+
+  // スワイプ量(クライアントpx)→ワールド座標の差分に変換し、開始時の狙いに加算する。
+  // 横dx→aim.x（左右の配球）、縦dy→aim.y（上方向スワイプ=相手コート深く=aim.yがより負）。
+  // canvas表示サイズ(コート全幅/全長)基準でpx→m換算し、感度係数を掛ける。
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  const c = TUNING.aim;
+  const worldPerPxX = (COURT.halfW * 2) / rect.width;
+  const worldPerPxY = (COURT.halfL * 2) / rect.height;
+  swipe.aimX = aim.x + dx * worldPerPxX * SWIPE_AIM_SENSITIVITY;
+  swipe.aimY = aim.y + dy * worldPerPxY * SWIPE_AIM_SENSITIVITY; // 上スワイプ(dy<0)で奥(より負のy)へ
+
+  // 既存のクランプ（updateAimInputsと同じマージン）に収める（プレビュー段階でも見た目を合わせる）
+  swipe.aimX = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, swipe.aimX));
+  swipe.aimY = Math.max(-(COURT.halfL - c.depthMargin), Math.min(-c.minDepth, swipe.aimY));
+  // パワー（ため）は今回スワイプ長さに連動させない。既存の自動ため(chargeAmount)を流用。
+  // 将来拡張: スワイプの速さ/長さでパワーを上乗せする余地あり。
+});
+
+function endSwipe(e) {
+  if (!swipe.active || e.pointerId !== swipe.pointerId) return;
+  swipe.active = false;
+  if (swipe.moved) {
+    // スワイプ確定: そのベクトルから決めた狙いでスイング
+    aim.x = swipe.aimX;
+    aim.y = swipe.aimY;
+  }
+  // しきい値未満（タップ）は従来通りデフォルト狙いでスイング
+  attemptSwing(selectedShot);
+}
+canvas.addEventListener("pointerup", function (e) {
+  if (e.pointerType === "mouse") return;
+  endSwipe(e);
+});
+canvas.addEventListener("pointercancel", function (e) {
+  if (e.pointerType === "mouse") return;
+  swipe.active = false;
 });
 
 
