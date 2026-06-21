@@ -551,8 +551,19 @@ export function drawHumanoid(pl) {
   const headR = 0.23 * s;
   const headCy = torsoTop - headR * 0.85;
 
-  const foreDir = pl.facing === -1 ? 1 : -1;
-  const sideDir = pl.swingSide === "fore" ? foreDir : -foreDir;
+  // ラケットを持つ手は利き腕で常に固定（フォア/バックで持ち替えない）。
+  // foreDir: そのプレイヤーから見て「フォア側」が画面上どちら向きか（向き＋利き腕の鏡像を反映）。
+  //   右利き: プレイヤー(facing=-1)はフォアが画面右(+1)、CPU(facing=1)は画面左(-1) ＝ 既存と同じ。
+  //   左利き: 体の向きはそのままに、利き腕側が左右反転するため鏡像になる。
+  const facingDir = pl.facing === -1 ? 1 : -1;
+  const handSign = pl.stats && pl.stats.handed === "left" ? -1 : 1;
+  const foreDir = facingDir * handSign;
+  // racketDir: ラケットを保持する手の画面上の向き。フォア/バックに関わらず常に同じ
+  // （利き腕固定）。バックハンドは体を捻ってラケット軌道を変えるだけで、持ち替えない。
+  const racketDir = foreDir;
+  // bodyTwist: フォア/バックの違いを胴体の向き・捻りで表現するための符号
+  // （フォア=+、バック=-）。ラケット位置の左右反転には使わない。
+  const swingDir = pl.swingSide === "fore" ? 1 : -1;
 
   ctx.strokeStyle = "#1F2937";
   ctx.lineWidth = Math.max(1.5, 0.09 * s);
@@ -564,6 +575,11 @@ export function drawHumanoid(pl) {
   ctx.lineTo(0.16 * s, 0);
   ctx.stroke();
 
+  // このプレイヤーがちょうどサーブを打っている最中か（描画の演出選択のみに使う。
+  // 当たり判定・タイミングには一切関与しない＝ball.serving/lastHitterを読むだけ）。
+  const isServingTeam = (pl === back || pl === front) ? "player" : "cpu";
+  const isServeSwing = pl.pose === "swing" && ball.serving && ball.lastHitter === isServingTeam;
+
   const shoulderY = torsoTop + 0.12 * s;
   let armAngle;
   let racketLen = 0.62 * s;
@@ -573,10 +589,6 @@ export function drawHumanoid(pl) {
     // k=1: スイング表示終了。当たり判定・タイミングはここでは一切変えず、
     // 同じ0→1の進行を非線形カーブに通すだけ（見た目の演出のみ）。
     const k = 1 - pl.swingT / 0.32;
-    // テイクバック→振り抜き→フォロースルーの抑揚をつける非線形カーブ。
-    // armAngleProgress(k): k=0で-0.9（従来と同じ＝当たり判定の瞬間の見た目は変えない）、
-    // 序盤はわずかに戻る（テイクバックの余韻）→中盤で加速して振り抜く→
-    // 終盤はわずかに戻って収まる（フォロースルーの減速）。
     let progress;
     if (k < 0.18) {
       // ごく短い「引き」の余韻（当たった直後、ラケットが一瞬戻る動き）
@@ -588,13 +600,26 @@ export function drawHumanoid(pl) {
       const eased = 1 - Math.pow(1 - t, 2.2);
       progress = eased;
     }
-    armAngle = (-0.9 + progress * 1.7);
+    if (isServeSwing) {
+      // サーブ（アンダーカット基調）: テイクバックで沈み込み、下から上へ
+      // すくい上げるように振る。ストロークと違い「上→下」ではなく「下→上」。
+      // armAngle: -2.6（低いテイクバック）→ -0.5（高い振り上げ・フォロースルー）
+      armAngle = -2.6 + progress * 2.1;
+    } else {
+      // テイクバック→振り抜き→フォロースルーの抑揚をつける非線形カーブ。
+      // armAngleProgress(k): k=0で-0.9（従来と同じ＝当たり判定の瞬間の見た目は変えない）、
+      // 序盤はわずかに戻る（テイクバックの余韻）→中盤で加速して振り抜く→
+      // 終盤はわずかに戻って収まる（フォロースルーの減速）。
+      armAngle = (-0.9 + progress * 1.7);
+    }
     // 胴の軽い捻り: 振り抜きに合わせてわずかに前へ（やりすぎない量）
-    torsoTwist = Math.max(0, Math.min(1, k)) * 0.05 * sideDir;
+    torsoTwist = Math.max(0, Math.min(1, k)) * 0.05 * swingDir * foreDir;
   } else if (pl.pose === "ready") {
     armAngle = -0.55;
-  } else if (pl.pose === "serve" || pl.pose === "toss") {
-    armAngle = -1.5;
+  } else if (pl.pose === "toss") {
+    // トス〜テイクバック: トスを上げた直後からラケット側はすでに後方・低めへ
+    // 沈み込み始める（アンダーカットサーブのテイクバック準備）。
+    armAngle = -2.3;
   } else {
     armAngle = 0.6;
   }
@@ -604,25 +629,25 @@ export function drawHumanoid(pl) {
   roundRect(ctx, -tw / 2 + torsoTwist * s, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
   ctx.fill();
 
-  const armX = sideDir * Math.cos(armAngle);
+  const armX = racketDir * Math.cos(armAngle);
   const armY = Math.sin(armAngle);
-  const handX = sideDir * 0.3 * s * Math.abs(Math.cos(armAngle)) + sideDir * 0.06 * s;
+  const handX = racketDir * 0.3 * s * Math.abs(Math.cos(armAngle)) + racketDir * 0.06 * s;
   const handY = shoulderY + 0.3 * s * armY;
 
   ctx.strokeStyle = pl.skin;
   ctx.lineWidth = Math.max(1.5, 0.08 * s);
   ctx.beginPath();
-  ctx.moveTo(-sideDir * tw * 0.4, shoulderY);
+  ctx.moveTo(-racketDir * tw * 0.4, shoulderY);
   if (pl.pose === "toss") {
     // トス腕（反対側の手）を高く上げる
-    ctx.lineTo(-sideDir * 0.16 * s, shoulderY - 0.55 * s);
+    ctx.lineTo(-racketDir * 0.16 * s, shoulderY - 0.55 * s);
   } else {
-    ctx.lineTo(-sideDir * 0.34 * s, shoulderY + 0.26 * s);
+    ctx.lineTo(-racketDir * 0.34 * s, shoulderY + 0.26 * s);
   }
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(sideDir * tw * 0.4, shoulderY);
+  ctx.moveTo(racketDir * tw * 0.4, shoulderY);
   ctx.lineTo(handX, handY);
   ctx.stroke();
 
