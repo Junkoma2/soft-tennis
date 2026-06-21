@@ -11,6 +11,7 @@ import {
   serveAimCursor, chargeBtn, servePowerControls, serveSpinControls,
   setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
+  handedControls, setPlayerHanded,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
@@ -229,6 +230,16 @@ formationControls.addEventListener("click", function (e) {
   setActiveButton(formationControls, btn);
   updatePickerPositions();
 });
+
+// 利き腕（自チーム）。試合前のみ変更可。デフォルトは右利き（既存挙動と同一）。
+if (handedControls) {
+  handedControls.addEventListener("click", function (e) {
+    const btn = e.target.closest(".ctrl-btn");
+    if (!btn || !btn.dataset.handed) return;
+    setPlayerHanded(btn.dataset.handed);
+    setActiveButton(handedControls, btn);
+  });
+}
 
 // 操作方法（入力デバイス）の選択。デフォルトはswipe（マウス追従の狙いを無効化し、
 // スワイプ/タップ前提のレシーブ・サーブ操作を主役にする）。mouseは従来のPC挙動。
