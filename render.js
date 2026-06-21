@@ -9,7 +9,7 @@ import {
 import {
   ctx, serveAimCursor, aim, charge, toss, rallyControlled, ball, effects,
   state, spectatorMode, cpuServePlan, servePower, serveSpin, serveReady,
-  back, front, cpuBack, cpuFront,
+  back, front, cpuBack, cpuFront, matchTime,
 } from "./state.js";
 
 import {
@@ -532,6 +532,19 @@ export function drawBall() {
   ctx.stroke();
 }
 
+/* ---- 簡易人型の選手: 移動ステップ・スプリットステップ用のローカル演出state ----
+ * 当たり判定・タイミング・state構造には触れず、描画side専用のキャッシュとして
+ * 選手オブジェクトをキーにしたWeakMapで「前回描画時の位置」と「歩行位相」だけ持つ。 */
+const moveAnimState = new WeakMap();
+function getMoveAnim(pl) {
+  let a = moveAnimState.get(pl);
+  if (!a) {
+    a = { lastX: pl.x, lastY: pl.y, phase: 0, lastNow: performance.now() };
+    moveAnimState.set(pl, a);
+  }
+  return a;
+}
+
 /* ---- 簡易人型の選手 ---- */
 export function drawHumanoid(pl) {
   const g = project(pl.x, pl.y, 0);
@@ -545,8 +558,43 @@ export function drawHumanoid(pl) {
   ctx.ellipse(0, 0, 0.34 * s, 0.13 * s, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const legH = 0.5 * s;
-  const torsoTop = -1.18 * s;
+  // 前衛判定（role/front相当）: state.js上は front/cpuFront インスタンスそのものが
+  // ネット前のプレイヤーを表す。ボレー・スマッシュ待ちのため、後衛よりやや高めの
+  // 構え（膝の曲げを浅く＝重心を高く）にする。見た目のみで当たり判定には関与しない。
+  const isFrontRole = pl === front || pl === cpuFront;
+
+  // 移動検出: 前回描画時の位置との差分から「動いているか」を見る（描画専用キャッシュ）。
+  const anim = getMoveAnim(pl);
+  const now = performance.now();
+  const animDt = Math.max(0.001, Math.min(0.1, (now - anim.lastNow) / 1000));
+  const movedDist = Math.hypot(pl.x - anim.lastX, pl.y - anim.lastY);
+  const moveSpeed = movedDist / animDt; // m/s相当（描画判定用のみ）
+  const isMoving = moveSpeed > 0.15 && pl.pose !== "swing";
+  if (isMoving) {
+    // ソフトテニスらしいコンパクトな小刻みステップ＝速いサイクル
+    anim.phase += animDt * Math.min(10, 6 + moveSpeed * 2.2);
+  }
+  anim.lastX = pl.x; anim.lastY = pl.y; anim.lastNow = now;
+  const stepPhase = anim.phase;
+  const stepSwing = isMoving ? Math.sin(stepPhase) : 0; // -1..1
+  const stepLift = isMoving ? Math.max(0, Math.sin(stepPhase * 2)) * 0.05 : 0; // 軽い上下動
+
+  // スプリットステップ: 相手が打った直後の短い時間だけ、軽く沈み込む予備動作。
+  // タイミング判定は描画側だけで完結（ball.lastHitTime/lastHitterを読むだけ）。
+  const isOwnTeam = (pl === back || pl === front) ? "player" : "cpu";
+  const opponentJustHit = ball.lastHitter !== isOwnTeam;
+  const sinceHit = matchTime - ball.lastHitTime;
+  const SPLIT_WINDOW = 0.22;
+  let splitSquat = 0;
+  if (opponentJustHit && sinceHit >= 0 && sinceHit < SPLIT_WINDOW && pl.pose !== "swing") {
+    const t = sinceHit / SPLIT_WINDOW;
+    splitSquat = Math.sin(t * Math.PI) * 0.07; // 軽い沈み込み（最大7%収縮）
+  }
+
+  // 前衛は重心を高め（膝を浅く）、後衛・移動中・スプリットステップはやや低めに。
+  const stanceCrouch = (isFrontRole ? 0.04 : 0.07) + splitSquat + (isMoving ? stepLift : 0);
+  const legH = (0.5 - stanceCrouch) * s;
+  const torsoTop = (isFrontRole ? -1.21 : -1.18) * s + stanceCrouch * s * 0.6;
   const torsoBottom = -legH;
   const headR = 0.23 * s;
   const headCy = torsoTop - headR * 0.85;
@@ -565,14 +613,20 @@ export function drawHumanoid(pl) {
   // （フォア=+、バック=-）。ラケット位置の左右反転には使わない。
   const swingDir = pl.swingSide === "fore" ? 1 : -1;
 
+  // 脚: 静止時は構え（つま先重心・腰幅で軽く開いた）固定ポーズ。移動時はstepSwingで
+  // 左右の足を交互に前後・上下させ、コンパクトな小刻みステップに見せる
+  // （当たり判定・移動量には一切影響しない＝描画のみのオフセット）。
+  const stepReach = isMoving ? 0.07 * s : 0;
+  const leftFootZ = isMoving ? Math.max(0, -Math.sin(stepPhase)) * 0.06 * s : 0;
+  const rightFootZ = isMoving ? Math.max(0, Math.sin(stepPhase)) * 0.06 * s : 0;
   ctx.strokeStyle = "#1F2937";
   ctx.lineWidth = Math.max(1.5, 0.09 * s);
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(-0.12 * s, torsoBottom);
-  ctx.lineTo(-0.16 * s, 0);
+  ctx.lineTo(-0.16 * s - stepSwing * stepReach, -leftFootZ);
   ctx.moveTo(0.12 * s, torsoBottom);
-  ctx.lineTo(0.16 * s, 0);
+  ctx.lineTo(0.16 * s + stepSwing * stepReach, -rightFootZ);
   ctx.stroke();
 
   // このプレイヤーがちょうどサーブを打っている最中か（描画の演出選択のみに使う。
@@ -605,16 +659,24 @@ export function drawHumanoid(pl) {
       // すくい上げるように振る。ストロークと違い「上→下」ではなく「下→上」。
       // armAngle: -2.6（低いテイクバック）→ -0.5（高い振り上げ・フォロースルー）
       armAngle = -2.6 + progress * 2.1;
-    } else {
-      // テイクバック→振り抜き→フォロースルーの抑揚をつける非線形カーブ。
+    } else if (swingDir === 1) {
+      // フォアハンド: テイクバック→振り抜き→フォロースルーの抑揚をつける非線形カーブ。
       // armAngleProgress(k): k=0で-0.9（従来と同じ＝当たり判定の瞬間の見た目は変えない）、
       // 序盤はわずかに戻る（テイクバックの余韻）→中盤で加速して振り抜く→
       // 終盤はわずかに戻って収まる（フォロースルーの減速）。
       armAngle = (-0.9 + progress * 1.7);
+    } else {
+      // バックハンド（片手）: 利き腕は持ち替えず、体を捻って胸の前で打つ。
+      // テイクバックはコンパクト（armAngle -0.5付近）にとどめ、
+      // インパクト〜フォロースルーで体の前を横切るように振り抜く（0.95付近で収める。
+      // フォアより小さい振り幅＝硬式的なワイパーにしない）。
+      armAngle = (-0.5 + progress * 1.45);
     }
     // 胴の軽い捻り: 振り抜きに合わせてわずかに前へ（やりすぎない量）
     torsoTwist = Math.max(0, Math.min(1, k)) * 0.05 * swingDir * foreDir;
-  } else if (pl.pose === "ready") {
+  } else if (pl.pose === "ready" || pl.pose === "idle") {
+    // 構え（レディポジション）。スイング後の"idle"もここに合わせることで、
+    // 打った直後すぐ構えに戻ったように見せる（タイミング値は変更しない、見た目の収束のみ）。
     armAngle = -0.55;
   } else if (pl.pose === "toss") {
     // トス〜テイクバック: トスを上げた直後からラケット側はすでに後方・低めへ
@@ -641,6 +703,10 @@ export function drawHumanoid(pl) {
   if (pl.pose === "toss") {
     // トス腕（反対側の手）を高く上げる
     ctx.lineTo(-racketDir * 0.16 * s, shoulderY - 0.55 * s);
+  } else if (pl.pose === "ready" || pl.pose === "idle") {
+    // 構え時: 非利き手をラケットのスロート（喉/グリップ付近）に添える
+    // 両手持ちレディポジション。利き手側のhandX/handYに寄せる。
+    ctx.lineTo(handX - racketDir * 0.05 * s, handY - 0.04 * s);
   } else {
     ctx.lineTo(-racketDir * 0.34 * s, shoulderY + 0.26 * s);
   }
