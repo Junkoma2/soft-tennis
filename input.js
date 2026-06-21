@@ -13,6 +13,7 @@ import {
   positionControls, setPlayerPosition, formationControls, setFormation,
   spectatorToggle, setSpectatorMode, startBtn, moveStick, moveStickKnob,
   canvas, back, front, setBallHittableSince, appRoot,
+  inputMode, setInputMode, inputModeControls,
 } from "./state.js";
 
 import {
@@ -235,6 +236,17 @@ formationControls.addEventListener("click", function (e) {
   setActiveButton(formationControls, btn);
 });
 
+// 操作方法（入力デバイス）の選択。デフォルトはswipe（マウス追従の狙いを無効化し、
+// スワイプ/タップ前提のレシーブ・サーブ操作を主役にする）。mouseは従来のPC挙動。
+if (inputModeControls) {
+  inputModeControls.addEventListener("click", function (e) {
+    const btn = e.target.closest(".ctrl-btn");
+    if (!btn) return;
+    setInputMode(btn.dataset.inputMode);
+    setActiveButton(inputModeControls, btn);
+  });
+}
+
 // 観戦モード（AI対AI）の切替。ONのときはポジション選択を無効化する
 // （rallyControlledもAIが操作するため、操作キャラの選択は表示上の意味のみ）。
 if (spectatorToggle) {
@@ -305,7 +317,9 @@ if (moveStick) {
 
 // PC: マウス移動で狙い（着地カーソル）をマウスが指すコート地点へ追従させる。
 // canvas外へ出たら直前の狙いを保持（mouseAim.valid は維持）。
+// swipeモード（デフォルト）ではマウス追従の狙いを無効化する（スワイプ/タップ前提のため）。
 canvas.addEventListener("mousemove", function (e) {
+  if (inputMode !== "mouse") return;
   updateMouseAimFromEvent(e);
 });
 // 右クリックのコンテキストメニューは抑止（右クリック=カット/カットサーブとして使う）
@@ -324,7 +338,8 @@ canvas.addEventListener("pointerdown", function (e) {
   if (e.pointerType === "mouse") {
     const button = e.button;
     if (button !== 0 && button !== 2) return; // 中ボタン等は無視
-    updateMouseAimFromEvent(e);        // 押した瞬間の地点を即狙いへ反映
+    // swipeモードでは狙いをマウス位置に合わせない（直近のスワイプ/デフォルト狙いのまま打つ）。
+    if (inputMode === "mouse") updateMouseAimFromEvent(e); // 押した瞬間の地点を即狙いへ反映
     if (state === "serve-stance" || state === "serve-toss") {
       playerServeAction(button);
       return;
