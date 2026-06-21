@@ -372,8 +372,10 @@ export function evaluateContact(side, hitter, contactZ) {
 
   // 引っ張り/流しの方向（右利き想定）:
   //   フォアの引っ張り=体の逆側へ（プレイヤーのフォアなら画面左）、流し=打点側へ
-  const pullSign = -sideSign;
-  const flowSign = sideSign;
+  //   左利きはフォア/バックの体の向きが反転するため符号を反転させる
+  const handSign = hitter.stats.handed === "left" ? -1 : 1;
+  const pullSign = -sideSign * handSign;
+  const flowSign = sideSign * handSign;
 
   // 角度幅の倍率: 詰まるほど引っ張りはほぼ真っ直ぐのみ、流しは比較的残る
   let pullMul = lerp(c.pullCrampMin, 1, cramp);

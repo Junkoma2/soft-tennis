@@ -50,6 +50,7 @@ export const mouseAim = { x: 0, y: -TUNING.aim.defaultY, valid: false };
  *   reach:   打球判定の広さ
  *   control: 狙いの正確さ（1で誤差最小）
  *   volley:  前衛の反応の良さ
+ *   handed:  利き腕（"right" | "left"）。デフォルトは"right"で既存挙動と同一。
  */
 export function makeStats(overrides) {
   return Object.assign({
@@ -59,6 +60,7 @@ export function makeStats(overrides) {
     reach: 1.0,
     control: 1.0,
     volley: 1.0,
+    handed: "right",
   }, overrides || {});
 }
 

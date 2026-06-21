@@ -407,9 +407,12 @@ export function frontTheoryX(side, frontY) {
   // 線上から「気持ち一歩外側」へ。外側＝センターラインから離れる向き
   // （線が左側(x<0)なら更に左へ、右側なら更に右へ）。
   const outSign = lineX >= 0 ? 1 : -1;
+  // 左利きの前衛は利き腕の肩が逆になるため、外側へ寄る向きを反転させる
+  const frontPlayer = side === "cpu" ? cpuFront : front;
+  const handSign = frontPlayer.stats.handed === "left" ? -1 : 1;
   // コート外への逸脱を防ぐ（シングルスコート幅でクランプ）
   return Math.max(-COURT.singlesHalfW, Math.min(COURT.singlesHalfW,
-    lineX + outSign * TUNING.pos.frontOutsideStep));
+    lineX + outSign * handSign * TUNING.pos.frontOutsideStep));
 }
 
 // 後衛の定位置（確定セオリー）:
