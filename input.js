@@ -12,7 +12,7 @@ import {
   setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
   positionControls, setPlayerPosition, formationControls, setFormation,
   spectatorToggle, setSpectatorMode, startBtn, moveStick, moveStickKnob,
-  canvas, back, front, setBallHittableSince,
+  canvas, back, front, setBallHittableSince, appRoot,
 } from "./state.js";
 
 import {
@@ -144,11 +144,11 @@ export function selectShot(family) {
   }
 }
 
-// 狙いの更新: PCはマウスが指すコート地点へ着地カーソルを追従、スマホはスティック。
+// 狙いの更新: PCはマウスが指すコート地点へ着地カーソルを追従、スマホはコート上のスワイプ。
 //   ラリーのため中 → aim（相手コート内にクランプ）
 //   サーブのトス前/トス中 → serveAimCursor（対角サービスコート±わずかにクランプ）
 export function updateAimInputs(dt) {
-  if (spectatorMode) return; // 観戦モードはマウス/スティック入力を使わない（全員AI）
+  if (spectatorMode) return; // 観戦モードはマウス/スワイプ入力を使わない（全員AI）
   if (state === "rally" && charge.active) {
     const c = TUNING.aim;
     if (swipe.active) {
@@ -159,10 +159,6 @@ export function updateAimInputs(dt) {
       // マウスが指すコート地点をそのまま狙いに（相手コート＝負のy側へ）
       aim.x = mouseAim.x;
       aim.y = mouseAim.y;
-    } else if (stick.active) {
-      // スマホ: スティックで着地カーソルを相対移動
-      aim.x += stick.dx * c.cursorSpeed * dt;
-      aim.y += stick.dy * c.cursorSpeed * dt;
     }
     // 狙いはコート内マージンに収める（アウトは打点の悪さ・散らばり由来のみ）
     aim.x = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, aim.x));
@@ -174,9 +170,6 @@ export function updateAimInputs(dt) {
     if (mouseAim.valid) {
       serveAimCursor.x = mouseAim.x;
       serveAimCursor.y = mouseAim.y;
-    } else if (stick.active) {
-      serveAimCursor.x += stick.dx * c.cursorSpeed * dt;
-      serveAimCursor.y += stick.dy * c.cursorSpeed * dt;
     }
     clampServeAimCursor();
   }
@@ -325,8 +318,8 @@ canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 // 打点ゾーン中も自動でため済みのため、クリック=即スイング。
 //
 // スマホ（タッチ/ペン）はラリー中のみ「スワイプ＝狙い＋打球」（右手・二本目の指）。
-// 左手は #move-stick で移動専用のまま。サーブ中（serve-stance/serve-toss）は
-// 従来通りタップ即トス/サーブ（playerServeAction）でスコープ外。
+// 左手は #move-stick で移動専用のまま。サーブ中（serve-stance/serve-toss）の
+// タッチ操作は #app 側の専用ハンドラ（画面どこタップ/スワイプ）で処理する。
 canvas.addEventListener("pointerdown", function (e) {
   if (e.pointerType === "mouse") {
     const button = e.button;
@@ -340,11 +333,8 @@ canvas.addEventListener("pointerdown", function (e) {
     return;
   }
 
-  // タッチ/ペン
-  if (state === "serve-stance" || state === "serve-toss") {
-    playerServeAction(0); // サーブはスコープ外＝従来通りタップでトス/サーブ
-    return;
-  }
+  // タッチ/ペン: サーブ中は #app 側のハンドラに委ねる（ここでは何もしない）
+  if (state === "serve-stance" || state === "serve-toss") return;
   if (state !== "rally") return;
   swipe.active = true;
   swipe.pointerId = e.pointerId;
@@ -401,6 +391,79 @@ canvas.addEventListener("pointercancel", function (e) {
   if (e.pointerType === "mouse") return;
   swipe.active = false;
 });
+
+/* ---- スマホ: サーブ中（serve-stance/serve-toss）のタッチ操作 ----
+ * serve-stance: 画面のどこをタップ（.ctrl-btn・#move-stick以外）してもトスする。
+ * serve-toss:   コート上のスワイプでコース（serveAimCursor）を指定し、
+ *               指を離した瞬間にサーブを打つ（ラリーのスワイプ打球と統一）。
+ */
+const serveSwipe = {
+  active: false,
+  pointerId: null,
+  startX: 0, startY: 0,
+  baseX: 0, baseY: 0, // スワイプ開始時の serveAimCursor（差分計算の基準）
+  moved: false,
+};
+
+function isServeUiTarget(target) {
+  return !!(target.closest && (target.closest(".ctrl-btn") || target.closest("#move-stick")));
+}
+
+if (appRoot) {
+  appRoot.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "mouse") return; // PCマウスは既存のcanvasハンドラに任せる
+    if (state !== "serve-stance" && state !== "serve-toss") return;
+    if (isServeUiTarget(e.target)) return; // 操作ボタン・スティックは除外
+    if (!playerIsServer()) return;
+
+    if (state === "serve-stance") {
+      playerServeAction(0); // 画面どこタップでもトス
+      return;
+    }
+
+    // serve-toss: スワイプでコースを決め、離した瞬間にサーブ
+    if (!serveAimCursor.set) resetServeAimCursor();
+    serveSwipe.active = true;
+    serveSwipe.pointerId = e.pointerId;
+    serveSwipe.startX = e.clientX;
+    serveSwipe.startY = e.clientY;
+    serveSwipe.baseX = serveAimCursor.x;
+    serveSwipe.baseY = serveAimCursor.y;
+    serveSwipe.moved = false;
+    e.preventDefault();
+  });
+
+  appRoot.addEventListener("pointermove", function (e) {
+    if (!serveSwipe.active || e.pointerId !== serveSwipe.pointerId) return;
+    e.preventDefault();
+    const dx = e.clientX - serveSwipe.startX;
+    const dy = e.clientY - serveSwipe.startY;
+    if (Math.hypot(dx, dy) > SWIPE_THRESHOLD_PX) serveSwipe.moved = true;
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const worldPerPxX = (COURT.halfW * 2) / rect.width;
+    const worldPerPxY = (COURT.halfL * 2) / rect.height;
+    serveAimCursor.x = serveSwipe.baseX + dx * worldPerPxX * SWIPE_AIM_SENSITIVITY;
+    serveAimCursor.y = serveSwipe.baseY + dy * worldPerPxY * SWIPE_AIM_SENSITIVITY;
+    clampServeAimCursor();
+  });
+
+  function endServeSwipe(e) {
+    if (!serveSwipe.active || e.pointerId !== serveSwipe.pointerId) return;
+    serveSwipe.active = false;
+    // 離した瞬間＝打点タイミング。コースはスワイプで決めた serveAimCursor のまま。
+    playerServeAction(0);
+  }
+  appRoot.addEventListener("pointerup", function (e) {
+    if (e.pointerType === "mouse") return;
+    endServeSwipe(e);
+  });
+  appRoot.addEventListener("pointercancel", function (e) {
+    if (e.pointerType === "mouse") return;
+    serveSwipe.active = false;
+  });
+}
 
 
 export function ballIncomingToPlayer() {
