@@ -289,18 +289,27 @@ export function resetPlayersForPoint() {
 
 /* ---- 物理: ターゲットに1バウンド目が落ちる初速を球速から逆算 ---- */
 export function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
-  const dist = Math.max(1.0, Math.hypot(tx - fromX, ty - fromY));
+  // ワープ防止: 打者位置(fromX/fromY)へボールを瞬間移動させず、ボールの
+  // 「実際の現在位置」から発射する。打球判定はリーチ(HIT_REACH)内で成立する
+  // ため、ボールが打者から離れた位置にあるまま代入すると横に飛ぶ＝ワープして
+  // 見えた。現在位置を始点にすることで前フレームから連続して遷移する。
+  // サーブ構え中などボールが未投入のときは渡された位置にフォールバックする。
+  const ballLive = state === "rally" || state === "serve-toss";
+  const startX = ballLive ? ball.x : fromX;
+  const startY = ballLive ? ball.y : fromY;
+  const startZ = ballLive ? Math.max(0.3, ball.z) : fromZ;
+  const dist = Math.max(1.0, Math.hypot(tx - startX, ty - startY));
   const T = dist / speed;
-  ball.x = fromX; ball.y = fromY; ball.z = fromZ;
-  ball.vx = (tx - fromX) / T;
-  ball.vy = (ty - fromY) / T;
-  ball.vz = (0.5 * G * T * T - fromZ) / T;
+  ball.x = startX; ball.y = startY; ball.z = startZ;
+  ball.vx = (tx - startX) / T;
+  ball.vy = (ty - startY) / T;
+  ball.vz = (0.5 * G * T * T - startZ) / T;
   // 球の高さにわずかなランダムブレを加えて自然にする
   ball.vz += (Math.random() - 0.5) * TUNING.jitter.z;
   ball.bounces = 0;
   ball.trail = [];
-  ball.originX = fromX;
-  ball.originY = fromY;
+  ball.originX = startX;
+  ball.originY = startY;
   ball.lastHitTime = matchTime;
 }
 
@@ -333,8 +342,33 @@ export function netClearance(fromX, fromY, fromZ, tx, ty, speed) {
  * =========================================================== */
 
 
-// フォア/バック判定: プレイヤー（奥向き）は画面右(x+)がフォア、CPUは画面左(x-)がフォア
-export function isBackhandFor(side, hitterX, ballX) {
+// フォア/バック判定: ボールの飛行軌道（直線）を基準に判定する。
+// 単純な左右(x座標)比較ではなく、軌道の直線（ボールの発生点→現在位置）に対して
+// プレイヤーが「軌道線のどちら側にいるか」（垂線を下ろした符号）で決める。
+//   プレイヤー（奥向き）は軌道の右側にいればフォア、左側にいればバック。
+//   CPU（手前向き）は向きが逆なので符号を反転する。
+// 軌道が定義できない（発生点が無い/距離が短すぎる）場合は、従来のx比較にフォールバックする。
+export function isBackhandFor(side, hitterX, ballX, hitterY, ballY) {
+  const sideSign = side === "player" ? 1 : -1;
+  const hasTrajectory =
+    ball.originX != null && ball.originY != null &&
+    typeof hitterY === "number" && typeof ballY === "number";
+  if (hasTrajectory) {
+    const ox = ball.originX, oy = ball.originY;
+    const dx = ballX - ox, dy = ballY - oy;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq > 0.01) {
+      // 軌道方向ベクトル(dx,dy)に対する垂線方向の符号で、プレイヤーが
+      // 軌道のどちら側にいるかを求める（外積の符号）。
+      const cross = dx * (hitterY - oy) - dy * (hitterX - ox);
+      const side2 = Math.sign(cross) * sideSign;
+      if (Math.abs(cross) / Math.sqrt(lenSq) > 0.08) {
+        return side2 < 0;
+      }
+      return false; // 軌道線にほぼ乗っている＝正面（フォア扱い）
+    }
+  }
+  // フォールバック（軌道が取れない場合の従来判定）
   if (side === "player") return ballX < hitterX - 0.1;
   return ballX > hitterX + 0.1;
 }
@@ -351,7 +385,7 @@ export function courseLabelFor(hitterX, targetX) {
 /* ---- 打点の評価: 横距離・前後・高さ → 角度幅/球速/精度の係数 ---- */
 export function evaluateContact(side, hitter, contactZ) {
   const c = TUNING.contact;
-  const backhand = isBackhandFor(side, hitter.x, ball.x);
+  const backhand = isBackhandFor(side, hitter.x, ball.x, hitter.y, ball.y);
   const foreSign = side === "player" ? 1 : -1;       // フォア側のx方向
   const sideSign = backhand ? -foreSign : foreSign;  // 打点がある側のx方向
   const lateral = (ball.x - hitter.x) * sideSign;    // 体から打点までの横距離(m)
@@ -443,7 +477,7 @@ export function hitBall(opts) {
   const isSmash = opts.shot !== "lob" && isSmashContact(hitter, contactZ);
   if (isSmash) shotKey = "smash";
   const def = TUNING.shots[shotKey];
-  const backhand = isBackhandFor(side, hitter.x, ball.x);
+  const backhand = isBackhandFor(side, hitter.x, ball.x, hitter.y, ball.y);
   const depthDir = side === "player" ? -1 : 1;
   const fromZ = Math.max(0.3, Math.min(contactZ, 2.3));
 
@@ -946,6 +980,11 @@ export function update(dt) {
   ball.y += ball.vy * dt;
   ball.z += ball.vz * dt;
   ball.vz -= G * dt;
+  // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
+  // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
+  const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
+  ball.vx *= drag;
+  ball.vy *= drag;
 
   ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
   if (ball.trail.length > 7) ball.trail.shift();
@@ -979,16 +1018,28 @@ export function update(dt) {
   // （離して打つ操作は廃止。WASD移動はため中も常に有効）
   const cp = rallyControlled;
   const hittable = canPlayerHit(cp);
+  // ボールがネットを越えて自陣側(y>0)に入ったら、打点リーチに入る前から
+  // テイクバック準備（"prep"）に入ってよい（現状より少し早めの準備動作）。
+  // 自陣側＝相手が打ったボールが自分のコート側(y>0)に入っている状態。
+  const ballCrossedToOwnSide = ball.lastHitter === "cpu" && ball.y > 0;
   if (hittable) {
     if (ballHittableSince < 0) setBallHittableSince(matchTime);
     if (cp.pose !== "swing") {
       cp.pose = "ready";
-      cp.swingSide = isBackhandFor("player", cp.x, ball.x) ? "back" : "fore";
+      cp.swingSide = isBackhandFor("player", cp.x, ball.x, cp.y, ball.y) ? "back" : "fore";
     }
     if (!charge.active) startCharge("auto");
   } else {
     setBallHittableSince(-1);
-    if (cp.pose === "ready") cp.pose = "idle";
+    if (cp.pose === "ready" || cp.pose === "prep") cp.pose = "idle";
+    if (ballCrossedToOwnSide && cp.pose === "idle") {
+      // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
+      // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
+      cp.pose = "prep";
+      cp.swingSide = isBackhandFor("player", cp.x, ball.x, cp.y, ball.y) ? "back" : "fore";
+    } else if (!ballCrossedToOwnSide && cp.pose === "prep") {
+      cp.pose = "idle";
+    }
     if (charge.active && charge.source === "auto") {
       charge.active = false;
       charge.source = null;
