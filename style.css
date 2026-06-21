@@ -485,8 +485,10 @@ footer a:hover { color: var(--color-text); }
   footer { padding-top: 4px; }
 }
 
-/* スマホ横画面: ヘッダ/フッタを隠し、コートと操作パネルを左右に並べてコートを最大化 */
-@media (orientation: landscape) and (max-height: 500px) {
+/* 横画面（PCの横長ウィンドウ含む全般）: ヘッダ/フッタを隠し、コートと操作パネルを左右に並べてコートを最大化
+ * 旧実装はスマホ横向き（高さ500px以下）専用だったが、PCの横長ウィンドウ（高さ640px超）でも
+ * コートが中央に小さく縦長表示される問題があったため、高さ上限を撤廃して横向き全般に適用する。 */
+@media (orientation: landscape) {
   body:has(#screen-game:not([hidden])) header,
   body:has(#screen-game:not([hidden])) footer {
     display: none;
