@@ -721,42 +721,64 @@ export function drawHumanoid(pl) {
     racketTipY = -0.55;
   }
 
-  ctx.strokeStyle = pl.skin;
-  ctx.lineWidth = Math.max(1.5, 0.08 * s);
-  ctx.beginPath();
-  ctx.moveTo(-racketDir * tw * 0.4, shoulderY);
-  if (pl.pose === "toss") {
-    // トス腕（反対側の手）を高く上げる
-    ctx.lineTo(-racketDir * 0.16 * s, shoulderY - 0.55 * s);
-  } else if (pl.pose === "ready" || pl.pose === "idle") {
-    // 構え時: 非利き手をラケットのスロート（喉/グリップ付近）に添える
-    // 両手持ちレディポジション。利き手側のhandX/handYに寄せる。
-    ctx.lineTo(handX - racketDir * 0.05 * s, handY - 0.04 * s);
-  } else {
-    ctx.lineTo(-racketDir * 0.34 * s, shoulderY + 0.26 * s);
+  // facing=-1（背を向けている＝プレイヤー側）のときは、両手とも体の奥側
+  // （カメラから見て体の向こう側）にある。添え手をカメラ側の輪郭から
+  // 飛び出させないよう、肩の起点・手元の寄せ幅を体の中心側に縮める
+  // （描画のみのオフセット。当たり判定・進行には無関係）。
+  const awayFromCamera = pl.facing === -1;
+  const offHandTuck = awayFromCamera ? 0.6 : 1;
+
+  // ラケットは基本「体の前」にあるため、胴体・頭より後に描いて前面に出す。
+  // フォロースルー（k終盤＝振り抜き後半）のときだけラケットが体の後ろ側へ
+  // 回り込むので、その場合のみ頭より先に描いて隠れてよいことにする。
+  const swingK = (pl.pose === "swing" && pl.swingT > 0) ? (1 - pl.swingT / 0.32) : 0;
+  const isFollowThrough = pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
+
+  const drawArmsAndRacket = () => {
+    ctx.strokeStyle = pl.skin;
+    ctx.lineWidth = Math.max(1.5, 0.08 * s);
+    ctx.beginPath();
+    ctx.moveTo(-racketDir * tw * 0.4 * offHandTuck, shoulderY);
+    if (pl.pose === "toss") {
+      // トス腕（反対側の手）を高く上げる
+      ctx.lineTo(-racketDir * 0.16 * s * offHandTuck, shoulderY - 0.55 * s);
+    } else if (pl.pose === "ready" || pl.pose === "idle") {
+      // 構え時: 非利き手をラケットのスロート（喉/グリップ付近）に添える
+      // 両手持ちレディポジション。利き手側のhandX/handYに寄せる。
+      // 背を向けている選手は添え手が中心寄りに収まるよう寄せ幅を狭める。
+      ctx.lineTo(handX - racketDir * 0.05 * s * offHandTuck, handY - 0.04 * s);
+    } else {
+      ctx.lineTo(-racketDir * 0.34 * s * offHandTuck, shoulderY + 0.26 * s);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(racketDir * tw * 0.4, shoulderY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+
+    const racketLenDraw = isReadyPose ? racketLen * 0.82 : racketLen;
+    const rx = handX + racketTipX * racketLenDraw * 0.55;
+    const ry = handY + racketTipY * racketLenDraw * 0.55 - 0.1 * s;
+    ctx.strokeStyle = "#7C3AED";
+    ctx.lineWidth = Math.max(1.2, 0.05 * s);
+    ctx.beginPath();
+    ctx.moveTo(handX, handY);
+    ctx.lineTo(rx, ry);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.strokeStyle = "#7C3AED";
+    ctx.beginPath();
+    ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(racketTipY, racketTipX), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  };
+
+  // フォロースルー時のみ「腕・ラケット→頭」の順（体の後ろに回り込み、隠れてよい）。
+  // それ以外は「頭→腕・ラケット」の順にして、ラケットが頭・胴に飲み込まれず前面に出るようにする。
+  if (isFollowThrough) {
+    drawArmsAndRacket();
   }
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(racketDir * tw * 0.4, shoulderY);
-  ctx.lineTo(handX, handY);
-  ctx.stroke();
-
-  const racketLenDraw = isReadyPose ? racketLen * 0.82 : racketLen;
-  const rx = handX + racketTipX * racketLenDraw * 0.55;
-  const ry = handY + racketTipY * racketLenDraw * 0.55 - 0.1 * s;
-  ctx.strokeStyle = "#7C3AED";
-  ctx.lineWidth = Math.max(1.2, 0.05 * s);
-  ctx.beginPath();
-  ctx.moveTo(handX, handY);
-  ctx.lineTo(rx, ry);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.strokeStyle = "#7C3AED";
-  ctx.beginPath();
-  ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(racketTipY, racketTipX), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
 
   ctx.fillStyle = pl.skin;
   ctx.beginPath();
@@ -779,6 +801,10 @@ export function drawHumanoid(pl) {
     ctx.arc(-headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
     ctx.arc(headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  if (!isFollowThrough) {
+    drawArmsAndRacket();
   }
 
   if (pl.label) {
