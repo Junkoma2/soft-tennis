@@ -26,6 +26,7 @@ export const shotControls  = document.getElementById("shot-controls");
 export const chargeBtn     = document.getElementById("charge-btn");
 export const servePowerControls = document.getElementById("serve-power-controls");
 export const serveSpinControls  = document.getElementById("serve-spin-controls");
+export const serveCategoryControls = document.getElementById("serve-category-controls");
 export const aggressionControls = document.getElementById("aggression-controls");
 export const shotSelectControls = document.getElementById("shot-select-controls");
 export const moveStick     = document.getElementById("move-stick");
@@ -106,6 +107,11 @@ export function setPartnerAggressiveness(v) { partnerAggressiveness = v; }
 //   左クリック=flat / 右クリック=slice / Space+左=underCut / Space+右=attackCut
 export let serveType = "flat";
 export function setServeType(v) { serveType = v; }
+
+// サーブ前に選ぶ大分類: "over"（上から。flat/slice/attackCutを打つ瞬間に振り分け）
+//   / "under"（下から。underCut確定でシンプルに打てる）。ポイント間で保持。
+export let serveCategory = "over";
+export function setServeCategory(v) { serveCategory = v; }
 
 export let servePower = "mid";  // weak / mid / strong
 export let serveSpin = "mid";   // weak / mid / strong

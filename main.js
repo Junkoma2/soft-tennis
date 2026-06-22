@@ -15,7 +15,7 @@ import {
 import {
   screens, startBtn, retryBtn, canvas, ctx, messageOverlay, messageText,
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
-  hintText, shotControls, chargeBtn, servePowerControls, serveSpinControls,
+  hintText, shotControls, chargeBtn, servePowerControls, serveSpinControls, serveCategoryControls,
   aggressionControls, shotSelectControls, moveStick, moveStickKnob,
   formationControls, controlsPanel,
   mouseAim, makeStats, playerStats, cpuStats,
@@ -130,6 +130,7 @@ export function showMessage(text) {
 // 操作パネルの表示切替: serve=サーブ設定（種類/パワー/回転） / rally=球種選択
 export function setControlMode(mode) {
   const serveMode = mode === "serve";
+  if (serveCategoryControls) serveCategoryControls.hidden = !serveMode;
   servePowerControls.hidden = !serveMode;
   serveSpinControls.hidden = !serveMode;
   // 攻守は観戦モードOFF かつ サーブ前にのみ表示（パワー/回転と同運用）

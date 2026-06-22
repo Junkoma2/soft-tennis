@@ -9,7 +9,7 @@ import {
 import {
   ctx, serveAimCursor, aim, charge, toss, rallyControlled, ball, effects,
   state, spectatorMode, cpuServePlan, servePower, serveSpin, serveReady,
-  back, front, cpuBack, cpuFront, matchTime,
+  back, front, cpuBack, cpuFront, matchTime, serveCategory,
 } from "./state.js";
 
 import {
@@ -415,8 +415,8 @@ export function drawTextEffects() {
 
 export function drawTimingGauge() {
   if (state === "serve-toss" && toss.active && playerIsServer() && !spectatorMode) {
-    // サーブの打点ゲージ（縦）: トスは統一トスのため、4種すべての
-    // 適正打点を表示する。左=フラット/右=スライス/Space+左=アンダーカット/Space+右=攻撃カット
+    // サーブの打点ゲージ（縦）: トスは統一トスのため、事前に選んだ大分類
+    // （アンダー/オーバー）に応じた適正打点を表示する（drawTimingGauge内で分岐）。
     // 打点の高さを示す縦ゲージは構造上、画面の上下に集約できないため右端から
     // 少し内側に寄せ、プレイエリア（コート）側の余白をできるだけ広く保つ。
     const st = TUNING.serve.types;
@@ -429,17 +429,30 @@ export function drawTimingGauge() {
     roundRect(ctx, gx, gTop, gw, gBottom - gTop, 4);
     ctx.fill();
 
-    // 適正打点マーカー: 4種それぞれの ideal を1本ずつ表示
-    const markers = [
-      { cfg: st.flat,      label: "左:フラット" },
-      { cfg: st.slice,     label: "右:スライス" },
-      { cfg: st.attackCut, label: "Sp+右:攻撃カット" },
-      { cfg: st.underCut,  label: "Sp+左:アンダーカット" },
-    ];
-    markers.forEach(function (m) {
-      ctx.fillStyle = m.cfg.color;
-      ctx.fillRect(gx - 3, zToY(m.cfg.zone.ideal) - 1, gw + 6, 2);
-    });
+    // 適正打点マーカー: 事前に選んだ大分類（アンダー/オーバー）に応じて表示を絞る。
+    //   オーバー: flat/slice/attackCutの3種の適正高さをまとめた1本の範囲ゲージ
+    //             （個別の点を出すと見にくいため統一。打ち分けは打つ瞬間のボタン+Space）
+    //   アンダー: underCut確定なので単独の点のみ（操作がシンプルな分、表示もシンプルに）
+    ctx.font = "700 9px sans-serif";
+    ctx.textAlign = "right";
+    if (serveCategory === "under") {
+      ctx.fillStyle = st.underCut.color;
+      ctx.fillRect(gx - 3, zToY(st.underCut.zone.ideal) - 1, gw + 6, 2);
+      ctx.fillText("適正（アンダーカット）", gx - 4, zToY(st.underCut.zone.ideal) + 3);
+    } else {
+      const overIdeals = [st.flat.zone.ideal, st.slice.zone.ideal, st.attackCut.zone.ideal];
+      const overTop = Math.max.apply(null, overIdeals);
+      const overBottom = Math.min.apply(null, overIdeals);
+      const overColor = "#F8FAFC"; // 上から系3種を中立色（フラットの色）でまとめて示す
+      const overYTop = zToY(overTop);
+      const overYBottom = zToY(overBottom);
+      ctx.fillStyle = "rgba(248,250,252,0.55)";
+      ctx.fillRect(gx - 3, overYTop, gw + 6, Math.max(2, overYBottom - overYTop));
+      ctx.fillStyle = overColor;
+      ctx.fillRect(gx - 3, overYTop - 1, gw + 6, 2);
+      ctx.fillRect(gx - 3, overYBottom - 1, gw + 6, 2);
+      ctx.fillText("適正帯（上から系：フラット/スライス/攻撃カット）", gx - 4, overYTop + 3);
+    }
 
     // 現在のボールの高さ
     ctx.fillStyle = "#FACC15";
@@ -449,13 +462,6 @@ export function drawTimingGauge() {
     ctx.strokeStyle = "rgba(30,27,75,0.6)";
     ctx.lineWidth = 1;
     ctx.stroke();
-
-    ctx.font = "700 9px sans-serif";
-    ctx.textAlign = "right";
-    markers.forEach(function (m) {
-      ctx.fillStyle = m.cfg.color;
-      ctx.fillText("適正（" + m.label + "）", gx - 4, zToY(m.cfg.zone.ideal) + 3);
-    });
 
     // 狙い（マウスで指す着地点カーソル）の案内
     ctx.fillStyle = "rgba(255,255,255,0.9)";

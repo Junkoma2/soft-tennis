@@ -8,8 +8,8 @@ import {
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
-  serveAimCursor, chargeBtn, servePowerControls, serveSpinControls,
-  setServePower, setServeSpin, aggressionControls, setPartnerAggressiveness,
+  serveAimCursor, chargeBtn, servePowerControls, serveSpinControls, serveCategoryControls,
+  setServePower, setServeSpin, setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
   handedControls, setPlayerHanded,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
@@ -228,6 +228,16 @@ serveSpinControls.addEventListener("click", function (e) {
   setServeSpin(btn.dataset.serveSpin);
   setActiveButton(serveSpinControls, btn);
 });
+
+// サーブ前の大分類選択（アンダー/オーバー）。打つ瞬間の球種振り分けはこの分類内で従来通り。
+if (serveCategoryControls) {
+  serveCategoryControls.addEventListener("click", function (e) {
+    const btn = e.target.closest(".ctrl-btn");
+    if (!btn || !btn.dataset.serveCategory) return;
+    setServeCategory(btn.dataset.serveCategory);
+    setActiveButton(serveCategoryControls, btn);
+  });
+}
 
 // 攻守の割合（相方AIの積極性）
 if (aggressionControls) {

@@ -15,7 +15,7 @@ import {
   serveFaults, setServeFaults, incServeFaults,
   cpuServePlan, setCpuServePlan, aiServePlan, setAiServePlan,
   spectatorMode, state, setState, matchTime, effects,
-  setReceiveDone, spaceHeld,
+  setReceiveDone, spaceHeld, serveCategory,
 } from "./state.js";
 
 import {
@@ -25,8 +25,13 @@ import {
 
 // button(0=左/2=右) と spaceHeld(修飾キー) から4種のサーブタイプを決める。
 // ラリー中の shotFamilyForClick と対称: Space=修飾キー、左右ボタンで系統が変わる。
+// 事前にアンダーを選んだ場合（serveCategory==="under"）は、打つ瞬間の振り分けを
+// 省略してunderCut確定にする（操作をシンプルにする）。
+// 事前にオーバーを選んだ場合は、上から系3種をボタン+Spaceで打ち分ける従来操作のまま
+// （underCutはオーバー選択中は打てない＝Space+左クリックはattackCutに割り当て直す）。
 export function serveTypeForInput(button, space) {
-  if (space) return button === 2 ? "attackCut" : "underCut";
+  if (serveCategory === "under") return "underCut";
+  if (space) return "attackCut";
   return button === 2 ? "slice" : "flat";
 }
 /* ===========================================================
@@ -238,7 +243,7 @@ export function startServe(isFirstPointOfGame) {
     if (playerIsServer() && !spectatorMode) {
       who = "自分のサーブ";
       setControlMode("serve");
-      hintText.textContent = "パワー・回転を選び、マウスで狙う場所を指す→準備後クリックでトス";
+      hintText.textContent = "アンダー/オーバーとパワー・回転を選び、マウスで狙う場所を指す→準備後クリックでトス";
     } else {
       who = spectatorMode ? "自チームのサーブ" : "相方のサーブ";
       setControlMode("rally");
@@ -301,7 +306,9 @@ export function startToss(server) {
   server.pose = "toss";
   hideMessage(); // ゲージが見えるようにオーバーレイを消す
   if (playerIsServer() && !spectatorMode) {
-    hintText.textContent = "適正マーカーの高さで 左クリック=フラット / 右クリック=スライス / Space+左=アンダーカット / Space+右=攻撃カット。マウスで狙う場所を指す（WASDで立ち位置）";
+    hintText.textContent = serveCategory === "under"
+      ? "適正マーカーの高さでクリック＝アンダーカット。マウスで狙う場所を指す（WASDで立ち位置）"
+      : "適正マーカーの高さで 左クリック=フラット / 右クリック=スライス / Space+クリック=攻撃カット。マウスで狙う場所を指す（WASDで立ち位置）";
   }
 }
 
@@ -362,9 +369,10 @@ export function playerServeAction(button) {
       });
       return;
     }
-    // トスは常に統一トス。4種は打つ瞬間のボタン+Spaceで決まる。
-    // serveType はレシーブ位置取りの基準にもなるため、トス開始時にデフォルトへ戻す
-    setServeType("flat");
+    // トスは常に統一トス。事前にオーバーを選んだ場合は打つ瞬間のボタン+Spaceで
+    // 上から系3種が決まる。事前にアンダーを選んだ場合はunderCut確定。
+    // serveType はレシーブ位置取りの基準にもなるため、トス開始時にここで仮決定しておく
+    setServeType(serveCategory === "under" ? "underCut" : "flat");
     startToss(currentServer());
     return;
   }
