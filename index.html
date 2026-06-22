@@ -137,23 +137,18 @@
           </div>
           <div class="control-group" id="serve-power-controls" hidden>
             <span class="control-label">パワー</span>
-            <button class="ctrl-btn" data-serve-power="weak" type="button">弱</button>
-            <button class="ctrl-btn is-active" data-serve-power="mid" type="button">中</button>
-            <button class="ctrl-btn" data-serve-power="strong" type="button">強</button>
+            <input class="ctrl-slider" id="serve-power-range" type="range" min="0" max="2" step="1" value="1" aria-label="サーブのパワー" />
+            <span class="ctrl-slider-val" id="serve-power-val">中</span>
           </div>
           <div class="control-group" id="serve-spin-controls" hidden>
             <span class="control-label">回転</span>
-            <button class="ctrl-btn" data-serve-spin="weak" type="button">弱</button>
-            <button class="ctrl-btn is-active" data-serve-spin="mid" type="button">中</button>
-            <button class="ctrl-btn" data-serve-spin="strong" type="button">強</button>
+            <input class="ctrl-slider" id="serve-spin-range" type="range" min="0" max="2" step="1" value="1" aria-label="サーブの回転" />
+            <span class="ctrl-slider-val" id="serve-spin-val">中</span>
           </div>
           <div class="control-group" id="aggression-controls" hidden>
             <span class="control-label">攻守</span>
-            <button class="ctrl-btn" data-aggression="0" type="button">守り</button>
-            <button class="ctrl-btn" data-aggression="0.25" type="button">やや守</button>
-            <button class="ctrl-btn is-active" data-aggression="0.5" type="button">中</button>
-            <button class="ctrl-btn" data-aggression="0.75" type="button">やや攻</button>
-            <button class="ctrl-btn" data-aggression="1" type="button">攻め</button>
+            <input class="ctrl-slider" id="aggression-range" type="range" min="0" max="1" step="0.25" value="0.5" aria-label="相方AIの攻守" />
+            <span class="ctrl-slider-val" id="aggression-val">中</span>
           </div>
           <div class="control-group" id="shot-select-controls">
             <span class="control-label">球種（スマホ）</span>

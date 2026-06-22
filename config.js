@@ -338,17 +338,24 @@ export const Y_RANGE_FRONT = { min: 0.6, max: 17.0 };
 //  - 横画面(landscape): 横長に広げ、コートを左右いっぱいに見せて余白（地面）を広く
 //    確保しつつ、縦方向はコートで満たして大きく表示する。fov/pitch は共通なので
 //    投影スケールは変わらず歪まない（横幅と縦オフセットだけを変える）。
-const VIEWPORT = {
-  portrait:  { W: 720,  H: 1080, horizonY: 800 },
-  // 横画面: 縦に少し余裕(H=540)を持たせ、奥側(相手)の頭上が見切れないよう
-  // コートを下げる(horizonY=570)。手前(自分)の足元も収まる。横はワイドに広げる。
-  landscape: { W: 1280, H: 540,  horizonY: 570 },
-};
-
-export function applyViewport(isLandscape) {
-  const v = isLandscape ? VIEWPORT.landscape : VIEWPORT.portrait;
-  W = v.W;
-  H = v.H;
-  CAM.horizonY = v.horizonY;
-  return v;
+// 描画領域（court-wrap）のピクセルサイズに合わせて内部解像度・カメラを決め、
+// コートを画面いっぱいに見せる。コートは「制限される辺」いっぱいに合わせ、もう一辺は
+// 芝の余白にする（歪ませない）。横長画面では高さ基準、縦長画面では横幅基準になる。
+export function applyViewport(availW, availH) {
+  W = Math.max(320, Math.round(availW));
+  H = Math.max(320, Math.round(availH));
+  const fovByHeight = 1.95 * H; // 高さ基準（横長で支配的）
+  const fovByWidth  = 1.80 * W; // 横幅基準（縦長で支配的）
+  CAM.fov = Math.min(fovByHeight, fovByWidth);
+  // 奥の選手の頭上を画面上端の少し下（スコアの下＝0.14H付近）に置く。
+  // fovに依らず安定して同じ高さへ来るよう逆算する。これで横長はコートが縦いっぱい、
+  // 縦長は上に空（スコア）を細く取りコートを上寄せにして手前側に芝の余白を作る。
+  const HEAD_Z = 1.9;
+  const dyFar = CAM.y + COURT.halfL;      // 奥ベースライン(y=-halfL)までの前後距離
+  const dzFar = HEAD_Z - CAM.z;
+  const upFar = dyFar * CAM.sin + dzFar * CAM.cos;
+  const depthFar = dyFar * CAM.cos - dzFar * CAM.sin;
+  const sFar = CAM.fov / Math.max(depthFar, 0.5);
+  CAM.horizonY = 0.14 * H + upFar * sFar;
+  return { W, H };
 }

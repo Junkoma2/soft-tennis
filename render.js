@@ -10,13 +10,14 @@ import {
   ctx, serveAimCursor, aim, charge, toss, rallyControlled, ball, effects,
   state, spectatorMode, cpuServePlan, servePower, serveSpin, serveReady,
   back, front, cpuBack, cpuFront, matchTime, serveCategory,
+  player, cpu,
 } from "./state.js";
 
 import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
 } from "./serve.js";
 
-import { courseLabelFor, insideCourt, insideBox, predictLanding, chargeAmount } from "./main.js";
+import { courseLabelFor, insideCourt, insideBox, predictLanding, chargeAmount, pointLabel } from "./main.js";
 import { canPlayerHit } from "./input.js";
 
 /* ===========================================================
@@ -47,6 +48,7 @@ export function draw() {
   drawServeTypeBadge();
   drawTimingGauge();
   drawHud();
+  drawScore();
   drawControlLegend();
 }
 
@@ -78,9 +80,9 @@ export function drawControlLegend() {
   const boxW = maxW + 30;
   const lineH = 16;
   const boxH = lines.length * lineH + 6;
-  // プレイエリアの視認性を優先し、左右端ではなく上部中央へ集約して表示する
-  // （HUD/ゲージなど他の上部表示と被らないよう少し下にずらす）。
-  const bx = (W - boxW) / 2, by = 56;
+  // スコアを上部中央に描くようになったため、操作レジェンドは左上隅へ寄せて
+  // スコアと被らないようにする。
+  const bx = 10, by = 8;
 
   ctx.fillStyle = "rgba(30,27,75,0.55)";
   roundRect(ctx, bx, by, boxW, boxH, 6);
@@ -133,7 +135,7 @@ export function drawHud() {
     const text = "パワー" + (lv[servePower] || "中") + "  回転" + (lv[serveSpin] || "中");
     // プレイエリアを広く見せるため、左右端ではなく上部中央へ集約する。
     const boxW = 140;
-    const bx = (W - boxW) / 2, by = 6;
+    const bx = (W - boxW) / 2, by = 62;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
     roundRect(ctx, bx, by, boxW, 22, 6);
     ctx.fill();
@@ -154,7 +156,7 @@ export function drawHud() {
     const tcfg = TUNING.serve.types[cpuServePlan.type];
     const text = "相手サーブ: " + tcfg.label;
     const boxW = 158;
-    const bx = (W - boxW) / 2, by = 6;
+    const bx = (W - boxW) / 2, by = 62;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
     roundRect(ctx, bx, by, boxW, 22, 6);
     ctx.fill();
@@ -169,6 +171,34 @@ export function drawHud() {
     }
     return;
   }
+}
+
+// スコアをキャンバス上部（空の領域）に描画する。HTMLのヘッダ枠を作らず、
+// コートの上方にそのまま重ねて表示する（中継のスコアテロップ風）。
+export function drawScore() {
+  if (state === "ready") return;
+  const sc = W / 1280;           // 解像度に応じた拡縮
+  const cx = W / 2;
+  const gap = 132 * sc;          // 中央からプレイヤー/相手スコアまでの距離
+  const yLabel = 22 * sc;
+  const yNum = 52 * sc;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = "rgba(30,41,59,0.65)";
+  ctx.font = "700 " + (13 * sc) + "px sans-serif";
+  ctx.fillText("あなた", cx - gap, yLabel);
+  ctx.fillText("相手", cx + gap, yLabel);
+
+  ctx.fillStyle = "#4338CA";
+  ctx.font = "900 " + (34 * sc) + "px sans-serif";
+  ctx.fillText(pointLabel(player.points, cpu.points), cx - gap, yNum);
+  ctx.fillText(pointLabel(cpu.points, player.points), cx + gap, yNum);
+
+  // ゲームカウント（中央）
+  ctx.fillStyle = "rgba(30,41,59,0.85)";
+  ctx.font = "800 " + (20 * sc) + "px sans-serif";
+  ctx.fillText(player.games + " - " + cpu.games, cx, yNum - 4 * sc);
 }
 
 export function drawBackground() {

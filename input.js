@@ -214,20 +214,24 @@ shotSelectControls.addEventListener("click", function (e) {
   selectShot(btn.dataset.shotsel);
 });
 
-// サーブ設定（パワー / 回転）。種類（フラット/カット）はクリックのボタンで決まる
-servePowerControls.addEventListener("click", function (e) {
-  const btn = e.target.closest(".ctrl-btn");
-  if (!btn) return;
-  setServePower(btn.dataset.servePower);
-  setActiveButton(servePowerControls, btn);
-});
-
-serveSpinControls.addEventListener("click", function (e) {
-  const btn = e.target.closest(".ctrl-btn");
-  if (!btn) return;
-  setServeSpin(btn.dataset.serveSpin);
-  setActiveButton(serveSpinControls, btn);
-});
+// サーブ設定（パワー / 回転）はスライダー（ボリューム調整バー）で選ぶ。
+// 内部の3段階モデル（weak/mid/strong）は維持し、0/1/2をその文字列に対応させる。
+const LEVELS = ["weak", "mid", "strong"];
+const LEVEL_LABELS = ["弱", "中", "強"];
+function bindLevelSlider(rangeId, valId, setter) {
+  const range = document.getElementById(rangeId);
+  const valEl = document.getElementById(valId);
+  if (!range) return;
+  const apply = () => {
+    const i = Math.max(0, Math.min(2, Math.round(parseFloat(range.value))));
+    setter(LEVELS[i]);
+    if (valEl) valEl.textContent = LEVEL_LABELS[i];
+  };
+  range.addEventListener("input", apply);
+  apply();
+}
+bindLevelSlider("serve-power-range", "serve-power-val", setServePower);
+bindLevelSlider("serve-spin-range", "serve-spin-val", setServeSpin);
 
 // サーブ前の大分類選択（アンダー/オーバー）。打つ瞬間の球種振り分けはこの分類内で従来通り。
 if (serveCategoryControls) {
@@ -239,15 +243,20 @@ if (serveCategoryControls) {
   });
 }
 
-// 攻守の割合（相方AIの積極性）
-if (aggressionControls) {
-  aggressionControls.addEventListener("click", function (e) {
-    const btn = e.target.closest(".ctrl-btn");
-    if (!btn || btn.dataset.aggression == null) return;
-    setPartnerAggressiveness(parseFloat(btn.dataset.aggression));
-    setActiveButton(aggressionControls, btn);
-  });
-}
+// 攻守の割合（相方AIの積極性）もスライダーで選ぶ（0=守り 〜 1=攻め）。
+(function bindAggressionSlider() {
+  const range = document.getElementById("aggression-range");
+  const valEl = document.getElementById("aggression-val");
+  if (!range) return;
+  const AGGR_LABELS = { "0": "守り", "0.25": "やや守", "0.5": "中", "0.75": "やや攻", "1": "攻め" };
+  const apply = () => {
+    const v = parseFloat(range.value);
+    setPartnerAggressiveness(v);
+    if (valEl) valEl.textContent = AGGR_LABELS[String(v)] || v.toFixed(2);
+  };
+  range.addEventListener("input", apply);
+  apply();
+})();
 
 formationControls.addEventListener("click", function (e) {
   const btn = e.target.closest(".ctrl-btn");

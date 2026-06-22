@@ -202,6 +202,8 @@ export function startMatch() {
   }
   updateScoreboard();
   showScreen("game");
+  // ゲーム画面が表示されてレイアウトが確定してから描画領域に合わせて同期する。
+  requestAnimationFrame(syncViewport);
   startServe(true);
 }
 
@@ -1172,8 +1174,14 @@ retryBtn.addEventListener("click", function () {
 
 // 画面向きに応じてcanvas内部解像度・カメラを同期する（横画面はワイドビュー）。
 function syncViewport() {
-  const isLandscape = window.matchMedia("(orientation: landscape)").matches;
-  applyViewport(isLandscape);
+  // 描画領域＝court-wrap の実ピクセルサイズに合わせる（取得できなければウィンドウ）。
+  const wrap = canvas.parentElement;
+  let availW = window.innerWidth, availH = window.innerHeight;
+  if (wrap) {
+    const r = wrap.getBoundingClientRect();
+    if (r.width > 1 && r.height > 1) { availW = r.width; availH = r.height; }
+  }
+  applyViewport(availW, availH);
   if (canvas.width !== W) canvas.width = W;
   if (canvas.height !== H) canvas.height = H;
   draw();
