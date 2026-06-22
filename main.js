@@ -770,11 +770,13 @@ export function handleBounce() {
   ball.vy *= friction;
 }
 
-export function checkNet(prevY) {
+export function checkNet(prevY, prevZ) {
   if ((prevY > 0) === (ball.y > 0)) return false;
-  // ネット面通過時の高さを補間
+  // ネット面通過時の高さを補間。フレーム終端のball.zではなく、
+  // 通過前後の高さを同じ係数で補間しないと、速い・低い球で「越えたのに
+  // 落下中だからネット接触」と誤判定される。
   const t = prevY / (prevY - ball.y);
-  const zAt = ball.z; // 1フレーム内なので近似でよい
+  const zAt = prevZ + (ball.z - prevZ) * t;
   if (zAt < COURT.netH && Math.abs(ball.x) < COURT.halfW + 0.4) {
     const hitterIsPlayer = ball.lastHitter === "player";
     if (ball.serving) {
@@ -1028,7 +1030,7 @@ export function update(dt) {
   ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
   if (ball.trail.length > 7) ball.trail.shift();
 
-  if (checkNet(prevY)) return;
+  if (checkNet(prevY, prevZ)) return;
 
   if (ball.z <= 0 && ball.vz < 0) {
     // z=0を跨いだフレームの実際の着地点(x,y)を線形補間で求め、
