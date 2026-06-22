@@ -44,12 +44,12 @@ export const TUNING = {
   //   speed: 基本球速(m/s) / depthMin+depthRange: 狙う深さ /
   //   spin: バウンド挙動 / spinMag: 回転の強さ / color: 軌道の色分け
   shots: {
-    flat:  { speed: 26.5, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
-    drive: { speed: 22.5, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
-    slice: { speed: 21.5, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
-    drop:  { speed: 8.0,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
-    lob:   { speed: 14.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
-    smash: { speed: 30.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
+    flat:  { speed: 29.0, depthMin: 7.5, depthRange: 3.0, spin: "flat",  spinMag: 0.4, color: "#F8FAFC", label: "フラット" },
+    drive: { speed: 25.0, depthMin: 7.0, depthRange: 3.0, spin: "drive", spinMag: 1.4, color: "#FB923C", label: "ドライブ" },
+    slice: { speed: 23.5, depthMin: 5.5, depthRange: 3.5, spin: "slice", spinMag: 1.0, color: "#38BDF8", label: "スライス" },
+    drop:  { speed: 8.5,  depthMin: 1.2, depthRange: 1.6, spin: "slice", spinMag: 1.5, color: "#A78BFA", label: "ドロップ" },
+    lob:   { speed: 15.5, depthMin: 8.5, depthRange: 3.0, spin: "flat",  spinMag: 0.3, color: "#FACC15", label: "ロブ" },
+    smash: { speed: 32.0, depthMin: 3.0, depthRange: 3.5, spin: "drive", spinMag: 0.9, color: "#F43F5E", label: "スマッシュ" },
   },
   // cpuSpeedScale は廃止。AI打球は両チーム共通パラメータで対称化
   // サーブ（打つ前にパワーと回転量を設定する方式）
@@ -215,17 +215,16 @@ export const TUNING = {
     depthRange: 3.5,  // 着地深さのばらつき幅
     aiLobShallowY: 7.0, // AI前衛がスマッシュで決めにいく「相手ロブが浅い」着地深さ(ネットから, m)
   },
-  // 回転によるバウンド後の挙動（spinMagで強調される）
-  //   friction: バウンド時の前方速度の維持率（低い=止まる）
-  //   restitution: 跳ね返り係数（低い=低く滑る）
-  // バウンド後の速度を従来の約50%に低下（ソフトテニスらしい失速感）。
-  // friction（前方速度の維持率）・restitution（跳ね返り係数）を全体的に下げ、
-  // 特にバウンド直後の失速を大きくして「初速速い→1バウンドで大きく失速→
-  // 2バウンド目付近ではかなり遅い」という体感を作る。
+  // 回転によるバウンド後の挙動（spinMagで強調される）。
+  // バウンド後の球速を「前後(水平)」と「バウンド(垂直)」の2軸で別々に制御する:
+  //   friction    : 前後(水平=vx,vy)の維持率。低い=バウンドで前進が止まる（ソフトテニスの失速感）。
+  //   restitution : バウンド(垂直=vz)の反発係数。低い=低く滑る/弾まない、高い=よく弾む。
+  // 前回は両方を下げすぎてバウンドが死んだため、restitution(弾み)を引き上げて
+  // 弾むようにしつつ、friction(前後)は失速感を保つ範囲でやや戻す。
   spin: {
-    slice: { friction: 0.30, restitution: 0.16 }, // スライス/カット: 止まる・低く滑る
-    drive: { friction: 0.48, restitution: 0.30 }, // ドライブ: 順回転でやや高く弾む（高めの打点）
-    flat:  { friction: 0.40, restitution: 0.28 }, // 無回転: 中
+    slice: { friction: 0.36, restitution: 0.30 }, // スライス/カット: 前進は止まり気味・低めに弾む
+    drive: { friction: 0.54, restitution: 0.50 }, // ドライブ: 順回転で前へ伸び・高めに弾む
+    flat:  { friction: 0.46, restitution: 0.44 }, // 無回転: 中
   },
   // 飛行中の空気抵抗（弱め）。速度に比例して毎フレーム減速させ、
   // 長い飛行ほど自然に失速するソフトテニス特有の球速感を出す。
