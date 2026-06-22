@@ -631,7 +631,7 @@ export function startSwing(p, side) {
   p.pose = "swing";
   p.swingSide = side;
   p.swingSideLocked = false; // スイング種別は確定済み。以降は固定不要（次のreadyで再ロックされる）
-  p.swingT = 0.32;
+  p.swingT = TUNING.tempo.swingDuration;
   p.recoverT = 0;
 }
 

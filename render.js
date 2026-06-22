@@ -657,9 +657,20 @@ export function drawHumanoid(pl) {
     splitSquat = Math.sin(t * Math.PI) * 0.07; // 軽い沈み込み（最大7%収縮）
   }
 
+  const swingDuration = TUNING.tempo.swingDuration;
+  const swingK = (pl.pose === "swing" && pl.swingT > 0)
+    ? Math.max(0, Math.min(1, 1 - pl.swingT / swingDuration))
+    : 0;
+  const recoverK = pl.recoverT > 0
+    ? Math.max(0, Math.min(1, 1 - pl.recoverT / TUNING.tempo.swingRecover))
+    : 1;
+  // インパクト直後に踏み込み脚へ沈み、振り抜きに合わせて伸び上がる。
+  // 当たり判定や移動座標は変えず、重心の上下だけで全身運動に見せる。
+  const strokeLoad = pl.pose === "prep" ? 0.035 : Math.sin(Math.min(1, swingK / 0.72) * Math.PI) * 0.045;
+
   // 前衛は重心を高め（膝を浅く）、後衛・移動中・スプリットステップはやや低めに。
   // athleticな低い土台にするため全体的に膝の曲げを深くする（前衛も従来より低く）。
-  const stanceCrouch = (isFrontRole ? 0.07 : 0.1) + splitSquat + (isMoving ? stepLift : 0);
+  const stanceCrouch = (isFrontRole ? 0.07 : 0.1) + splitSquat + (isMoving ? stepLift : 0) + strokeLoad;
   const legH = (0.5 - stanceCrouch) * s;
   // 上体の前傾: 重心がつま先寄りに見えるよう、胴を少し前方へオフセット
   const torsoLean = 0.05 * s;
@@ -706,13 +717,13 @@ export function drawHumanoid(pl) {
   const shoulderY = torsoTop + 0.12 * s;
   let armAngle;
   let racketLen = 0.62 * s;
-  let torsoTwist = 0; // 胴の左右の振れ（描画のみ・軽め）
+  let torsoTwist = 0; // 胴の左右の振れ（描画のみ）
   let foreWrap = 0; // フォア フォロースルーが首へ巻き付く度合い(0→1)
   if (pl.pose === "swing" && pl.swingT > 0) {
     // k=0: 打球判定が発生した瞬間（hitBall→startSwing呼び出し時点）。
     // k=1: スイング表示終了。当たり判定・タイミングはここでは一切変えず、
     // 同じ0→1の進行を非線形カーブに通すだけ（見た目の演出のみ）。
-    const k = 1 - pl.swingT / 0.32;
+    const k = swingK;
     let progress;
     if (k < 0.18) {
       // ごく短い「引き」の余韻（当たった直後、ラケットが一瞬戻る動き）。
@@ -722,9 +733,9 @@ export function drawHumanoid(pl) {
       const takebackAmp = isServeSwing ? 0.06 : (swingDir === 1 ? 0.1 : 0.04);
       progress = -takebackAmp * Math.sin(t * Math.PI);
     } else {
-      // 振り抜き本体: ease-out（最初速く、終盤で減速）でフォロースルーへ
+      // インパクト付近で一気に加速し、フォロースルー終盤は自然に減速する。
       const t = (k - 0.18) / (1 - 0.18);
-      const eased = 1 - Math.pow(1 - t, 2.2);
+      const eased = 1 - Math.pow(1 - t, 3.1);
       progress = eased;
     }
     if (isServeSwing) {
@@ -752,8 +763,18 @@ export function drawHumanoid(pl) {
     // 胴の軽い捻り: 振り抜きに合わせてわずかに前へ（やりすぎない量）。
     // フォアは横向きの溜め→振り抜きを大きめに、バックは体の前でコンパクトに収める
     // ことでフォア/バックの見た目を区別する。
-    const twistAmp = isServeSwing ? 0.05 : (swingDir === 1 ? 0.07 : 0.035);
-    torsoTwist = Math.max(0, Math.min(1, k)) * twistAmp * swingDir * foreDir;
+    const twistAmp = isServeSwing ? 0.07 : (swingDir === 1 ? 0.13 : 0.09);
+    // 打点ではまだ肩を残し、ラケットより少し遅れて腰・胸が前へ回る。
+    const bodyTurn = 1 - Math.pow(1 - Math.max(0, (k - 0.08) / 0.92), 2.2);
+    torsoTwist = (-0.32 + bodyTurn * 1.32) * twistAmp * swingDir * foreDir;
+  } else if (pl.recoverT > 0) {
+    // フィニッシュからレディへ滑らかに戻す。従来の瞬間的な姿勢切替をなくす。
+    const eased = recoverK * recoverK * (3 - 2 * recoverK);
+    const finishAngle = pl.swingSide === "fore" ? 0.95 : 0.85;
+    armAngle = finishAngle * (1 - eased) + 0.25 * eased;
+    foreWrap = pl.swingSide === "fore" ? 1 - eased : 0;
+    const finishTwist = pl.swingSide === "fore" ? 0.13 : -0.09;
+    torsoTwist = finishTwist * foreDir * (1 - eased);
   } else if (pl.pose === "ready" || pl.pose === "idle") {
     // 構え（レディポジション）。スイング後の"idle"もここに合わせることで、
     // 打った直後すぐ構えに戻ったように見せる（タイミング値は変更しない、見た目の収束のみ）。
@@ -764,6 +785,8 @@ export function drawHumanoid(pl) {
     // 直後から、構え(0.25)よりわずかに後方へラケットを引き始める中間姿勢。
     // フォア/バックでテイクバック方向を分け、わずかに引いた角度にする。
     armAngle = pl.swingSide === "back" ? 0.0 : -0.15;
+    // 肩を先に入れ、腕だけでなく上体でテイクバックしているように見せる。
+    torsoTwist = (pl.swingSide === "fore" ? -0.055 : 0.045) * foreDir;
   } else if (pl.pose === "toss") {
     // トス〜テイクバック: トスを上げた直後からラケット側はすでに後方・低めへ
     // 沈み込み始める（アンダーカットサーブのテイクバック準備）。
@@ -781,7 +804,7 @@ export function drawHumanoid(pl) {
     ctx.fill();
   };
 
-  const isReadyPose = pl.pose === "ready" || pl.pose === "idle";
+  const isReadyPose = (pl.pose === "ready" || pl.pose === "idle") && !(pl.recoverT > 0);
   // レディ姿勢は肘を曲げてコンパクトに＝肩からの腕の伸ばし幅を狭める（胸の前に収める）。
   const armReach = isReadyPose ? 0.13 * s : 0.3 * s;
   const armX = racketDir * Math.cos(armAngle);
@@ -834,7 +857,6 @@ export function drawHumanoid(pl) {
   //    体の「奥」にあるため、通常は胴体・頭より先に描いて体の輪郭で覆う。
   //    ただしフォア・フォロースルー終盤（foreWrap大）はラケットが反対肩〜首元へ
   //    巻き付き、振り抜き全体が見えるよう胴体・頭より後に描いて隠さない。
-  const swingK = (pl.pose === "swing" && pl.swingT > 0) ? (1 - pl.swingT / 0.32) : 0;
   const isFollowThrough = !awayFromCamera && pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
   const isAwayFollowThrough = awayFromCamera && foreWrap > 0.55;
 

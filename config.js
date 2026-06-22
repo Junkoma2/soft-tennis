@@ -159,7 +159,8 @@ export const TUNING = {
     faultDelay: 700,   // フォルト表示→打ち直しまで(ms)
     serveMsgHide: 850, // サーブ告知メッセージの自動消去まで(ms)
     rallyMsgHide: 500, // ポーチ/ボレー等のラリー中告知の表示時間(ms)
-    swingRecover: 0.18, // フォロースルー終了(swingT=0)後、構え直しが完了するまで次の打球を禁止する時間(秒)
+    swingDuration: 0.42, // インパクトから振り抜きが収まるまでの表示時間(秒)
+    swingRecover: 0.22, // フォロースルー終了(swingT=0)後、構え直しが完了するまで次の打球を禁止する時間(秒)
   },
   // 移動の速さ（m/s）
   move: {
