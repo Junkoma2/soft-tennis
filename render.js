@@ -715,12 +715,14 @@ export function drawHumanoid(pl) {
     armAngle = 0.6;
   }
 
-  ctx.fillStyle = pl.color;
   const tw = 0.46 * s;
-  // 前傾を見た目で表現: 胴の上端をわずかに前方へずらし、重心がつま先寄りに
-  // 見えるようにする（当たり判定には無関係の描画オフセット。下端は脚に揃えたまま）。
-  roundRect(ctx, -tw / 2 + torsoTwist * s + torsoLean, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
-  ctx.fill();
+  const drawTorso = () => {
+    ctx.fillStyle = pl.color;
+    // 前傾を見た目で表現: 胴の上端をわずかに前方へずらし、重心がつま先寄りに
+    // 見えるようにする（当たり判定には無関係の描画オフセット。下端は脚に揃えたまま）。
+    roundRect(ctx, -tw / 2 + torsoTwist * s + torsoLean, torsoTop, tw, torsoBottom - torsoTop, 0.12 * s);
+    ctx.fill();
+  };
 
   const isReadyPose = pl.pose === "ready" || pl.pose === "idle";
   // レディ姿勢は肘を曲げてコンパクトに＝肩からの腕の伸ばし幅を狭める（胸の前に収める）。
@@ -747,9 +749,17 @@ export function drawHumanoid(pl) {
   let racketTipX = armX;
   let racketTipY = armY;
   if (isReadyPose) {
-    racketTipX = -racketDir * 0.85;
-    // 上向きは維持するが弱めにする（ヘッドが顔の高さまで上がらないように）。
-    racketTipY = -0.25;
+    if (pl.facing === -1) {
+      // 背面構え: ラケットは体の前面にあり胴体で隠れるが、ヘッドが体の脇から
+      // 前方へ覗くよう利き手側・やや上へ向ける（背中側へ貫通させず存在を示す）。
+      racketTipX = racketDir * 0.95;
+      racketTipY = -0.35;
+    } else {
+      // 正面構え: 両手持ちでヘッドは体の前を横切り非利き手側・やや上を向く。
+      racketTipX = -racketDir * 0.85;
+      // 上向きは維持するが弱めにする（ヘッドが顔の高さまで上がらないように）。
+      racketTipY = -0.25;
+    }
   } else if (foreWrap > 0) {
     // 巻き付きフィニッシュ: ヘッドを反対肩の上・背中側へ向けて立てる。
     const w = foreWrap;
@@ -764,14 +774,12 @@ export function drawHumanoid(pl) {
   const awayFromCamera = pl.facing === -1;
   const offHandTuck = awayFromCamera ? 0.6 : 1;
 
-  // ラケットは基本「体の前」にあるため、胴体・頭より後に描いて前面に出す。
-  // フォロースルー（k終盤＝振り抜き後半）のときだけラケットが体の後ろ側へ
-  // 回り込むので、その場合のみ頭より先に描いて隠れてよいことにする。
-  // ただし背面視点（awayFromCamera、味方キャラ）はカメラが選手の背中側を見ているため、
-  // 振り抜きで腕が体の向こう側（＝カメラから見て後ろ）へ回り込むことはない
-  // （腕は常にカメラ側＝体の手前にある）。この場合に「頭より先に描いて隠す」処理を
-  // 適用すると、腕・ラケットが体（頭の背面シルエット）に塗り潰されて体を貫通したように
-  // 見えてしまうため、背面視点では常に頭より後（前面）に描く。
+  // 描画順の方針:
+  //  - 正面視点（相手＝facing=1）: ラケットは体の前（カメラ側）にあるため胴体・頭より
+  //    後に描いて前面に出す。フォロースルー後半だけは体の後ろへ回り込むので頭より先に描く。
+  //  - 背面視点（味方＝facing=-1, awayFromCamera）: ラケットは体の前面＝カメラから見て
+  //    体の「奥」にある。よって胴体・頭より先に描き、体で隠す。こうしないと体の前にある
+  //    ラケットが背中の上に重なって「背中側へ貫通」して見える（要件の不具合）。
   const swingK = (pl.pose === "swing" && pl.swingT > 0) ? (1 - pl.swingT / 0.32) : 0;
   const isFollowThrough = !awayFromCamera && pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
 
@@ -815,37 +823,43 @@ export function drawHumanoid(pl) {
     ctx.stroke();
   };
 
-  // フォロースルー時のみ「腕・ラケット→頭」の順（体の後ろに回り込み、隠れてよい）。
-  // それ以外は「頭→腕・ラケット」の順にして、ラケットが頭・胴に飲み込まれず前面に出るようにする。
-  if (isFollowThrough) {
-    drawArmsAndRacket();
-  }
+  const drawHead = () => {
+    ctx.fillStyle = pl.skin;
+    ctx.beginPath();
+    ctx.arc(0, headCy, headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#3B2A1E";
+    if (pl.facing === -1) {
+      ctx.beginPath();
+      ctx.arc(0, headCy, headR, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, headCy - headR * 0.2, headR * 0.98, headR * 0.78, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(0, headCy - headR * 0.45, headR * 0.95, headR * 0.55, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#1F2937";
+      ctx.beginPath();
+      ctx.arc(-headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
+      ctx.arc(headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
 
-  ctx.fillStyle = pl.skin;
-  ctx.beginPath();
-  ctx.arc(0, headCy, headR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#3B2A1E";
-  if (pl.facing === -1) {
-    ctx.beginPath();
-    ctx.arc(0, headCy, headR, Math.PI * 0.95, Math.PI * 2.05);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(0, headCy - headR * 0.2, headR * 0.98, headR * 0.78, 0, Math.PI, Math.PI * 2);
-    ctx.fill();
+  if (awayFromCamera) {
+    // 背面視点: 腕・ラケットを先に描き、胴体・頭で覆って体の前面（カメラの奥）に
+    // 収める。体の輪郭からはみ出す部分だけが覗き、背中側への貫通を防ぐ。
+    drawArmsAndRacket();
+    drawTorso();
+    drawHead();
   } else {
-    ctx.beginPath();
-    ctx.ellipse(0, headCy - headR * 0.45, headR * 0.95, headR * 0.55, 0, Math.PI, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#1F2937";
-    ctx.beginPath();
-    ctx.arc(-headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
-    ctx.arc(headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  if (!isFollowThrough) {
-    drawArmsAndRacket();
+    // 正面視点: 胴体→（フォロースルーは頭の後ろへ）→頭→腕・ラケット（前面）。
+    drawTorso();
+    if (isFollowThrough) drawArmsAndRacket();
+    drawHead();
+    if (!isFollowThrough) drawArmsAndRacket();
   }
 
   if (pl.label) {

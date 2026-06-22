@@ -245,8 +245,9 @@ export const TUNING = {
   },
 };
 
-const W = 720;
-const H = 1080;
+// canvas内部解像度。画面向きに応じて applyViewport() で切り替える（live binding）。
+export let W = 720;
+export let H = 1080;
 
 /* ---- 実コート寸法（m） ---- */
 export const COURT = {
@@ -326,4 +327,20 @@ export const LINE_IN_MARGIN = 0.12;
 export const Y_RANGE_BACK  = { min: 1.0, max: 17.0 };
 export const Y_RANGE_FRONT = { min: 0.6, max: 17.0 };
 
-export { W, H };
+// 画面向きに応じてcanvas内部解像度とカメラ縦オフセットを切り替える。
+//  - 縦画面(portrait): 2:3の縦長中継ビュー（従来）。
+//  - 横画面(landscape): 横長に広げ、コートを左右いっぱいに見せて余白（地面）を広く
+//    確保しつつ、縦方向はコートで満たして大きく表示する。fov/pitch は共通なので
+//    投影スケールは変わらず歪まない（横幅と縦オフセットだけを変える）。
+const VIEWPORT = {
+  portrait:  { W: 720,  H: 1080, horizonY: 800 },
+  landscape: { W: 1280, H: 480,  horizonY: 540 },
+};
+
+export function applyViewport(isLandscape) {
+  const v = isLandscape ? VIEWPORT.landscape : VIEWPORT.portrait;
+  W = v.W;
+  H = v.H;
+  CAM.horizonY = v.horizonY;
+  return v;
+}

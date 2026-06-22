@@ -5,7 +5,7 @@ import {
   SHOOT_FLAT_Z, CUT_SLICE_DEPTH, SHOT_FAMILY_ORDER, SHOT_FAMILY_META,
   TOSS_RISE_TIME, TOSS_HOLD_TIME, TOSS_BASE_Z, TOSS_APEX_Z,
   IDEAL_HIT_DELAY, LINE_IN_MARGIN, Y_RANGE_BACK, Y_RANGE_FRONT,
-  W, H,
+  W, H, applyViewport,
 } from "./config.js";
 
 import {
@@ -1107,4 +1107,14 @@ retryBtn.addEventListener("click", function () {
   setState("ready");
 });
 
-draw();
+// 画面向きに応じてcanvas内部解像度・カメラを同期する（横画面はワイドビュー）。
+function syncViewport() {
+  const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+  applyViewport(isLandscape);
+  if (canvas.width !== W) canvas.width = W;
+  if (canvas.height !== H) canvas.height = H;
+  draw();
+}
+window.addEventListener("resize", syncViewport);
+window.addEventListener("orientationchange", syncViewport);
+syncViewport();

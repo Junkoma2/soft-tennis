@@ -38,6 +38,16 @@ body:has(#screen-result:not([hidden])) #app {
   max-width: 480px;
 }
 
+/* プレイ中は向きに関わらずページ全体のスクロールと引っ張り（オーバースクロール）を
+ * 抑止して、スワイプ操作が誤ってスクロールにならないようにする。 */
+html:has(#screen-game:not([hidden])),
+body:has(#screen-game:not([hidden])) {
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
 header {
   text-align: center;
   margin-bottom: 12px;
@@ -200,6 +210,9 @@ main {
   aspect-ratio: 2 / 3;
   border-radius: 12px;
   overflow: hidden;
+  /* 横画面でcanvasを縦横比保持(contain)した際の余白を、地面（コート外周の緑）と
+   * 同色にして“広い芝のコート”の延長に見せる（黒帯を出さない）。 */
+  background: #1f7a3f;
   box-shadow: 0 4px 16px rgba(30, 27, 75, .12);
   touch-action: none;
   user-select: none;
@@ -211,6 +224,8 @@ main {
   display: block;
   width: 100%;
   height: 100%;
+  /* canvas内部解像度の縦横比を保ったまま枠に収める（向き切替で歪ませない）。 */
+  object-fit: contain;
   background: var(--color-court);
 }
 
@@ -485,9 +500,10 @@ footer a:hover { color: var(--color-text); }
   footer { padding-top: 4px; }
 }
 
-/* 横画面（PCの横長ウィンドウ含む全般）: ヘッダ/フッタを隠し、コートと操作パネルを左右に並べてコートを最大化
- * 旧実装はスマホ横向き（高さ500px以下）専用だったが、PCの横長ウィンドウ（高さ640px超）でも
- * コートが中央に小さく縦長表示される問題があったため、高さ上限を撤廃して横向き全般に適用する。 */
+/* 横画面（スマホ横向き・PCの横長ウィンドウ全般）。
+ * 「試合映像を見やすくする」ことを最優先に、UI（スコア・操作）を左右端に置かず
+ * 上下に集約し、コートを横幅いっぱいに広げる。コートは横長ビュー（config.jsの
+ * applyViewportでcanvasを横長解像度に切替）で、左右に地面の余白を見せる。 */
 @media (orientation: landscape) {
   body:has(#screen-game:not([hidden])) header,
   body:has(#screen-game:not([hidden])) footer {
@@ -499,7 +515,7 @@ footer a:hover { color: var(--color-text); }
   }
 
   body:has(#screen-game:not([hidden])) #app {
-    padding: 6px 8px;
+    padding: 4px 6px;
     max-width: none;
     height: 100dvh;
     overflow: hidden;
@@ -510,62 +526,65 @@ footer a:hover { color: var(--color-text); }
     min-height: 0;
   }
 
+  /* 縦積み: スコア(上) → コート(中央・可変で最大化) → 操作パネル(下) */
   #screen-game {
-    flex-direction: row;
+    flex-direction: column;
     align-items: stretch;
-    justify-content: center;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: 4px;
     width: 100%;
     height: 100%;
     min-height: 0;
   }
 
-  /* スコアボードはコート上部に重ねず、操作カラムの最上段に縦積みで小さく出す */
+  /* スコアは上端に横一列で薄く集約 */
   #screen-game .scoreboard {
-    order: 1;
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px 8px;
-    width: auto;
-    min-width: 96px;
-  }
-
-  #screen-game .score-sets { order: -1; }
-
-  .court-wrap {
-    order: 2;
+    order: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 2px 8px;
+    width: 100%;
     flex-shrink: 0;
-    /* 高さ基準: 画面の高さから#appの上下paddingを引いて逆算。
-     * 試合映像を見やすくすることを最優先に、コートの表示面積をできるだけ確保する
-     * （操作パネルは横幅を絞って余白を最小限にする）。 */
-    height: 100%;
-    width: min(100%, calc((100dvh - 12px) * 2 / 3));
   }
 
+  /* コートは残り高さを全て使い、横幅いっぱいに広げる（aspect比はcanvas側が保持） */
+  .court-wrap {
+    order: 1;
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 操作パネルは下端に横並びで集約。コート領域を圧迫しないよう低く抑える */
   #screen-game .controls {
-    order: 3;
-    flex-direction: column;
-    flex-wrap: nowrap;
-    width: auto;
-    /* コート表示を最大化するため、操作パネルの幅をさらに切り詰める
-     * （ポイント表示やボタンは上下に集約し、左右の専有を減らす）。 */
-    max-width: 132px;
-    height: 100%;
-    overflow-y: auto;
-    justify-content: flex-start;
+    order: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
+    width: 100%;
+    max-width: none;
+    flex-shrink: 0;
+    gap: 6px;
   }
 
-  #screen-game .controls .control-group,
-  #screen-game #shot-select-controls,
-  #screen-game #shot-controls {
-    flex: 0 0 auto;
-    min-width: 140px;
+  #screen-game .controls .control-group {
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 3px 8px;
   }
 
-  #screen-game .hint {
-    order: 4;
-    display: none;
-  }
+  #screen-game #shot-select-controls { flex: 1 1 280px; }
+  #screen-game #shot-controls { flex: 0 1 160px; }
+
+  #screen-game .hint { display: none; }
 }
 
 /* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作系は縦積み。 */
