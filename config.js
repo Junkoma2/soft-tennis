@@ -222,9 +222,9 @@ export const TUNING = {
   // 前回は両方を下げすぎてバウンドが死んだため、restitution(弾み)を引き上げて
   // 弾むようにしつつ、friction(前後)は失速感を保つ範囲でやや戻す。
   spin: {
-    slice: { friction: 0.36, restitution: 0.30 }, // スライス/カット: 前進は止まり気味・低めに弾む
-    drive: { friction: 0.54, restitution: 0.50 }, // ドライブ: 順回転で前へ伸び・高めに弾む
-    flat:  { friction: 0.46, restitution: 0.44 }, // 無回転: 中
+    slice: { friction: 0.36, restitution: 0.44 }, // スライス/カット: 前進は止まり気味・やや高めに弾む
+    drive: { friction: 0.54, restitution: 0.64 }, // ドライブ: 順回転で前へ伸び・高く弾む
+    flat:  { friction: 0.46, restitution: 0.56 }, // 無回転: 中〜高
   },
   // 飛行中の空気抵抗（弱め）。速度に比例して毎フレーム減速させ、
   // 長い飛行ほど自然に失速するソフトテニス特有の球速感を出す。
