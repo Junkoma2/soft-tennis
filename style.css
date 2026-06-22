@@ -271,6 +271,13 @@ main {
 #shot-select-controls { flex: 2 1 320px; }
 #shot-controls { flex: 1 1 200px; }
 
+/* 球種選択・打球ボタンはタッチ操作専用。PC(マウス)は左右クリック＋コート上クリックで
+ * 操作するため冗長なので隠す。タッチ端末(pointer: coarse)でのみ表示する。 */
+@media (hover: hover) and (pointer: fine) {
+  #shot-select-controls,
+  #shot-controls { display: none; }
+}
+
 .control-group {
   display: flex;
   align-items: center;
