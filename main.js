@@ -15,14 +15,14 @@ import {
 import {
   screens, startBtn, retryBtn, canvas, ctx, messageOverlay, messageText,
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
-  hintText, shotControls, chargeBtn, servePowerControls, serveSpinControls, serveCategoryControls,
+  hintText, shotControls, chargeBtn, serveCategoryControls,
   aggressionControls, shotSelectControls, moveStick, moveStickKnob,
   formationControls, controlsPanel,
   mouseAim, makeStats, playerStats, cpuStats,
   state, player, cpu, serveFaults, rafId, lastTime, pendingSwing, matchTime,
   setState, setServeFaults, incServeFaults, setRafId, setLastTime, setPendingSwing, setMatchTime, addMatchTime,
   partnerAggressiveness, setPartnerAggressiveness,
-  serveType, setServeType, servePower, serveSpin, setServePower, setServeSpin,
+  serveType, setServeType,
   serveAimCursor,
   selectedShot, setSelectedShot,
   cpuFrontPlan, playerFrontPlan, setCpuFrontPlan, setPlayerFrontPlan,
@@ -127,13 +127,11 @@ export function showMessage(text) {
   messageOverlay.hidden = false;
 }
 
-// 操作パネルの表示切替: serve=サーブ設定（種類/パワー/回転） / rally=球種選択
+// 操作パネルの表示切替: serve=サーブ設定（オーバー/アンダーのみ） / rally=球種選択
 export function setControlMode(mode) {
   const serveMode = mode === "serve";
   if (serveCategoryControls) serveCategoryControls.hidden = !serveMode;
-  servePowerControls.hidden = !serveMode;
-  serveSpinControls.hidden = !serveMode;
-  // 攻守は観戦モードOFF かつ サーブ前にのみ表示（パワー/回転と同運用）
+  // 攻守は観戦モードOFF かつ 得点間（サーブ前）にのみ調整可として表示する
   if (aggressionControls) aggressionControls.hidden = !serveMode || spectatorMode;
   shotSelectControls.hidden = serveMode;
   if (chargeBtn) {

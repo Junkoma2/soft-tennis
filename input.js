@@ -8,8 +8,8 @@ import {
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
-  serveAimCursor, chargeBtn, servePowerControls, serveSpinControls, serveCategoryControls,
-  setServePower, setServeSpin, setServeCategory, aggressionControls, setPartnerAggressiveness,
+  serveAimCursor, chargeBtn, serveCategoryControls,
+  setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
   handedControls, setPlayerHanded,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
@@ -214,24 +214,8 @@ shotSelectControls.addEventListener("click", function (e) {
   selectShot(btn.dataset.shotsel);
 });
 
-// サーブ設定（パワー / 回転）はスライダー（ボリューム調整バー）で選ぶ。
-// 内部の3段階モデル（weak/mid/strong）は維持し、0/1/2をその文字列に対応させる。
-const LEVELS = ["weak", "mid", "strong"];
-const LEVEL_LABELS = ["弱", "中", "強"];
-function bindLevelSlider(rangeId, valId, setter) {
-  const range = document.getElementById(rangeId);
-  const valEl = document.getElementById(valId);
-  if (!range) return;
-  const apply = () => {
-    const i = Math.max(0, Math.min(2, Math.round(parseFloat(range.value))));
-    setter(LEVELS[i]);
-    if (valEl) valEl.textContent = LEVEL_LABELS[i];
-  };
-  range.addEventListener("input", apply);
-  apply();
-}
-bindLevelSlider("serve-power-range", "serve-power-val", setServePower);
-bindLevelSlider("serve-spin-range", "serve-spin-val", setServeSpin);
+// サーブのパワー/回転は UI 操作を廃止し、打つ選手の能力(stats)から内部で決める
+// （serve.js の servePowerLevel / serveSpinLevel）。
 
 // サーブ前の大分類選択（アンダー/オーバー）。打つ瞬間の球種振り分けはこの分類内で従来通り。
 if (serveCategoryControls) {
@@ -317,9 +301,11 @@ function updatePickerPositions() {
   // 自チーム（手前）: 後衛を右寄り、前衛を後衛と逆サイドのネット寄りに配置
   const playerBackX = Math.abs(f.back.x) < SIDE_OFFSET ? sideSign(f.back.x) * SIDE_OFFSET : f.back.x;
   const playerFrontX = -sideSign(playerBackX) * Math.max(SIDE_OFFSET, Math.abs(f.front.x));
-  // 相手チーム（奥）: 自チームと対角になるよう左右反転、前衛も後衛と逆サイド
-  const cpuBackX = -playerBackX;
-  const cpuFrontX = -playerFrontX;
+  // 相手チーム（奥）は陣形に関わらず常に雁行陣で固定（実際の試合と同じ）。
+  // 自チームの陣形選択につられて相手の配置が変わらないよう、ganko を基準に置く。
+  const fo = FORMATIONS["ganko"];
+  const cpuBackX = Math.abs(fo.back.x) < SIDE_OFFSET ? SIDE_OFFSET : fo.back.x;
+  const cpuFrontX = -sideSign(cpuBackX) * Math.max(SIDE_OFFSET, Math.abs(fo.front.x));
   const place = (el, x, y) => {
     if (!el) return;
     el.style.left = worldXToPercent(x) + "%";
@@ -327,8 +313,8 @@ function updatePickerPositions() {
   };
   place(pickerPlayerBack, playerBackX, f.back.y);
   place(pickerPlayerFront, playerFrontX, f.front.y);
-  place(pickerCpuBack, cpuBackX, -f.back.y);
-  place(pickerCpuFront, cpuFrontX, -f.front.y);
+  place(pickerCpuBack, cpuBackX, -fo.back.y);
+  place(pickerCpuFront, cpuFrontX, -fo.front.y);
 }
 
 function updatePickerUi() {

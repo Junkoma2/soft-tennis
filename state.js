@@ -24,8 +24,6 @@ export const resultDetail  = document.getElementById("result-detail");
 export const hintText      = document.getElementById("hint-text");
 export const shotControls  = document.getElementById("shot-controls");
 export const chargeBtn     = document.getElementById("charge-btn");
-export const servePowerControls = document.getElementById("serve-power-controls");
-export const serveSpinControls  = document.getElementById("serve-spin-controls");
 export const serveCategoryControls = document.getElementById("serve-category-controls");
 export const aggressionControls = document.getElementById("aggression-controls");
 export const shotSelectControls = document.getElementById("shot-select-controls");
@@ -113,10 +111,8 @@ export function setServeType(v) { serveType = v; }
 export let serveCategory = "over";
 export function setServeCategory(v) { serveCategory = v; }
 
-export let servePower = "mid";  // weak / mid / strong
-export let serveSpin = "mid";   // weak / mid / strong
-export function setServePower(v) { servePower = v; }
-export function setServeSpin(v) { serveSpin = v; }
+// サーブのパワー/回転は UI 操作ではなく、打つ選手の能力(stats)から内部で決める
+// （serve.js の servePowerLevel / serveSpinLevel）。
 
 // サーブの狙い（着地点カーソル・ワールド座標）。マウスで対角サービスコート内を指す。
 // 立ち位置＋この狙いで左/中/右を打ち分け、サービスコート外はフォルトになる。

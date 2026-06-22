@@ -10,7 +10,7 @@ import {
   hintText,
   player, cpu, back, front, cpuBack, cpuFront, ball, rallyControlled,
   receiverSideAssign,
-  serveType, setServeType, servePower, serveSpin,
+  serveType, setServeType,
   serveAimCursor, toss, serveReady,
   serveFaults, setServeFaults, incServeFaults,
   cpuServePlan, setCpuServePlan, aiServePlan, setAiServePlan,
@@ -22,6 +22,18 @@ import {
   isFinalGame, showMessage, hideMessage, setControlMode, resetPlayersForPoint,
   awardPoint, startSwing, launchBall, netClearance,
 } from "./main.js";
+
+// サーブのパワー/回転は UI ではなく打つ選手の能力(stats)から内部で決める。
+// serve（球速）が高い選手は強いサーブ、control（精度）が高い選手はよく回転をかける、
+// というイメージ。3段階モデル(weak/mid/strong)へ写像する。
+function statLevel(v) {
+  if (v == null) return "mid";
+  if (v >= 1.06) return "strong";
+  if (v <= 0.93) return "weak";
+  return "mid";
+}
+function servePowerLevel(stats) { return statLevel(stats && stats.serve); }
+function serveSpinLevel(stats) { return statLevel(stats && stats.control); }
 
 // button(0=左/2=右) と spaceHeld(修飾キー) から4種のサーブタイプを決める。
 // ラリー中の shotFamilyForClick と対称: Space=修飾キー、左右ボタンで系統が変わる。
@@ -406,8 +418,8 @@ export function launchPlayerServe(type) {
   if (!serveAimCursor.set) resetServeAimCursor();
   launchServeBall("player", server, server.stats, {
     type: serveType,
-    power: servePower,
-    spin: serveSpin,
+    power: servePowerLevel(server.stats),
+    spin: serveSpinLevel(server.stats),
     quality: serveContactQuality(z, zone),
     contactZ: Math.max(0.3, z),
     aimTarget: { x: serveAimCursor.x, y: serveAimCursor.y }, // 着地点カーソルの狙い

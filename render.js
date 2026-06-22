@@ -8,7 +8,7 @@ import {
 
 import {
   ctx, serveAimCursor, aim, charge, toss, rallyControlled, ball, effects,
-  state, spectatorMode, cpuServePlan, servePower, serveSpin, serveReady,
+  state, spectatorMode, cpuServePlan, serveReady,
   back, front, cpuBack, cpuFront, matchTime, serveCategory,
   player, cpu,
 } from "./state.js";
@@ -17,7 +17,7 @@ import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
 } from "./serve.js";
 
-import { courseLabelFor, insideCourt, insideBox, predictLanding, chargeAmount, pointLabel } from "./main.js";
+import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
 import { canPlayerHit } from "./input.js";
 
 /* ===========================================================
@@ -131,9 +131,8 @@ export function drawHud() {
   if (state === "ready") return;
 
   if ((state === "serve-stance" || state === "serve-toss") && playerIsServer() && !spectatorMode) {
-    const lv = { weak: "弱", mid: "中", strong: "強" };
-    const text = "パワー" + (lv[servePower] || "中") + "  回転" + (lv[serveSpin] || "中");
-    // プレイエリアを広く見せるため、左右端ではなく上部中央へ集約する。
+    // パワー/回転は内部値にしたため表示しない。サーブの種類（オーバー/アンダー）だけ示す。
+    const text = serveCategory === "under" ? "アンダーサーブ" : "オーバーサーブ";
     const boxW = 140;
     const bx = (W - boxW) / 2, by = 62;
     ctx.fillStyle = "rgba(30,27,75,0.55)";
@@ -590,6 +589,21 @@ function getMoveAnim(pl) {
   return a;
 }
 
+// バウンド後のボールの予測打点へ体を向ける（正対）ためのヨー角（画面回転の近似）。
+// よりリアルな打球アニメーションへの第一歩として、選手は常に「次にボールが来る地点」へ
+// 体をひねって正対する。予測打点が読めないときは現在のボール位置を向く。
+function bodyYawToBall(pl) {
+  let tx = ball.x, ty = ball.y;
+  const lp = predictHighContact() || predictLanding();
+  if (lp) { tx = lp.x; ty = lp.y; }
+  const me = project(pl.x, pl.y, 0);
+  const tg = project(tx, ty, 0);
+  const dxs = tg.x - me.x;                          // 画面上の左右ずれ(px)
+  const depth = Math.max(90, Math.abs(me.y - tg.y) + 110); // 奥行き感（小さいほど大きく向く）
+  const yaw = Math.atan2(dxs, depth);
+  return Math.max(-0.32, Math.min(0.32, yaw));      // ひねりは控えめに（首振り→上体のひねり）
+}
+
 /* ---- 簡易人型の選手 ---- */
 export function drawHumanoid(pl) {
   const g = project(pl.x, pl.y, 0);
@@ -598,10 +612,17 @@ export function drawHumanoid(pl) {
   ctx.save();
   ctx.translate(g.x, g.y);
 
+  // 影は地面に固定（回転させない）。
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
   ctx.ellipse(0, 0, 0.34 * s, 0.13 * s, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // 体（脚〜頭）はボールの予測打点へ向けてひねる。スイング中は打球モーションを優先。
+  if (pl.pose !== "swing") {
+    const yaw = bodyYawToBall(pl);
+    if (yaw) ctx.rotate(yaw);
+  }
 
   // 前衛判定（role/front相当）: state.js上は front/cpuFront インスタンスそのものが
   // ネット前のプレイヤーを表す。ボレー・スマッシュ待ちのため、後衛よりやや高めの
