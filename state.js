@@ -224,7 +224,14 @@ export function makePlayer(opts) {
     facing: -1,
     pose: "idle",      // idle / ready / swing / serve / toss
     swingSide: "fore", // fore / back
+    swingSideLocked: false, // trueの間はready/prepで固定済みのswingSideを再評価しない
     swingT: 0,
+    recoverT: 0,       // フォロースルー終了後、構え直しが完了するまでの残り時間（秒）。
+                        // >0の間は次の打球を受け付けない（クールダウン。見た目はidleでもよい）。
+    wrapCommitted: false, // 来球に対して打ち方を一度決めたらtrue（打つまで再評価しない）
+    wrapTargetX: null,     // 確定した立ち位置の目標x（foreApproachXが返した値を固定保持）
+    wrapBallX: null,       // 確定時に基準にしたボールの予測打点x（予測が大きくズレたら再計画する判定に使う）
+    hitSide: "fore",       // この来球を fore/back どちらで打つかの確定値（立ち位置と一体で決める）
     role: "back",      // back / front（その時点でのコート上の役割表示用）
     stats: makeStats(),
   }, opts);

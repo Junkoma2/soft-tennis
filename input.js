@@ -19,7 +19,7 @@ import {
 } from "./state.js";
 
 import {
-  chargeAmount, hitBall, updateMouseAimFromEvent,
+  chargeAmount, hitBall, updateMouseAimFromEvent, canSwingNow,
 } from "./main.js";
 
 import {
@@ -592,6 +592,7 @@ export function canPlayerHit(p) {
   if (!ballIncomingToPlayer()) return false;
   if (ball.serving && ball.bounces === 0) return false; // サーブはワンバウンドしてから
   if (ball.z > 2.4) return false;
+  if (!canSwingNow(cp)) return false; // フォロースルー〜構え直しが完了するまで打てない
   return distToBall(cp) <= HIT_REACH * cp.stats.reach;
 }
 

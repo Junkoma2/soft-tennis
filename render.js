@@ -774,14 +774,18 @@ export function drawHumanoid(pl) {
   const awayFromCamera = pl.facing === -1;
   const offHandTuck = awayFromCamera ? 0.6 : 1;
 
-  // 描画順の方針:
+  // 描画順の方針: ラケットはどの視点でもフォロースルーまで常に見えるように描く
+  // （背中や胴体に隠さない）。
   //  - 正面視点（相手＝facing=1）: ラケットは体の前（カメラ側）にあるため胴体・頭より
-  //    後に描いて前面に出す。フォロースルー後半だけは体の後ろへ回り込むので頭より先に描く。
+  //    後に描いて前面に出す。フォロースルー後半は体の後ろへ回り込むので頭より先に描き、
+  //    振り抜き全体が見えるようにする。
   //  - 背面視点（味方＝facing=-1, awayFromCamera）: ラケットは体の前面＝カメラから見て
-  //    体の「奥」にある。よって胴体・頭より先に描き、体で隠す。こうしないと体の前にある
-  //    ラケットが背中の上に重なって「背中側へ貫通」して見える（要件の不具合）。
+  //    体の「奥」にあるため、通常は胴体・頭より先に描いて体の輪郭で覆う。
+  //    ただしフォア・フォロースルー終盤（foreWrap大）はラケットが反対肩〜首元へ
+  //    巻き付き、振り抜き全体が見えるよう胴体・頭より後に描いて隠さない。
   const swingK = (pl.pose === "swing" && pl.swingT > 0) ? (1 - pl.swingT / 0.32) : 0;
   const isFollowThrough = !awayFromCamera && pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
+  const isAwayFollowThrough = awayFromCamera && foreWrap > 0.55;
 
   // 腕（利き手＝ラケットを持つ手 と 添え手）のみを描く。ラケット本体は drawRacket で別途。
   const drawArms = () => {
@@ -858,11 +862,21 @@ export function drawHumanoid(pl) {
   };
 
   if (awayFromCamera) {
-    // 背面視点: 腕・ラケットを先に描き、胴体・頭で覆って体の前面（カメラの奥）に
-    // 収める。体の輪郭からはみ出す部分だけが覗き、背中側への貫通を防ぐ。
-    drawArmsAndRacket();
-    drawTorso();
-    drawHead();
+    // 背面視点: 通常は腕・ラケットを先に描き、胴体・頭で覆って体の前面
+    // （カメラの奥）に収める。体の輪郭からはみ出す部分だけが覗き、
+    // 背中側への貫通を防ぐ。
+    // フォア・フォロースルー終盤（isAwayFollowThrough）は、ラケットが
+    // 反対肩〜首元へ巻き付き振り抜きが大きく見えるタイミングのため、
+    // 胴体・頭より後に描いて隠さない（振り抜きを見せる）。
+    if (isAwayFollowThrough) {
+      drawTorso();
+      drawHead();
+      drawArmsAndRacket();
+    } else {
+      drawArmsAndRacket();
+      drawTorso();
+      drawHead();
+    }
   } else {
     // 正面視点: 胴体→（フォロースルーは頭の後ろへ）→頭→腕・ラケット（前面）。
     drawTorso();

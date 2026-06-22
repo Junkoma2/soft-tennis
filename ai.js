@@ -13,7 +13,8 @@ import {
 } from "./serve.js";
 
 import {
-  predictLanding, predictHighContact, insideCourt, hitBall, showMessage, hideMessage,
+  predictLanding, predictHighContact, insideCourt, hitBall, showMessage, hideMessage, canSwingNow,
+  isBackhandFor,
 } from "./main.js";
 
 import { distToBall, canPlayerHit } from "./input.js";
@@ -56,6 +57,67 @@ export function moveToward(p, tx, ty, maxDist, dt) {
   p.vy = approachVelocity(p.vy || 0, targetVy, dt);
   p.x += p.vx * dt;
   p.y += p.vy * dt;
+}
+
+// フォア回り込み判定: 後衛の移動目標x（打点予測位置）が利き手と逆側（バック）に
+// なりそうなとき、フォアで打てる位置へ積極的に回り込む。
+//   myBack: 移動させる後衛選手オブジェクト（stats.handedを持つ）
+//   homeSign: 自陣方向の符号（player=+1, cpu=-1）
+//   targetX: そのまま追えば構える位置（=ボールの予測打点x）
+//   approachSpeed: その後衛の到達できる速さ(m/s)
+//   timeToContact: 打点までの残り時間（秒, 概算）。大きいほど回り込みに余裕がある。
+// 戻り値: 回り込み後の目標x（間に合わない/既にフォア側ならtargetXのまま）。
+//
+// ラッチ（wrapCommitted/wrapTargetX）について:
+//   この関数は毎フレーム呼ばれるが、targetX（ボール予測打点）は移動中も
+//   フレームごとに微妙に変化するため、myBack.x との相対関係で決まる
+//   isBackhandFor の結果が打点境界の左右でフリップしやすい。
+//   「回り込む」と一度決めたら、来球1球分（myBack.wrapCommitted=true の間）は
+//   wrapTargetX を再計算せず固定することで、目標xが境界をまたいで
+//   往復するリミットサイクル（プルプル／ちらつき）を防ぐ。
+//   ラッチの解除（myBack.wrapCommitted=false）は呼び出し側
+//   （moveAutoAI、ball.lastHitterがmyTeamに変わったタイミング）で行う。
+// ballContactX: バウンド後の軌道から予測した「実際に打つ打点のx」。
+//   ※瞬間の ball.x ではなく軌道の行き先を使う。フォア/バック判定の軸はこれ。
+// 戻り値: この来球で構える立ち位置x。併せて myBack.hitSide に fore/back を確定する。
+function foreApproachX(myBack, side, ballContactX, approachSpeed, timeToContact) {
+  const facingDir = side === "player" ? 1 : -1;
+  const handSign = myBack.stats && myBack.stats.handed === "left" ? -1 : 1;
+  const foreDir = facingDir * handSign;
+
+  // 来球1球分はラッチ: 立ち位置とフォア/バックを固定し、毎フレームの再評価による
+  // 往復（プルプル）や表示反転（フォアなのにバック）を防ぐ。ただし予測が大きく
+  // ズレたら（バウンドのブレ等）解除して立て直す。
+  if (myBack.wrapCommitted) {
+    if (Math.abs(ballContactX - myBack.wrapBallX) <= 1.2) return myBack.wrapTargetX;
+    myBack.wrapCommitted = false;
+  }
+
+  // 「基本フォアで回り込む」: ボールをフォア側（利き手側）の適正打点 idealLateralFore で
+  // 迎えられる立ち位置を第一候補にする＝ボールより foreDir 側に idealLateralFore 手前に立つ
+  // （体の右側で、体から少し離して打つイメージ）。
+  const foreLateral = (TUNING.contact && TUNING.contact.idealLateralFore) || 0.85;
+  const foreStandX = ballContactX - foreDir * foreLateral;
+
+  let standX, hitSide;
+  if (timeToContact != null && timeToContact > 0) {
+    const timeNeeded = Math.abs(foreStandX - myBack.x) / Math.max(0.1, approachSpeed);
+    if (timeNeeded <= timeToContact * 0.9) {
+      standX = foreStandX; hitSide = "fore"; // 間に合う→フォアに回り込む
+    } else {
+      standX = ballContactX; hitSide = "back"; // 間に合わない→正面で迎えてバック
+    }
+  } else {
+    // 残り時間が読めない（バウンド後など）: すでにフォア側ならフォア、そうでなければバック。
+    if (isBackhandFor(side, myBack, ballContactX)) { standX = ballContactX; hitSide = "back"; }
+    else { standX = foreStandX; hitSide = "fore"; }
+  }
+
+  myBack.wrapCommitted = true;
+  myBack.wrapTargetX = standX;
+  myBack.wrapBallX = ballContactX;
+  myBack.hitSide = hitSide;
+  return standX;
 }
 
 function approachVelocity(cur, target, dt) {
@@ -225,6 +287,7 @@ export function moveAutoAI(p, side, dt) {
       const landing = predictLanding();
       let tx = backDevX(myTeam);
       let ty = homeBackY;
+      let timeToContact = null;
       if (ball.bounces >= 1) {
         // バウンド後はボールへ寄せるが、ベースライン後方へ深追いしすぎない
         // （深く下がると落ちてきた球を低く打つことになる）。
@@ -232,6 +295,8 @@ export function moveAutoAI(p, side, dt) {
         ty = homeSign > 0
           ? Math.min(COURT.halfL + 5.0, Math.max(4.5, ball.y + ball.vy * 0.2))
           : Math.max(-(COURT.halfL + 5.0), Math.min(-4.5, ball.y + ball.vy * 0.2));
+        // バウンド後は飛行時間の見積もりが難しいため、回り込み判定用に短い猶予のみ与える
+        timeToContact = 0.25;
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
@@ -246,16 +311,37 @@ export function moveAutoAI(p, side, dt) {
         const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
         tx = Math.max(-xCap, Math.min(xCap, hx));
         ty = homeSign > 0 ? depth : -depth;
+        // 着地までの時間 + バウンド頂点までの時間 ≒ 実際に打つまでの残り時間。
+        // これを基準に「フォアへ回り込めるか」を判定する。
+        timeToContact = landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
       }
+      // ボールが利き手と逆側（バック）に来そうなら、間に合う見込みのときだけ
+      // フォアで打てる位置へ積極的に回り込む（間に合わなければそのままバックハンドで対応）。
+      tx = foreApproachX(myBack, myTeam, tx, speed * 1.2, timeToContact);
+      // 立ち位置と一体で確定した fore/back を表示・打球判定でも使う唯一の根拠にする。
+      // これで回り込み・表示・物理がすべて同じ確定値を参照し、食い違わない。
+      myBack.swingSide = myBack.hitSide;
+      myBack.swingSideLocked = true;
       moveToward(myBack, tx, ty, speed * 1.2 * dt, dt);
-    } else if (state === "rally" && myJustServedByFront) {
-      // 前衛パートナーがサーブした回: 後衛はカバー位置へ
-      const targetX = myFront.x > 0 ? -1.6 : 1.6;
-      moveToward(myBack, targetX, homeBackY * 1.02, speed * dt, dt);
     } else {
-      // 自分側にボールがある間は展開に応じた定位置へ戻る
-      const retSpeed = (side === "cpu" && !spectatorMode) ? speed * 0.55 : speed;
-      moveToward(myBack, backDevX(myTeam), homeBackY, retSpeed * dt, dt);
+      // 来球への対応区間（相手が打ってから自分が打つまで）を抜けたら、
+      // 次の来球のために打ち方の確定（立ち位置・フォア/バック）を解除する
+      // （打った後／打順が変わった後）。次の来球で改めて計画し直す。
+      if (myBack.wrapCommitted) {
+        myBack.wrapCommitted = false;
+        myBack.wrapTargetX = null;
+        myBack.wrapBallX = null;
+        myBack.swingSideLocked = false;
+      }
+      if (state === "rally" && myJustServedByFront) {
+        // 前衛パートナーがサーブした回: 後衛はカバー位置へ
+        const targetX = myFront.x > 0 ? -1.6 : 1.6;
+        moveToward(myBack, targetX, homeBackY * 1.02, speed * dt, dt);
+      } else {
+        // 自分側にボールがある間は展開に応じた定位置へ戻る
+        const retSpeed = (side === "cpu" && !spectatorMode) ? speed * 0.55 : speed;
+        moveToward(myBack, backDevX(myTeam), homeBackY, retSpeed * dt, dt);
+      }
     }
     myBack.x = Math.max(-7.5, Math.min(7.5, myBack.x));
   }
@@ -502,13 +588,33 @@ export function tryReturnAI(side) {
   // 前衛ボレー判定用フラグ
   const frontChecked = side === "player" ? "frontChecked" : "cpuFrontChecked";
 
+  // ---- 後衛の早めのテイクバック準備（見た目のみ、打球判定には影響しない） ----
+  // 操作プレイヤー側（main.js）はボールが自陣に入った時点でpose="prep"へ
+  // 早めに移行しているが、AI後衛(cpuBack)はstartSwing（インパクト）まで
+  // pose="swing"にならず、テイクバックが遅れて見える。
+  // ここでも同じ考え方で、ボールが自陣側に入ったら早めにprepへ入れて
+  // swingSideを固定する（実際の打球判定・タイミングはこの下のhitBall呼び出しの
+  // ままで変更しない＝見た目だけの先行動作）。
+  // まずは影響範囲をcpuBackに限定する（player後衛は既存のprep経路で対応済み）。
+  if (side === "cpu" && canSwingNow(myBack)) {
+    const ballComingHome = ball.y * homeSign > 0;
+    if (ballComingHome) {
+      // 先行テイクバック（見た目だけ）。フォア/バックは moveAutoAI が立ち位置と
+      // 一体で確定済み（myBack.swingSide）なので、ここでは再計算しない
+      // ＝回り込み・表示・物理がすべて同じ確定値を参照し、矛盾もちらつきも出ない。
+      if (myBack.pose !== "prep") myBack.pose = "prep";
+    } else if (myBack.pose === "prep") {
+      myBack.pose = "idle";
+    }
+  }
+
   // ---- サーブの返球: レシーブ担当（前衛/後衛どちらでも）がワンバウンドで返す ----
   // 返球者を担当レシーバーに固定し、非担当（特に後衛）が横取りしないようにする。
   // ball.serving はバウンド前に解除されるため、レシーブ未完了フラグ !receiveDone で判定する。
   // 後衛の返球と同様、頂点を過ぎて落ち始めた打点（vz <= 0）で捉える。
   if (!receiveDone && ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0) {
     const receiver = receiverPlayerFor(side);
-    if (distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
+    if (canSwingNow(receiver) && distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
       // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す
       let course;
       if (Math.random() < 0.65) course = (oppBack.x >= 0 ? 1 : -1) * (0.78 + Math.random() * 0.32);
@@ -529,7 +635,7 @@ export function tryReturnAI(side) {
     const shallowLob = landing && landing.y * homeSign > 0 &&
       Math.abs(landing.y) <= sm.aiLobShallowY;
     const reach = ai.poachReach * myFront.stats.reach;
-    if (shallowLob && Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
+    if (shallowLob && canSwingNow(myFront) && Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
       ball[frontChecked] = true;
       if (Math.random() < 0.98 * myFront.stats.volley) {
         hitBall({
@@ -556,7 +662,7 @@ export function tryReturnAI(side) {
     {
       // 前衛は届くならボレーする（ポーチ指示の有無に関わらず）。
       const reach = (poaching ? ai.poachReach : ai.frontVolleyReach) * myFront.stats.reach;
-      if (Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
+      if (canSwingNow(myFront) && Math.hypot(ball.x - myFront.x, ball.y - myFront.y) <= reach) {
         ball[frontChecked] = true;
         const chance = (poaching ? 0.9 : 0.82) * myFront.stats.volley;
         if (Math.random() < chance) {
@@ -591,7 +697,7 @@ export function tryReturnAI(side) {
   // 頂点〜地面までの下降中ずっと打てるので、届く位置にいれば頂点付近で自然に捉える。
   if (ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0) {
     const reach = ai.backReach * myBack.stats.reach;
-    if (distToBall(myBack) <= reach) {
+    if (canSwingNow(myBack) && distToBall(myBack) <= reach) {
       // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ深く返す。
       // 相手後衛のいる側へ外めに振り、アレー方向の球を増やす。残りは散らす。
       let course;
@@ -630,6 +736,7 @@ export function partnerTryReturn() {
         !ball.frontChecked && ball.bounces === 0 &&
         partner.y < sm.netDist && partner.y > 0.4 &&
         ball.y > 0.6 && ball.y < sm.netDist && ball.z >= sm.minZ && ball.z < 2.3 &&
+        canSwingNow(partner) &&
         Math.hypot(ball.x - partner.x, ball.y - partner.y) <= ai.poachReach * partner.stats.reach) {
       ball.frontChecked = true;
       if (Math.random() < 0.8 * partner.stats.volley) {
@@ -652,7 +759,7 @@ export function partnerTryReturn() {
         ball.y > 0.6 && ball.y < (3.6 + aggr * 1.6) && ball.z < 2.0) {
       // 攻め度に応じたポーチリーチ（標準+最大0.6m拡大）
       const poachReach = (ai.frontVolleyReach + aggr * 0.6) * partner.stats.reach;
-      if (Math.hypot(ball.x - partner.x, ball.y - partner.y) <= poachReach) {
+      if (canSwingNow(partner) && Math.hypot(ball.x - partner.x, ball.y - partner.y) <= poachReach) {
         ball.frontChecked = true;
         const poachChance = (0.15 + aggr * 0.6) * partner.stats.volley;
         if (Math.random() < poachChance) {
@@ -676,6 +783,7 @@ export function partnerTryReturn() {
         !ball.frontChecked && ball.bounces === 0 &&
         partner.y < 5.2 &&
         ball.y > 0.6 && ball.y < 4.8 && ball.z < 1.9 &&
+        canSwingNow(partner) &&
         Math.hypot(ball.x - partner.x, ball.y - partner.y) <= VOLLEY_REACH) {
       ball.frontChecked = true;
       if (Math.random() < 0.5 * partner.stats.volley) {
@@ -695,6 +803,7 @@ export function partnerTryReturn() {
     // 後衛返球と同様、頂点を過ぎて落ち始めた打点（vz <= 0）で打つ。
     if (ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0 &&
         !canPlayerHit(rallyControlled) &&
+        canSwingNow(partner) &&
         distToBall(partner) <= CPU_REACH * partner.stats.reach &&
         distToBall(partner) < distToBall(rallyControlled)) {
       const shot = Math.random() < 0.8 ? "drive" : "lob";

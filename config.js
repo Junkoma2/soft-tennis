@@ -159,6 +159,7 @@ export const TUNING = {
     faultDelay: 700,   // フォルト表示→打ち直しまで(ms)
     serveMsgHide: 850, // サーブ告知メッセージの自動消去まで(ms)
     rallyMsgHide: 500, // ポーチ/ボレー等のラリー中告知の表示時間(ms)
+    swingRecover: 0.18, // フォロースルー終了(swingT=0)後、構え直しが完了するまで次の打球を禁止する時間(秒)
   },
   // 移動の速さ（m/s）
   move: {
@@ -174,7 +175,8 @@ export const TUNING = {
   },
   // 打点品質 → 角度幅・球速・精度の変換係数
   contact: {
-    idealLateral: 0.6,   // 体の横この距離(m)が適正打点（詰まり判定を緩和）
+    idealLateral: 0.6,     // 体の横この距離(m)が適正打点（詰まり判定を緩和）。バック側で使用
+    idealLateralFore: 0.85, // フォア側の適正打点距離(m)。フォアは体からもう少し離れて打つため緩める
     minLateral: 0.15,    // これ以下は「完全に詰まり」
     idealZLow: 0.5,      // この高さ範囲が標準打点
     idealZHigh: 1.3,

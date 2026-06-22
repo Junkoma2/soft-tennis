@@ -284,7 +284,11 @@ export function resetPlayersForPoint() {
   serveReady.ready = false;
   toss.active = false;
   toss.t = 0;
-  [back, front, cpuBack, cpuFront].forEach((p) => { p.pose = "idle"; p.swingT = 0; });
+  [back, front, cpuBack, cpuFront].forEach((p) => {
+    p.pose = "idle"; p.swingT = 0; p.recoverT = 0;
+    p.swingSideLocked = false; p.wrapCommitted = false; p.wrapTargetX = null;
+    p.approachTargetX = null;
+  });
 }
 
 
@@ -343,35 +347,22 @@ export function netClearance(fromX, fromY, fromZ, tx, ty, speed) {
  * =========================================================== */
 
 
-// フォア/バック判定: ボールの飛行軌道（直線）を基準に判定する。
-// 単純な左右(x座標)比較ではなく、軌道の直線（ボールの発生点→現在位置）に対して
-// プレイヤーが「軌道線のどちら側にいるか」（垂線を下ろした符号）で決める。
-//   プレイヤー（奥向き）は軌道の右側にいればフォア、左側にいればバック。
-//   CPU（手前向き）は向きが逆なので符号を反転する。
-// 軌道が定義できない（発生点が無い/距離が短すぎる）場合は、従来のx比較にフォールバックする。
-export function isBackhandFor(side, hitterX, ballX, hitterY, ballY) {
-  const sideSign = side === "player" ? 1 : -1;
-  const hasTrajectory =
-    ball.originX != null && ball.originY != null &&
-    typeof hitterY === "number" && typeof ballY === "number";
-  if (hasTrajectory) {
-    const ox = ball.originX, oy = ball.originY;
-    const dx = ballX - ox, dy = ballY - oy;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq > 0.01) {
-      // 軌道方向ベクトル(dx,dy)に対する垂線方向の符号で、プレイヤーが
-      // 軌道のどちら側にいるかを求める（外積の符号）。
-      const cross = dx * (hitterY - oy) - dy * (hitterX - ox);
-      const side2 = Math.sign(cross) * sideSign;
-      if (Math.abs(cross) / Math.sqrt(lenSq) > 0.08) {
-        return side2 < 0;
-      }
-      return false; // 軌道線にほぼ乗っている＝正面（フォア扱い）
-    }
-  }
-  // フォールバック（軌道が取れない場合の従来判定）
-  if (side === "player") return ballX < hitterX - 0.1;
-  return ballX > hitterX + 0.1;
+// フォア/バック判定: 利き腕（handedness）基準。
+// ソフトテニス（硬式と同様）はフォアハンドを体の正面では打てない。
+// 体の正面〜利き手と逆側に来た打点はバックハンド、利き手側に来た打点だけがフォアになる。
+//   foreDir: そのヒッターから見て「フォア側」が画面上どちら向きか。
+//     右利き: プレイヤー(facing=-1)は画面右(+1)、CPU(facing=1)は画面左(-1)。
+//     左利きは利き腕側が反転するため、その鏡像になる（render.jsのforeDir計算と同じ式）。
+//   ボールの位置がヒッターから見て foreDir 側に十分はみ出していなければ
+//   （＝体の正面〜逆側）バックハンド、foreDir側に出ていればフォアハンド。
+export function isBackhandFor(side, hitter, ballX) {
+  const facingDir = side === "player" ? 1 : -1;
+  const handSign = hitter.stats && hitter.stats.handed === "left" ? -1 : 1;
+  const foreDir = facingDir * handSign;
+  const diff = (ballX - hitter.x) * foreDir;
+  // diff > しきい値（=利き手側に十分はみ出している）のときだけフォア。
+  // 体の正面（diffが小さい）・逆側（diffが負）はバックハンド。
+  return diff <= 0.1;
 }
 
 // 狙い（ワールドx）とヒッターの立ち位置から表示用の呼び名を決める
@@ -386,15 +377,19 @@ export function courseLabelFor(hitterX, targetX) {
 /* ---- 打点の評価: 横距離・前後・高さ → 角度幅/球速/精度の係数 ---- */
 export function evaluateContact(side, hitter, contactZ) {
   const c = TUNING.contact;
-  const backhand = isBackhandFor(side, hitter.x, ball.x, hitter.y, ball.y);
-  const foreSign = side === "player" ? 1 : -1;       // フォア側のx方向
+  const backhand = isBackhandFor(side, hitter, ball.x);
+  const facingDir = side === "player" ? 1 : -1;
+  const handSign = hitter.stats && hitter.stats.handed === "left" ? -1 : 1;
+  const foreSign = facingDir * handSign;             // フォア側のx方向（利き腕を反映）
   const sideSign = backhand ? -foreSign : foreSign;  // 打点がある側のx方向
   const lateral = (ball.x - hitter.x) * sideSign;    // 体から打点までの横距離(m)
+  // フォアはバックより少し体から離れた位置が適正打点（idealLateralFor参照）。
+  const idealLateral = backhand ? c.idealLateral : c.idealLateralFore;
 
   // 詰まり度: 1=適正 〜 0=完全に詰まり
-  const cramp = clamp01((lateral - c.minLateral) / (c.idealLateral - c.minLateral));
+  const cramp = clamp01((lateral - c.minLateral) / (idealLateral - c.minLateral));
   // 泳ぎ度: 打点が遠すぎる（0=問題なし 〜 1=届くだけ）
-  const overReach = clamp01((lateral - c.idealLateral - c.reachSlack) / c.reachRange);
+  const overReach = clamp01((lateral - idealLateral - c.reachSlack) / c.reachRange);
 
   // 前後: 正=前すぎ（ネット寄り） / 負=後ろすぎ
   const frontDist = (hitter.y - ball.y) * (side === "player" ? 1 : -1);
@@ -407,8 +402,7 @@ export function evaluateContact(side, hitter, contactZ) {
 
   // 引っ張り/流しの方向（右利き想定）:
   //   フォアの引っ張り=体の逆側へ（プレイヤーのフォアなら画面左）、流し=打点側へ
-  //   左利きはフォア/バックの体の向きが反転するため符号を反転させる
-  const handSign = hitter.stats.handed === "left" ? -1 : 1;
+  //   左利きはフォア/バックの体の向きが反転するため符号を反転させる（handSignは上で算出済み）
   const pullSign = -sideSign * handSign;
   const flowSign = sideSign * handSign;
 
@@ -478,7 +472,7 @@ export function hitBall(opts) {
   const isSmash = opts.shot !== "lob" && isSmashContact(hitter, contactZ);
   if (isSmash) shotKey = "smash";
   const def = TUNING.shots[shotKey];
-  const backhand = isBackhandFor(side, hitter.x, ball.x, hitter.y, ball.y);
+  const backhand = isBackhandFor(side, hitter, ball.x);
   const depthDir = side === "player" ? -1 : 1;
   const fromZ = Math.max(0.3, Math.min(contactZ, 2.3));
 
@@ -572,7 +566,15 @@ export function hitBall(opts) {
     setPlayerFrontPlan(spectatorMode ? pickFrontPlan() : "base");
   }
 
-  startSwing(hitter, backhand ? "back" : "fore");
+  // 見た目（フォア/バックのポーズ・ラケット軌道）は、ready/prep時点で
+  // すでに固定済み（swingSideLocked）なら hitter.swingSide を最優先で使う。
+  // ここで isBackhandFor を再評価すると、ready固定後にボールが動いて
+  // インパクト時の判定が変わり「打つ直前にバックへ転ぶ」ちらつきになるため、
+  // 球速/角度計算用の backhand（評価ロジック）とは別に見た目用は再計算しない。
+  // ready/prepを経由しないヒッター（AIの前衛/後衛/パートナー等）は
+  // ロックされていないので、その場の backhand 判定をそのまま使う。
+  const visualSide = hitter.swingSideLocked ? hitter.swingSide : (backhand ? "back" : "fore");
+  startSwing(hitter, visualSide);
 
   // スマッシュは決め球として大きく告知（プレイヤー・AI前衛とも）
   if (isSmash) {
@@ -617,10 +619,20 @@ export function hitBall(opts) {
   }
 }
 
+// このプレイヤーが今すぐ次の打球（スイング/ボレー含む）を打てるかどうか。
+// スイング中（pose==="swing"）、またはフォロースルー後の構え直し中（recoverT>0）は打てない。
+// プレイヤー操作・AI（味方/相方/CPU）の両方からの打球判定で共通して使う。
+export function canSwingNow(p) {
+  if (!p) return true;
+  return p.pose !== "swing" && !(p.recoverT > 0);
+}
+
 export function startSwing(p, side) {
   p.pose = "swing";
   p.swingSide = side;
+  p.swingSideLocked = false; // スイング種別は確定済み。以降は固定不要（次のreadyで再ロックされる）
   p.swingT = 0.32;
+  p.recoverT = 0;
 }
 
 // 現在速度cur を 目標速度target へ、加速度(accel)/減速度(decel)で dt 秒分だけ近づける。
@@ -807,6 +819,23 @@ export function predictHighContact() {
   };
 }
 
+// フォア/バック表示判定（swingSide）に使う「予測打点のx」。
+// その瞬間のball.xだけで判定すると、双方が動く間にしきい値をまたいで
+// 毎フレーム反転する（ちらつき）ため、軌道の行き先（バウンド後の頂点）を
+// 基準にする。バウンド前は predictHighContact（高い打点で迎える設計）→
+// predictLanding の順に使い、どちらも得られなければ ball.x にフォールバックする。
+// バウンド後（ball.bounces>=1）は着地点の予測が出しづらいため、現在位置に
+// ボールの横移動の向きを少し加味した近い将来位置（0.15秒先）を使う。
+export function predictedContactX() {
+  if (ball.bounces >= 1) {
+    return ball.x + ball.vx * 0.15;
+  }
+  const hc = predictHighContact();
+  if (hc) return hc.x;
+  const landing = predictLanding();
+  if (landing) return landing.x;
+  return ball.x;
+}
 
 
 /* ===========================================================
@@ -950,7 +979,16 @@ export function update(dt) {
   [back, front, cpuBack, cpuFront].forEach(function (p) {
     if (p.swingT > 0) {
       p.swingT -= dt;
-      if (p.swingT <= 0) { p.swingT = 0; p.pose = "idle"; }
+      if (p.swingT <= 0) {
+        p.swingT = 0;
+        p.pose = "idle";
+        // フォロースルー終了直後は構え直しが完了するまで次の打球を打てない
+        // （クールダウン。前衛同士の近距離ボレー応酬を抑える）。
+        p.recoverT = TUNING.tempo.swingRecover;
+      }
+    } else if (p.recoverT > 0) {
+      p.recoverT -= dt;
+      if (p.recoverT < 0) p.recoverT = 0;
     }
   });
 
@@ -1026,20 +1064,44 @@ export function update(dt) {
   if (hittable) {
     if (ballHittableSince < 0) setBallHittableSince(matchTime);
     if (cp.pose !== "swing") {
+      // フォア/バックは「ロックされるまでの最初の1回」だけ判定して固定する。
+      // pose の値（prep/ready）で判定すると、prepで既に固定済みでも
+      // prep→ready遷移の瞬間に再評価されてしまい、ボールが体の正面付近を
+      // 横切る間にフォア/バック判定がしきい値をまたいでフリップし、
+      // 構え〜スイングの表示が一瞬バックに転ぶちらつきになる。
+      // swingSideLocked を見て、ロック済みなら再計算しない。
+      // 判定基準はその瞬間のball.xではなく、バウンド後の軌道の行き先
+      // （predictedContactX）にする。単純なx比較だけで決めると、ボールが
+      // 体の正面付近を横切る間に左右がしきい値をまたいで反転しやすいため。
+      if (!cp.swingSideLocked) {
+        cp.swingSide = isBackhandFor("player", cp, predictedContactX()) ? "back" : "fore";
+        cp.swingSideLocked = true;
+      }
       cp.pose = "ready";
-      cp.swingSide = isBackhandFor("player", cp.x, ball.x, cp.y, ball.y) ? "back" : "fore";
     }
     if (!charge.active) startCharge("auto");
   } else {
     setBallHittableSince(-1);
     if (cp.pose === "ready" || cp.pose === "prep") cp.pose = "idle";
-    if (ballCrossedToOwnSide && cp.pose === "idle") {
-      // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
-      // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
+    // 観戦モードでは操作キャラも moveAutoAI が動かす＝立ち位置と一体で fore/back を
+    // 確定・保持している。ここで二重に swingSide を書くと競合・ちらつくため、
+    // 観戦時は見た目のテイクバックだけ行い swingSide は触らない。
+    if (!spectatorMode) {
+      if (cp.pose === "idle") cp.swingSideLocked = false;
+      if (ballCrossedToOwnSide && cp.pose === "idle") {
+        // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
+        // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
+        // ここで決めたフォア/バックは、続く ready/swing でも上書きせず引き継ぐ
+        // （上の hittable 分岐参照）＝一連の構え〜スイングで種別を固定する。
+        cp.pose = "prep";
+        cp.swingSide = isBackhandFor("player", cp, predictedContactX()) ? "back" : "fore";
+        cp.swingSideLocked = true;
+      } else if (!ballCrossedToOwnSide && cp.pose === "prep") {
+        cp.pose = "idle";
+        cp.swingSideLocked = false;
+      }
+    } else if (ballCrossedToOwnSide && cp.pose === "idle") {
       cp.pose = "prep";
-      cp.swingSide = isBackhandFor("player", cp.x, ball.x, cp.y, ball.y) ? "back" : "fore";
-    } else if (!ballCrossedToOwnSide && cp.pose === "prep") {
-      cp.pose = "idle";
     }
     if (charge.active && charge.source === "auto") {
       charge.active = false;
