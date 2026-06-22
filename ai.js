@@ -505,7 +505,8 @@ export function tryReturnAI(side) {
   // ---- サーブの返球: レシーブ担当（前衛/後衛どちらでも）がワンバウンドで返す ----
   // 返球者を担当レシーバーに固定し、非担当（特に後衛）が横取りしないようにする。
   // ball.serving はバウンド前に解除されるため、レシーブ未完了フラグ !receiveDone で判定する。
-  if (!receiveDone && ball.bounces === 1 && ball.z < 2.3) {
+  // 後衛の返球と同様、頂点を過ぎて落ち始めた打点（vz <= 0）で捉える。
+  if (!receiveDone && ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0) {
     const receiver = receiverPlayerFor(side);
     if (distToBall(receiver) <= ai.backReach * receiver.stats.reach) {
       // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ返す
@@ -584,11 +585,11 @@ export function tryReturnAI(side) {
   //      ここではボレー判定後の「ポーチに出た位置でのボレー」のみ ----
 
   // ---- 後衛のワンバウンド返球 ----
-  // バウンド直後の地面スレスレ（急上昇中）を叩かず、バウンドの頂点付近
-  // （vz が十分下がってから＝ライジングしすぎない打点）で打つ。
-  // ただし落ちて二度目のバウンド直前になったら最後のチャンスで打つ。
-  if (ball.bounces === 1 && ball.z < 2.3 &&
-      (ball.vz <= 0.8 || (ball.vz < 0 && ball.z < 0.4))) {
+  // 実際のストロークに合わせ、バウンドの頂点を過ぎて「落ち始めた」打点で打つ。
+  //   vz <= 0 … 上昇が止まり下降に転じた以降（＝頂点〜落下中）。上昇中は打たない。
+  //   z < 2.3 上限で頭上すぎる打点は避ける（頂点が高い球は2.3まで落ちてから打つ）。
+  // 頂点〜地面までの下降中ずっと打てるので、届く位置にいれば頂点付近で自然に捉える。
+  if (ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0) {
     const reach = ai.backReach * myBack.stats.reach;
     if (distToBall(myBack) <= reach) {
       // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ深く返す。
@@ -691,7 +692,8 @@ export function partnerTryReturn() {
 
     // ---- 相方後衛のストローク（操作キャラが届かないボールをカバー） ----
     // プレイヤー=前衛のとき（partner=back）: 攻守スライダーでコース選択を制御
-    if (ball.bounces === 1 && ball.z < 2.3 &&
+    // 後衛返球と同様、頂点を過ぎて落ち始めた打点（vz <= 0）で打つ。
+    if (ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0 &&
         !canPlayerHit(rallyControlled) &&
         distToBall(partner) <= CPU_REACH * partner.stats.reach &&
         distToBall(partner) < distToBall(rallyControlled)) {
