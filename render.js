@@ -777,7 +777,8 @@ export function drawHumanoid(pl) {
   const swingK = (pl.pose === "swing" && pl.swingT > 0) ? (1 - pl.swingT / 0.32) : 0;
   const isFollowThrough = !awayFromCamera && pl.pose === "swing" && pl.swingT > 0 && swingK > 0.78;
 
-  const drawArmsAndRacket = () => {
+  // 腕（利き手＝ラケットを持つ手 と 添え手）のみを描く。ラケット本体は drawRacket で別途。
+  const drawArms = () => {
     ctx.strokeStyle = pl.skin;
     ctx.lineWidth = Math.max(1.5, 0.08 * s);
     ctx.beginPath();
@@ -799,30 +800,38 @@ export function drawHumanoid(pl) {
     ctx.moveTo(racketDir * tw * 0.4, shoulderY);
     ctx.lineTo(handX, handY);
     ctx.stroke();
+  };
 
+  // ラケット（人体とは別オブジェクト）。色は pl.look.racket から取得し、
+  // 持ち手(handX/handY)とヘッド向き(racketTipX/Y)を引数として人体描画から独立させる。
+  const drawRacket = () => {
+    const gear = (pl.look && pl.look.racket) || { frame: "#7C3AED", string: "rgba(255,255,255,0.85)" };
     const racketLenDraw = isReadyPose ? racketLen * 0.82 : racketLen;
     const rx = handX + racketTipX * racketLenDraw * 0.55;
     const ry = handY + racketTipY * racketLenDraw * 0.55 - (isReadyPose ? 0.02 : 0.1) * s;
-    ctx.strokeStyle = "#7C3AED";
+    ctx.strokeStyle = gear.frame;
     ctx.lineWidth = Math.max(1.2, 0.05 * s);
     ctx.beginPath();
     ctx.moveTo(handX, handY);
     ctx.lineTo(rx, ry);
     ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.strokeStyle = "#7C3AED";
+    ctx.fillStyle = gear.string;
+    ctx.strokeStyle = gear.frame;
     ctx.beginPath();
     ctx.ellipse(rx, ry, 0.13 * s, 0.17 * s, Math.atan2(racketTipY, racketTipX), 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   };
 
+  // 腕→ラケットの順（ラケットは持ち手の上に重ねる）。人体とラケットは別関数＝別オブジェクト。
+  const drawArmsAndRacket = () => { drawArms(); drawRacket(); };
+
   const drawHead = () => {
     ctx.fillStyle = pl.skin;
     ctx.beginPath();
     ctx.arc(0, headCy, headR, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#3B2A1E";
+    ctx.fillStyle = (pl.look && pl.look.hair) || "#3B2A1E";
     if (pl.facing === -1) {
       ctx.beginPath();
       ctx.arc(0, headCy, headR, Math.PI * 0.95, Math.PI * 2.05);

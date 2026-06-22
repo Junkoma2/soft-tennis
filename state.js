@@ -200,10 +200,21 @@ export const toss = {
  * facing: -1 = 奥向き（プレイヤー側）, +1 = 手前向き（CPU側）
  * フォアハンド側: プレイヤーは画面右(x+)、CPUは画面左(x-)
  */
+// 見た目（描画のみ・ゲーム挙動には無関係）。将来のラケット色変更・キャラ外見変更や
+// 対戦時の選手ごとの差し替えを見据え、人体とラケットを分離したデータとして持つ。
+export function makeLook(overrides) {
+  return Object.assign({
+    hair: "#3B2A1E",
+    // ラケットは人間とは別オブジェクト（色・スタイルを独立に差し替えられる）
+    racket: { frame: "#7C3AED", string: "rgba(255,255,255,0.85)" },
+  }, overrides);
+}
+
 export function makePlayer(opts) {
   return Object.assign({
     x: 0, y: 0, vx: 0, vy: 0, homeX: 0, homeY: 0,
     color: "#6366F1", skin: "#F1C7A8", label: "",
+    look: makeLook(),  // 髪・ラケット等の外見（人体とラケットを分離して保持）
     facing: -1,
     pose: "idle",      // idle / ready / swing / serve / toss
     swingSide: "fore", // fore / back
