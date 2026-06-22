@@ -334,7 +334,9 @@ export const Y_RANGE_FRONT = { min: 0.6, max: 17.0 };
 //    投影スケールは変わらず歪まない（横幅と縦オフセットだけを変える）。
 const VIEWPORT = {
   portrait:  { W: 720,  H: 1080, horizonY: 800 },
-  landscape: { W: 1280, H: 480,  horizonY: 540 },
+  // 横画面: 縦に少し余裕(H=540)を持たせ、奥側(相手)の頭上が見切れないよう
+  // コートを下げる(horizonY=570)。手前(自分)の足元も収まる。横はワイドに広げる。
+  landscape: { W: 1280, H: 540,  horizonY: 570 },
 };
 
 export function applyViewport(isLandscape) {

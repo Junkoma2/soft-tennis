@@ -749,17 +749,11 @@ export function drawHumanoid(pl) {
   let racketTipX = armX;
   let racketTipY = armY;
   if (isReadyPose) {
-    if (pl.facing === -1) {
-      // 背面構え: ラケットは体の前面にあり胴体で隠れるが、ヘッドが体の脇から
-      // 前方へ覗くよう利き手側・やや上へ向ける（背中側へ貫通させず存在を示す）。
-      racketTipX = racketDir * 0.95;
-      racketTipY = -0.35;
-    } else {
-      // 正面構え: 両手持ちでヘッドは体の前を横切り非利き手側・やや上を向く。
-      racketTipX = -racketDir * 0.85;
-      // 上向きは維持するが弱めにする（ヘッドが顔の高さまで上がらないように）。
-      racketTipY = -0.25;
-    }
+    // 両手持ちでヘッドは体の前を横切り非利き手側・やや上を向く（元の構え位置）。
+    // 背面視点でも位置は変えず、描画順（胴体より先に描く）だけで背中側への貫通を防ぐ。
+    racketTipX = -racketDir * 0.85;
+    // 上向きは維持するが弱めにする（ヘッドが顔の高さまで上がらないように）。
+    racketTipY = -0.25;
   } else if (foreWrap > 0) {
     // 巻き付きフィニッシュ: ヘッドを反対肩の上・背中側へ向けて立てる。
     const w = foreWrap;
