@@ -302,10 +302,10 @@ function updatePickerPositions() {
   const playerBackX = Math.abs(f.back.x) < SIDE_OFFSET ? sideSign(f.back.x) * SIDE_OFFSET : f.back.x;
   const playerFrontX = -sideSign(playerBackX) * Math.max(SIDE_OFFSET, Math.abs(f.front.x));
   // 相手チーム（奥）は陣形に関わらず常に雁行陣で固定（実際の試合と同じ）。
-  // 自チームの陣形選択につられて相手の配置が変わらないよう、ganko を基準に置く。
+  // 自チーム（後衛=右・前衛=左）の対角になるよう、相手は後衛=左奥・前衛=右奥に置く。
   const fo = FORMATIONS["ganko"];
-  const cpuBackX = Math.abs(fo.back.x) < SIDE_OFFSET ? SIDE_OFFSET : fo.back.x;
-  const cpuFrontX = -sideSign(cpuBackX) * Math.max(SIDE_OFFSET, Math.abs(fo.front.x));
+  const cpuBackX = -SIDE_OFFSET;
+  const cpuFrontX = Math.max(SIDE_OFFSET, Math.abs(fo.front.x));
   const place = (el, x, y) => {
     if (!el) return;
     el.style.left = worldXToPercent(x) + "%";

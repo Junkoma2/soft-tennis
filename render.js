@@ -601,7 +601,7 @@ function bodyYawToBall(pl) {
   const dxs = tg.x - me.x;                          // 画面上の左右ずれ(px)
   const depth = Math.max(90, Math.abs(me.y - tg.y) + 110); // 奥行き感（小さいほど大きく向く）
   const yaw = Math.atan2(dxs, depth);
-  return Math.max(-0.32, Math.min(0.32, yaw));      // ひねりは控えめに（首振り→上体のひねり）
+  return Math.max(-0.6, Math.min(0.6, yaw));        // 背骨まわりのヨー（直立のまま左右へ向く）
 }
 
 /* ---- 簡易人型の選手 ---- */
@@ -618,11 +618,11 @@ export function drawHumanoid(pl) {
   ctx.ellipse(0, 0, 0.34 * s, 0.13 * s, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 体（脚〜頭）はボールの予測打点へ向けてひねる。スイング中は打球モーションを優先。
-  if (pl.pose !== "swing") {
-    const yaw = bodyYawToBall(pl);
-    if (yaw) ctx.rotate(yaw);
-  }
+  // 体はボールの予測打点へ向けて背骨（鉛直軸）を中心にヨー回転する（直立のまま左右を向く）。
+  // 平面スプライトのため鉛直軸まわりの回転は横方向の圧縮(scaleX=cos)で近似し、頭は回転方向へ
+  // 少しずらして「ボールの方を向く」ようにする（傾けない）。スイング中は打球モーション優先。
+  const bodyYaw = pl.pose !== "swing" ? bodyYawToBall(pl) : 0;
+  if (bodyYaw) ctx.transform(Math.cos(bodyYaw), 0, 0, 1, 0, 0);
 
   // 前衛判定（role/front相当）: state.js上は front/cpuFront インスタンスそのものが
   // ネット前のプレイヤーを表す。ボレー・スマッシュ待ちのため、後衛よりやや高めの
@@ -888,6 +888,9 @@ export function drawHumanoid(pl) {
   const drawArmsAndRacket = () => { drawArms(); drawRacket(); };
 
   const drawHead = () => {
+    const hx = Math.sin(bodyYaw) * headR * 0.5; // 顔を回転方向（ボール側）へ向ける
+    ctx.save();
+    ctx.translate(hx, 0);
     ctx.fillStyle = pl.skin;
     ctx.beginPath();
     ctx.arc(0, headCy, headR, 0, Math.PI * 2);
@@ -910,6 +913,7 @@ export function drawHumanoid(pl) {
       ctx.arc(headR * 0.35, headCy + headR * 0.05, Math.max(0.8, headR * 0.13), 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
   };
 
   if (awayFromCamera) {
