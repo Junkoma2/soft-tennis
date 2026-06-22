@@ -231,10 +231,20 @@ export function moveAutoAI(p, side, dt) {
         const t2 = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
         const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
         const poachReach = TUNING.ai.poachReach * myFront.stats.reach;
-        if (Math.abs(predX - myFront.x) <= poachReach * 1.5) {
+        // ポーチは「読み」で飛び出す: 相手の球が自分の守備側へ横切ってくる遅めの球なら
+        // 思い切って踏み込み、届かない側へ速く抜ける球は踏み込みを止めて定位置を保つ。
+        const ownBackSign = myBack.x >= 0 ? 1 : -1;
+        const frontSide = -ownBackSign; // 前衛が受け持つ側
+        const towardMySide = predX * frontSide >= -0.4; // 自分の守備側〜中央寄りに来る
+        // ボールが前衛の横を通り過ぎる相対速度。速いほど捌ききれず抜かれる。
+        const lateralPace = Math.abs(ball.vx) + Math.abs(ball.vy) * 0.3;
+        const catchable = lateralPace <= TUNING.ai.poachMaxPace;
+        if (towardMySide && catchable &&
+            Math.abs(predX - myFront.x) <= poachReach * 1.5) {
           frontTargetX = Math.max(-3.4, Math.min(3.4, predX));
           frontTy = myFront.homeY;
-          frontDash = 1.3;
+          // 緩い球ほど思い切って詰め、速い球は控えめに踏み込む
+          frontDash = catchable && lateralPace < TUNING.ai.poachMaxPace * 0.6 ? 1.35 : 1.15;
         }
       }
       // 相方前衛（プレイヤー=後衛のとき）のポーチ移動: 攻守スライダーで踏み込み積極性を制御
