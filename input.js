@@ -113,6 +113,18 @@ document.addEventListener("keyup", function (e) {
   if (e.code === "Space") setSpaceHeld(false);
 });
 
+// フォーカス喪失（Alt+Tab・タブ切り替えなど）中は keyup が届かず、
+// 押下中の移動キーがそのまま残って選手が流れ続ける。フォーカスが外れた
+// 瞬間に全キーを解放しておく。
+function releaseAllKeys() {
+  keysWasd.left = keysWasd.right = keysWasd.up = keysWasd.down = false;
+  setSpaceHeld(false);
+}
+window.addEventListener("blur", releaseAllKeys);
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden) releaseAllKeys();
+});
+
 /* ---- ため（チャージ）の開始・自動化 ---- */
 
 // 打点ゾーンに入ったら自動でため開始（離して打つ操作は廃止）。
