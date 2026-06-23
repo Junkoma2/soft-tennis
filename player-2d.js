@@ -127,14 +127,15 @@ function calcSkeletonPose(pl, swingK) {
       skeleton.crouch = 0.16;
       skeleton.torsoLean = 0.18;
     }
-    // ラケットを持つ腕：上腕を軽く前へ、肘を曲げてラケットヘッドを高く
-    skeleton.shoulderRotationR = -0.28;
-    skeleton.elbowBendR = 0.42;
-    skeleton.wristAngleR = -0.18;
-    // 支える腕：体の前で軽く添える
-    skeleton.shoulderRotationL = -0.20;
-    skeleton.elbowBendL = 0.40;
-    skeleton.wristAngleL = -0.10;
+    // 参考フォーム：ラケットを体の前・顔〜目線の高さに両手で構える。
+    // 利き腕は肘を深く曲げて前腕を中央へ折り、ラケットヘッドを顔の高さへ立てる。
+    skeleton.shoulderRotationR = -0.30;
+    skeleton.elbowBendR = 0.54;
+    skeleton.wristAngleR = -0.24;
+    // 反対の手はグリップへ添える（前腕を中央まで伸ばして両手構えに見せる）。
+    skeleton.shoulderRotationL = -0.34;
+    skeleton.elbowBendL = 0.62;
+    skeleton.wristAngleL = -0.16;
     return skeleton;
   }
 
