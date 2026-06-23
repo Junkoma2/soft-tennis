@@ -1,23 +1,7 @@
 /**
- * ソフトテニス プレイヤー 2D 描画モジュール【大幅改修版】
+ * ソフトテニス プレイヤー 2D 描画モジュール【完全実装版】
  *
- * 骨格ベースの高精度描画
- * armAngle 中心の簡易モデルから、
- * 骨格→関節座標→描画 方式へ完全に転換
- *
- * 骨格構造：
- * - 胴体：pelvis → spine → chest → neck → head
- * - 右腕：shoulder → elbow → wrist → hand → racket
- * - 左腕：shoulder → elbow → wrist → hand
- * - 右脚：hip → knee → ankle → foot
- * - 左脚：hip → knee → ankle → foot
- *
- * スイングフェーズ（0.0-1.0 正規化）：
- * 0.00-0.20: TAKEBACK（テイクバック）
- * 0.20-0.45: STEP_AND_LOAD（踏み込み・体重移動）
- * 0.45-0.60: IMPACT（インパクト）
- * 0.60-0.88: FOLLOW_THROUGH（フォロースルー）
- * 0.88-1.00: RECOVERY（リカバリー）
+ * 骨格ベースの高精度描画・運動連鎖・ショット別アニメーション完全実装
  */
 
 import {
@@ -77,20 +61,16 @@ function calcSwingPhase(pl, swingK) {
 }
 
 /* ========================================================
- * スケルトンポーズ計算【核心関数】
- * ========================================================
- *
- * 全関節の角度・曲げ度を計算
- * pl.pose, pl.swingSide, pl.stats.handed を尊重
- * 既存の state 構造は変更しない
- */
+ * スケルトンポーズ計算【完全実装】
+ * ======================================================== */
 
 function calcSkeletonPose(pl, swingK) {
   const isFront = pl === front || pl === cpuFront;
   const isServe = pl.pose === "serve" || pl.pose === "toss";
   const isSwinging = pl.pose === "swing";
   const isRecover = pl.pose === "recover";
-  const isReady = pl.pose === "ready" || pl.pose === "idle";
+  const isReady = pl.pose === "ready" || pl.pose === "idle" || pl.pose === "prep";
+  const isVolley = pl.pose === "volley";
 
   const swingPhase = isSwinging ? calcSwingPhase(pl, swingK) : null;
   const isForehand = pl.swingSide === "fore";
@@ -98,53 +78,77 @@ function calcSkeletonPose(pl, swingK) {
 
   // デフォルト値
   let skeleton = {
-    // 胴体
     pelvisRotation: 0,
     spineRotation: 0,
     chestRotation: 0,
     neckRotation: 0,
     torsoLean: 0,
-
-    // 右腕
     shoulderRotationR: 0,
     elbowBendR: 0.1,
     wristAngleR: 0,
-
-    // 左腕
     shoulderRotationL: 0,
     elbowBendL: 0.1,
     wristAngleL: 0,
-
-    // 右脚
     hipRotationR: 0,
     kneeBendR: 0.15,
     ankleAngleR: 0,
-
-    // 左脚
     hipRotationL: 0,
     kneeBendL: 0.15,
     ankleAngleL: 0,
-
-    // 全身
     weightShift: 0,
     stanceWidth: 0.28,
     crouch: 0.15,
     leadFootPlant: 0,
     foreWrap: 0,
+    shoulderWidth: 0.18,
+    hipWidth: 0.14,
   };
 
-  // 前衛・後衛共通の基本姿勢
-  skeleton.crouch = isFront ? 0.20 : 0.12;
-  skeleton.torsoLean = isFront ? 0.25 : 0.15;
-  skeleton.kneeBendR = isFront ? 0.22 : 0.18;
-  skeleton.kneeBendL = isFront ? 0.22 : 0.18;
+  // === 前衛専用：常に低い構え ===
+  skeleton.crouch = isFront ? 0.22 : 0.10;
+  skeleton.torsoLean = isFront ? 0.28 : 0.12;
+  skeleton.kneeBendR = isFront ? 0.25 : 0.15;
+  skeleton.kneeBendL = isFront ? 0.25 : 0.15;
 
-  // === READY / IDLE ===
+  // === READY / IDLE / PREP ===
   if (isReady) {
-    skeleton.shoulderRotationR = isForehand ? -0.3 : 0;
-    skeleton.shoulderRotationL = isForehand ? 0 : -0.3;
-    skeleton.elbowBendR = isForehand ? 0.25 : 0.15;
-    skeleton.elbowBendL = isForehand ? 0.15 : 0.25;
+    if (isFront) {
+      // 前衛：低く構える
+      skeleton.kneeBendR = 0.25;
+      skeleton.kneeBendL = 0.25;
+      skeleton.torsoLean = 0.25;
+      skeleton.shoulderRotationR = isForehand ? -0.15 : 0;
+      skeleton.shoulderRotationL = isForehand ? 0 : -0.15;
+      skeleton.elbowBendR = isForehand ? 0.20 : 0.15;
+      skeleton.elbowBendL = isForehand ? 0.15 : 0.20;
+    } else {
+      // 後衛：やや高め
+      skeleton.shoulderRotationR = isForehand ? -0.2 : 0;
+      skeleton.shoulderRotationL = isForehand ? 0 : -0.2;
+      skeleton.elbowBendR = isForehand ? 0.20 : 0.12;
+      skeleton.elbowBendL = isForehand ? 0.12 : 0.20;
+    }
+    return skeleton;
+  }
+
+  // === VOLLEY ===
+  if (isVolley) {
+    const isRightArm = (isForehand && !isLeftHanded) || (!isForehand && isLeftHanded);
+    skeleton.kneeBendR = 0.25;
+    skeleton.kneeBendL = 0.25;
+    skeleton.torsoLean = 0.30;
+    skeleton.pelvisRotation = isForehand ? 0.1 : -0.1;
+    skeleton.chestRotation = isForehand ? 0.15 : -0.15;
+
+    if (isRightArm) {
+      skeleton.shoulderRotationR = -0.25;
+      skeleton.elbowBendR = 0.45;
+      skeleton.wristAngleR = 0.15;
+    } else {
+      skeleton.shoulderRotationL = -0.25;
+      skeleton.elbowBendL = 0.45;
+      skeleton.wristAngleL = 0.15;
+    }
     return skeleton;
   }
 
@@ -152,274 +156,329 @@ function calcSkeletonPose(pl, swingK) {
   if (isServe) {
     const toss = pl.pose === "toss";
     if (toss) {
-      skeleton.shoulderRotationR = isLeftHanded ? 0.1 : -0.2;
-      skeleton.elbowBendR = isLeftHanded ? 0.3 : 0.1;
-      skeleton.shoulderRotationL = isLeftHanded ? 0.5 : 0.1;
+      skeleton.shoulderRotationR = isLeftHanded ? 0.2 : -0.15;
+      skeleton.elbowBendR = isLeftHanded ? 0.35 : 0.12;
+      skeleton.shoulderRotationL = isLeftHanded ? 0.15 : 0.4;
+      skeleton.wristAngleR = isLeftHanded ? 0.1 : 0;
     } else {
-      // serve swing
-      skeleton.pelvisRotation = 0.3;
-      skeleton.chestRotation = 0.5;
-      skeleton.neckRotation = 0.2;
-      skeleton.shoulderRotationR = isLeftHanded ? 0.1 : -0.4;
-      skeleton.elbowBendR = isLeftHanded ? 0.2 : 0.4;
-      skeleton.wristAngleR = isLeftHanded ? 0.1 : 0.3;
-      skeleton.foreWrap = 0;
+      skeleton.pelvisRotation = 0.35;
+      skeleton.spineRotation = 0.4;
+      skeleton.chestRotation = 0.6;
+      skeleton.neckRotation = 0.25;
+      skeleton.shoulderRotationR = isLeftHanded ? 0.2 : -0.5;
+      skeleton.elbowBendR = isLeftHanded ? 0.25 : 0.55;
+      skeleton.wristAngleR = isLeftHanded ? 0.2 : 0.4;
+      skeleton.shoulderRotationL = isLeftHanded ? 0.1 : 0.2;
+      skeleton.kneeBendR = 0.35;
+      skeleton.hipRotationR = 0.2;
     }
     return skeleton;
   }
 
-  // === SWING（フェーズベースのアニメーション） ===
+  // === SWING（フェーズベース：運動連鎖完全実装） ===
   if (isSwinging && swingPhase) {
     const { name, t } = swingPhase;
+    const isRightArm = (isForehand && !isLeftHanded) || (!isForehand && isLeftHanded);
 
-    // フェーズ共通の基本値
-    const isRightArmSwing = (isForehand && !isLeftHanded) || (!isForehand && isLeftHanded);
-    const armSide = isRightArmSwing ? "R" : "L";
+    // === 運動連鎖の遅延パラメータ ===
+    const delayPelvis = 0.0;
+    const delaySpine = 0.05;
+    const delayChest = 0.10;
+    const delayShoulder = 0.15;
+    const delayElbow = 0.20;
+    const delayWrist = 0.25;
+
+    const getDelayedT = (baseT, delay) => Math.max(0, Math.min(1, (baseT - delay) / (1 - delay)));
 
     if (name === "TAKEBACK") {
-      // テイクバック：肩を引く、ラケット耳後方
-      skeleton.pelvisRotation = t * 0.15;
-      skeleton.chestRotation = t * 0.25;
-      skeleton.neckRotation = t * 0.1;
+      const tPelvis = getDelayedT(t, delayPelvis);
+      const tSpine = getDelayedT(t, delaySpine);
+      const tChest = getDelayedT(t, delayChest);
+      const tShoulder = getDelayedT(t, delayShoulder);
+      const tElbow = getDelayedT(t, delayElbow);
 
-      if (isRightArmSwing) {
-        skeleton.shoulderRotationR = -0.4 * t;
-        skeleton.elbowBendR = 0.25 + 0.15 * t;
-        skeleton.wristAngleR = 0.2 * t;
-        skeleton.shoulderRotationL = 0.1 * t;
+      skeleton.pelvisRotation = tPelvis * (isForehand ? 0.20 : -0.15);
+      skeleton.spineRotation = tSpine * (isForehand ? 0.15 : -0.12);
+      skeleton.chestRotation = tChest * (isForehand ? 0.30 : -0.25);
+      skeleton.neckRotation = tChest * (isForehand ? 0.12 : -0.10);
+
+      if (isRightArm) {
+        skeleton.shoulderRotationR = -tShoulder * 0.45;
+        skeleton.elbowBendR = 0.2 + tElbow * 0.18;
+        skeleton.wristAngleR = tElbow * 0.2;
       } else {
-        skeleton.shoulderRotationL = -0.4 * t;
-        skeleton.elbowBendL = 0.25 + 0.15 * t;
-        skeleton.wristAngleL = 0.2 * t;
-        skeleton.shoulderRotationR = 0.1 * t;
+        skeleton.shoulderRotationL = -tShoulder * 0.45;
+        skeleton.elbowBendL = 0.2 + tElbow * 0.18;
+        skeleton.wristAngleL = tElbow * 0.2;
       }
 
-      skeleton.weightShift = -0.15 * t;
-      skeleton.hipRotationL = -0.1 * t;
-      skeleton.hipRotationR = 0.05 * t;
+      skeleton.weightShift = -t * 0.20;
+      skeleton.hipRotationL = -t * 0.12;
+      skeleton.hipRotationR = t * 0.08;
+      skeleton.kneeBendL = 0.25 - t * 0.08;
+      skeleton.kneeBendR = 0.25 + t * 0.05;
     }
     else if (name === "STEP_AND_LOAD") {
-      // 踏み込み・体重移動：前足を出す、体重を前へ
-      const prevT = (0.20 / pl.swingDuration) / 0.25;
-      skeleton.pelvisRotation = 0.15 + t * 0.2;
-      skeleton.chestRotation = 0.25 + t * 0.35;
-      skeleton.neckRotation = 0.1 + t * 0.1;
+      const tPelvis = getDelayedT(t, delayPelvis);
+      const tSpine = getDelayedT(t, delaySpine);
+      const tChest = getDelayedT(t, delayChest);
+      const tShoulder = getDelayedT(t, delayShoulder);
+      const tElbow = getDelayedT(t, delayElbow);
 
-      if (isRightArmSwing) {
-        skeleton.shoulderRotationR = -0.4 + t * 0.2;
-        skeleton.elbowBendR = 0.4 + t * 0.1;
-        skeleton.wristAngleR = 0.2 + t * 0.1;
+      skeleton.pelvisRotation = (isForehand ? 0.20 : -0.15) + tPelvis * (isForehand ? 0.15 : -0.12);
+      skeleton.spineRotation = (isForehand ? 0.15 : -0.12) + tSpine * (isForehand ? 0.20 : -0.18);
+      skeleton.chestRotation = (isForehand ? 0.30 : -0.25) + tChest * (isForehand ? 0.35 : -0.32);
+      skeleton.neckRotation = (isForehand ? 0.12 : -0.10) + tChest * (isForehand ? 0.08 : -0.08);
+
+      if (isRightArm) {
+        skeleton.shoulderRotationR = -0.45 + tShoulder * 0.25;
+        skeleton.elbowBendR = 0.38 + tElbow * 0.12;
+        skeleton.wristAngleR = 0.2 + tElbow * 0.10;
       } else {
-        skeleton.shoulderRotationL = -0.4 + t * 0.2;
-        skeleton.elbowBendL = 0.4 + t * 0.1;
-        skeleton.wristAngleL = 0.2 + t * 0.1;
+        skeleton.shoulderRotationL = -0.45 + tShoulder * 0.25;
+        skeleton.elbowBendL = 0.38 + tElbow * 0.12;
+        skeleton.wristAngleL = 0.2 + tElbow * 0.10;
       }
 
-      skeleton.weightShift = -0.15 + t * 0.25;
-      skeleton.leadFootPlant = t * 0.5;
-      skeleton.hipRotationL = -0.1 + t * 0.15;
-      skeleton.hipRotationR = 0.05 + t * 0.1;
+      skeleton.weightShift = -0.20 + t * 0.35;
+      skeleton.leadFootPlant = t * 0.60;
+      skeleton.hipRotationL = -0.12 + t * 0.18;
+      skeleton.hipRotationR = 0.08 + t * 0.15;
+      skeleton.kneeBendL = 0.17 - t * 0.05;
+      skeleton.kneeBendR = 0.30 + t * 0.05;
     }
     else if (name === "IMPACT") {
-      // インパクト：最大回転、体重完全に前
-      skeleton.pelvisRotation = 0.35;
-      skeleton.chestRotation = 0.6;
-      skeleton.neckRotation = 0.2;
+      const tChest = getDelayedT(t, delayChest);
+      const tShoulder = getDelayedT(t, delayShoulder);
+      const tElbow = getDelayedT(t, delayElbow);
 
-      if (isRightArmSwing) {
-        skeleton.shoulderRotationR = -0.2;
-        skeleton.elbowBendR = 0.5 + t * 0.05;
-        skeleton.wristAngleR = 0.3;
+      skeleton.pelvisRotation = isForehand ? 0.35 : -0.27;
+      skeleton.spineRotation = isForehand ? 0.35 : -0.30;
+      skeleton.chestRotation = isForehand ? 0.65 : -0.57;
+      skeleton.neckRotation = isForehand ? 0.20 : -0.18;
+
+      if (isRightArm) {
+        skeleton.shoulderRotationR = -0.20 + tShoulder * 0.05;
+        skeleton.elbowBendR = 0.50 + tElbow * 0.08;
+        skeleton.wristAngleR = 0.30;
       } else {
-        skeleton.shoulderRotationL = -0.2;
-        skeleton.elbowBendL = 0.5 + t * 0.05;
-        skeleton.wristAngleL = 0.3;
+        skeleton.shoulderRotationL = -0.20 + tShoulder * 0.05;
+        skeleton.elbowBendL = 0.50 + tElbow * 0.08;
+        skeleton.wristAngleL = 0.30;
       }
 
-      skeleton.weightShift = 0.1 + t * 0.1;
-      skeleton.leadFootPlant = 0.5 + t * 0.3;
-      skeleton.hipRotationL = 0.05;
-      skeleton.hipRotationR = 0.15;
+      skeleton.weightShift = 0.15 + t * 0.10;
+      skeleton.leadFootPlant = 0.60 + t * 0.30;
+      skeleton.hipRotationL = 0.06;
+      skeleton.hipRotationR = 0.23;
+      skeleton.kneeBendL = 0.12;
+      skeleton.kneeBendR = 0.35;
     }
     else if (name === "FOLLOW_THROUGH") {
-      // フォロースルー：巻き付き、腕が顔の前を通る
-      skeleton.pelvisRotation = 0.35;
-      skeleton.chestRotation = 0.5 - t * 0.1;
-      skeleton.neckRotation = 0.2;
+      const tChest = getDelayedT(t, delayChest);
+      const tShoulder = getDelayedT(t, delayShoulder);
+      const tWrist = getDelayedT(t, delayWrist);
 
-      if (isRightArmSwing) {
-        skeleton.shoulderRotationR = -0.1 + t * 0.2;
-        skeleton.elbowBendR = 0.55 - t * 0.1;
-        skeleton.wristAngleR = 0.3 - t * 0.2;
-        skeleton.foreWrap = t * 0.8;
+      skeleton.pelvisRotation = isForehand ? 0.35 - t * 0.05 : -0.27 + t * 0.05;
+      skeleton.spineRotation = isForehand ? 0.35 - t * 0.08 : -0.30 + t * 0.08;
+      skeleton.chestRotation = isForehand ? 0.65 - t * 0.15 : -0.57 + t * 0.15;
+      skeleton.neckRotation = isForehand ? 0.20 : -0.18;
+
+      if (isRightArm) {
+        skeleton.shoulderRotationR = -0.15 + tShoulder * 0.35;
+        skeleton.elbowBendR = 0.58 - t * 0.12;
+        skeleton.wristAngleR = 0.30 - tWrist * 0.25;
+        skeleton.foreWrap = t * 0.90;
       } else {
-        skeleton.shoulderRotationL = -0.1 + t * 0.2;
-        skeleton.elbowBendL = 0.55 - t * 0.1;
-        skeleton.wristAngleL = 0.3 - t * 0.2;
-        skeleton.foreWrap = t * 0.8;
+        skeleton.shoulderRotationL = -0.15 + tShoulder * 0.35;
+        skeleton.elbowBendL = 0.58 - t * 0.12;
+        skeleton.wristAngleL = 0.30 - tWrist * 0.25;
+        skeleton.foreWrap = t * 0.90;
       }
 
-      skeleton.weightShift = 0.2;
-      skeleton.leadFootPlant = 0.8;
+      skeleton.weightShift = 0.25;
+      skeleton.leadFootPlant = 0.90;
+      skeleton.hipRotationL = 0.06 - t * 0.03;
+      skeleton.hipRotationR = 0.23 - t * 0.05;
     }
     else if (name === "RECOVERY") {
-      // リカバリー：姿勢を戻す
-      skeleton.pelvisRotation = 0.35 * (1 - t);
-      skeleton.chestRotation = 0.4 * (1 - t);
-      skeleton.neckRotation = 0.2 * (1 - t);
+      skeleton.pelvisRotation *= (1 - t);
+      skeleton.spineRotation *= (1 - t);
+      skeleton.chestRotation *= (1 - t);
+      skeleton.neckRotation *= (1 - t);
 
-      if (isRightArmSwing) {
-        skeleton.shoulderRotationR = 0.1 * (1 - t);
-        skeleton.elbowBendR = 0.45 * (1 - t) + 0.15 * t;
-        skeleton.foreWrap = 0.8 * (1 - t);
+      if (isRightArm) {
+        skeleton.shoulderRotationR = 0.20 * (1 - t);
+        skeleton.elbowBendR = 0.46 * (1 - t) + 0.15 * t;
+        skeleton.foreWrap = 0.90 * (1 - t);
       } else {
-        skeleton.shoulderRotationL = 0.1 * (1 - t);
-        skeleton.elbowBendL = 0.45 * (1 - t) + 0.15 * t;
-        skeleton.foreWrap = 0.8 * (1 - t);
+        skeleton.shoulderRotationL = 0.20 * (1 - t);
+        skeleton.elbowBendL = 0.46 * (1 - t) + 0.15 * t;
+        skeleton.foreWrap = 0.90 * (1 - t);
       }
 
-      skeleton.weightShift = 0.2 * (1 - t);
-      skeleton.leadFootPlant = 0.8 * (1 - t);
+      skeleton.weightShift = 0.25 * (1 - t);
+      skeleton.leadFootPlant = 0.90 * (1 - t);
+      skeleton.hipRotationL *= (1 - t);
+      skeleton.hipRotationR *= (1 - t);
+      skeleton.kneeBendL = 0.12 + (isFront ? 0.13 : 0.03) * t;
+      skeleton.kneeBendR = 0.35 - (0.10 + (isFront ? 0.00 : -0.05)) * t;
     }
   }
 
   // === RECOVER ===
   if (isRecover) {
     skeleton.pelvisRotation = 0;
+    skeleton.spineRotation = 0;
     skeleton.chestRotation = 0;
-    skeleton.shoulderRotationR = 0.2;
-    skeleton.shoulderRotationL = 0.2;
-    skeleton.elbowBendR = 0.2;
-    skeleton.elbowBendL = 0.2;
+    skeleton.shoulderRotationR = isForehand ? -0.15 : 0;
+    skeleton.shoulderRotationL = isForehand ? 0 : -0.15;
+    skeleton.elbowBendR = isForehand ? 0.20 : 0.12;
+    skeleton.elbowBendL = isForehand ? 0.12 : 0.20;
     skeleton.weightShift = 0;
+    skeleton.leadFootPlant = 0;
+    skeleton.kneeBendR = isFront ? 0.25 : 0.15;
+    skeleton.kneeBendL = isFront ? 0.25 : 0.15;
   }
 
   return skeleton;
 }
 
 /* ========================================================
- * 関節ワールド座標計算【新規】
- * ========================================================
- *
- * スケルトンポーズから全関節の絶対座標を計算
- * facing（1=正面, -1=背面）を反映
- */
+ * 関節ワールド座標計算【完全実装】
+ * ======================================================== */
 
-function calcSkeletonWorldPos(skeleton, basePx, basePy, facing, s) {
+function calcSkeletonWorldPos(skeleton, basePx, basePy, facing, s, isLeftHanded) {
   const joints = {};
 
-  // 基準寸法（スケール s に対して）
+  // 寸法（スケール s に対して）
   const torsoH = 0.25 * s;
-  const torsoWH = 0.15 * s;
-  const torsoWL = 0.12 * s;
+  const shoulderW = skeleton.shoulderWidth * s;
+  const hipW = skeleton.hipWidth * s;
   const neckH = 0.05 * s;
   const headR = 0.09 * s;
 
-  const armU = 0.15 * s;
-  const armF = 0.14 * s;
-  const wristH = 0.04 * s;
-  const handH = 0.05 * s;
+  const armU = 0.16 * s;
+  const armF = 0.15 * s;
+  const wristH = 0.035 * s;
+  const handR = 0.04 * s;
 
-  const legU = 0.18 * s;
-  const legL = 0.17 * s;
-  const footH = 0.06 * s;
+  const legU = 0.19 * s;
+  const legL = 0.18 * s;
+  const footW = 0.05 * s;
 
-  // 胴体中心
+  // 骨盤
   joints.pelvis = {
-    x: basePx,
-    y: basePy + skeleton.weightShift * 0.05 * s,
+    x: basePx + skeleton.weightShift * 0.08 * s,
+    y: basePy,
   };
 
-  // 脊椎（胴体の列）
+  // 脊椎（遅延した回転を反映）
   const spineY = joints.pelvis.y - torsoH * 0.3;
   joints.spine = {
-    x: basePx + skeleton.spineRotation * 0.05 * s * facing,
-    y: spineY,
+    x: basePx + skeleton.spineRotation * 0.08 * s * facing,
+    y: spineY - skeleton.crouch * 0.05 * s,
   };
 
-  const chestY = joints.pelvis.y - torsoH * 0.7;
+  const chestY = joints.pelvis.y - torsoH * 0.75;
   joints.chest = {
-    x: basePx + skeleton.chestRotation * 0.08 * s * facing,
-    y: chestY,
+    x: basePx + skeleton.chestRotation * 0.10 * s * facing,
+    y: chestY - skeleton.crouch * 0.08 * s + skeleton.torsoLean * 0.03 * s,
   };
 
-  // 頸部・頭
+  // 頸部
   const neckY = joints.chest.y - neckH;
   joints.neck = {
     x: basePx + skeleton.neckRotation * 0.08 * s * facing,
     y: neckY,
   };
 
+  // 頭
   joints.head = {
-    x: joints.neck.x + skeleton.neckRotation * 0.05 * s * facing,
-    y: neckY - headR,
+    x: joints.neck.x + skeleton.neckRotation * 0.06 * s * facing,
+    y: neckY - headR * 1.1,
   };
 
-  // 右腕（5点構造）
-  const shoulderRx = basePx + torsoWH * facing;
-  const shoulderRy = chestY;
+  // 右腕（5点：肩→肘→手首→手→ラケット）
+  const shoulderRx = joints.chest.x + shoulderW * facing;
+  const shoulderRy = joints.chest.y + 0.02 * s;
   joints.shoulderR = { x: shoulderRx, y: shoulderRy };
 
-  const elbowRx = shoulderRx + armU * Math.cos(skeleton.shoulderRotationR + Math.PI * 0.5) * facing;
-  const elbowRy = shoulderRy + armU * Math.sin(skeleton.shoulderRotationR);
+  const shoulderAngleR = skeleton.shoulderRotationR + skeleton.chestRotation * 0.2;
+  const elbowRx = shoulderRx + armU * Math.cos(shoulderAngleR * Math.PI) * facing;
+  const elbowRy = shoulderRy + armU * Math.sin(shoulderAngleR * Math.PI * 0.5);
   joints.elbowR = { x: elbowRx, y: elbowRy };
 
-  const wristRx = elbowRx + armF * Math.cos(skeleton.shoulderRotationR + skeleton.elbowBendR * Math.PI) * facing;
-  const wristRy = elbowRy + armF * Math.sin(skeleton.shoulderRotationR + skeleton.elbowBendR * Math.PI * 0.5);
+  const elbowAngleR = shoulderAngleR + skeleton.elbowBendR * Math.PI * 0.8;
+  const wristRx = elbowRx + armF * Math.cos(elbowAngleR * Math.PI) * facing;
+  const wristRy = elbowRy + armF * Math.sin(elbowAngleR * Math.PI * 0.5);
   joints.wristR = { x: wristRx, y: wristRy };
 
-  joints.handR = { x: wristRx, y: wristRy - wristH };
-
-  const racketAngle = skeleton.wristAngleR + skeleton.foreWrap * Math.PI * 0.3;
-  joints.racketR = {
-    x: wristRx + 0.1 * s * Math.cos(racketAngle) * facing,
-    y: wristRy - 0.15 * s * Math.sin(racketAngle),
+  joints.handR = {
+    x: wristRx + Math.cos(elbowAngleR * Math.PI) * 0.02 * s * facing,
+    y: wristRy - wristH,
   };
 
-  // 左腕（5点構造）
-  const shoulderLx = basePx - torsoWH * facing;
-  const shoulderLy = chestY;
+  const racketAngleR = elbowAngleR + skeleton.wristAngleR * Math.PI * 0.8 + skeleton.foreWrap * Math.PI * 0.4;
+  joints.racketR = {
+    x: wristRx + Math.cos(racketAngleR * Math.PI) * 0.12 * s * facing,
+    y: wristRy - Math.sin(racketAngleR * Math.PI * 0.8) * 0.16 * s,
+  };
+
+  // 左腕（5点）
+  const shoulderLx = joints.chest.x - shoulderW * facing;
+  const shoulderLy = joints.chest.y + 0.02 * s;
   joints.shoulderL = { x: shoulderLx, y: shoulderLy };
 
-  const elbowLx = shoulderLx - armU * Math.cos(skeleton.shoulderRotationL + Math.PI * 0.5) * facing;
-  const elbowLy = shoulderLy + armU * Math.sin(skeleton.shoulderRotationL);
+  const shoulderAngleL = skeleton.shoulderRotationL + skeleton.chestRotation * 0.2;
+  const elbowLx = shoulderLx - armU * Math.cos(shoulderAngleL * Math.PI) * facing;
+  const elbowLy = shoulderLy + armU * Math.sin(shoulderAngleL * Math.PI * 0.5);
   joints.elbowL = { x: elbowLx, y: elbowLy };
 
-  const wristLx = elbowLx - armF * Math.cos(skeleton.shoulderRotationL + skeleton.elbowBendL * Math.PI) * facing;
-  const wristLy = elbowLy + armF * Math.sin(skeleton.shoulderRotationL + skeleton.elbowBendL * Math.PI * 0.5);
+  const elbowAngleL = shoulderAngleL + skeleton.elbowBendL * Math.PI * 0.8;
+  const wristLx = elbowLx - armF * Math.cos(elbowAngleL * Math.PI) * facing;
+  const wristLy = elbowLy + armF * Math.sin(elbowAngleL * Math.PI * 0.5);
   joints.wristL = { x: wristLx, y: wristLy };
 
-  joints.handL = { x: wristLx, y: wristLy - wristH };
+  joints.handL = {
+    x: wristLx - Math.cos(elbowAngleL * Math.PI) * 0.02 * s * facing,
+    y: wristLy - wristH,
+  };
 
-  // 右脚（4点構造）
-  const hipRx = basePx + skeleton.stanceWidth * s * 0.5 + skeleton.leadFootPlant * 0.1 * s * facing;
-  const hipRy = joints.pelvis.y + 0.01 * s;
+  // 右脚（4点：股→膝→足首→足）
+  const hipRx = joints.pelvis.x + hipW * facing + skeleton.leadFootPlant * 0.12 * s * facing;
+  const hipRy = joints.pelvis.y + 0.02 * s;
   joints.hipR = { x: hipRx, y: hipRy };
 
-  const kneeRx = hipRx + legU * 0.3 * Math.cos(skeleton.hipRotationR) * facing;
-  const kneeRy = hipRy + legU;
+  const kneeRx = hipRx + legU * 0.35 * Math.sin(skeleton.hipRotationR * Math.PI) * facing;
+  const kneeRy = hipRy + legU * (1 - skeleton.kneeBendR * 0.3);
   joints.kneeR = { x: kneeRx, y: kneeRy };
 
-  const ankleRx = kneeRx + legL * 0.3 * Math.cos(skeleton.hipRotationR + skeleton.ankleAngleR) * facing;
-  const ankleRy = kneeRy + legL;
+  const ankleRx = kneeRx + legL * 0.35 * Math.sin(skeleton.hipRotationR * Math.PI * 0.6) * facing;
+  const ankleRy = kneeRy + legL * (1 - skeleton.kneeBendR * 0.2);
   joints.ankleR = { x: ankleRx, y: ankleRy };
 
-  joints.footR = { x: ankleRx, y: ankleRy + footH * 0.5 };
+  joints.footR = { x: ankleRx, y: ankleRy + footW };
 
-  // 左脚（4点構造）
-  const hipLx = basePx - skeleton.stanceWidth * s * 0.5 + skeleton.leadFootPlant * 0.1 * s * facing;
-  const hipLy = joints.pelvis.y + 0.01 * s;
+  // 左脚（4点）
+  const hipLx = joints.pelvis.x - hipW * facing + skeleton.leadFootPlant * 0.12 * s * facing;
+  const hipLy = joints.pelvis.y + 0.02 * s;
   joints.hipL = { x: hipLx, y: hipLy };
 
-  const kneeLx = hipLx - legU * 0.3 * Math.cos(skeleton.hipRotationL) * facing;
-  const kneeLy = hipLy + legU;
+  const kneeLx = hipLx - legU * 0.35 * Math.sin(skeleton.hipRotationL * Math.PI) * facing;
+  const kneeLy = hipLy + legU * (1 - skeleton.kneeBendL * 0.3);
   joints.kneeL = { x: kneeLx, y: kneeLy };
 
-  const ankleLx = kneeLx - legL * 0.3 * Math.cos(skeleton.hipRotationL + skeleton.ankleAngleL) * facing;
-  const ankleLy = kneeLy + legL;
+  const ankleLx = kneeLx - legL * 0.35 * Math.sin(skeleton.hipRotationL * Math.PI * 0.6) * facing;
+  const ankleLy = kneeLy + legL * (1 - skeleton.kneeBendL * 0.2);
   joints.ankleL = { x: ankleLx, y: ankleLy };
 
-  joints.footL = { x: ankleLx, y: ankleLy + footH * 0.5 };
+  joints.footL = { x: ankleLx, y: ankleLy + footW };
+
+  // 左利き対応：ラケットを反転
+  if (isLeftHanded) {
+    [joints.racketR, joints.racketL] = [joints.racketL, joints.racketR];
+  }
 
   return joints;
 }
@@ -427,24 +486,6 @@ function calcSkeletonWorldPos(skeleton, basePx, basePy, facing, s) {
 /* ========================================================
  * 描画ヘルパー
  * ======================================================== */
-
-function drawLimb(fromX, fromY, toX, toY, width, color) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  ctx.moveTo(fromX, fromY);
-  ctx.lineTo(toX, toY);
-  ctx.stroke();
-}
-
-function drawCircle(x, y, r, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
-}
 
 function drawFilledLimb(fromX, fromY, toX, toY, width, color) {
   ctx.fillStyle = color;
@@ -461,54 +502,65 @@ function drawFilledLimb(fromX, fromY, toX, toY, width, color) {
   ctx.restore();
 }
 
-/* ========================================================
- * 部位描画関数群
- * ======================================================== */
-
-function drawShadow(basePx, basePy, s, skeleton) {
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
+function drawCircle(x, y, r, color) {
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(basePx, basePy + 0.02 * s, 0.35 * s, 0.1 * s, 0, 0, Math.PI * 2);
+  ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
 }
 
-function drawTorso(joints, skeleton, s, facing, skinColor) {
-  // 逆台形の胴体（肩幅 > 腰幅）
-  const shoulderW = 0.18 * s;
-  const hipW = 0.14 * s;
+/* ========================================================
+ * 部位描画関数
+ * ======================================================== */
+
+function drawShadow(basePx, basePy, s) {
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(basePx, basePy + 0.01 * s, 0.36 * s, 0.11 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawTorso(joints, skeleton, s, skinColor) {
+  const shoulderW = skeleton.shoulderWidth * s;
+  const hipW = skeleton.hipWidth * s;
 
   ctx.fillStyle = skinColor;
   ctx.beginPath();
-  ctx.moveTo(joints.pelvis.x - hipW * facing, joints.pelvis.y);
-  ctx.lineTo(joints.pelvis.x + hipW * facing, joints.pelvis.y);
-  ctx.lineTo(joints.chest.x + shoulderW * facing, joints.chest.y - 0.05 * s);
-  ctx.lineTo(joints.chest.x - shoulderW * facing, joints.chest.y - 0.05 * s);
+  ctx.moveTo(joints.pelvis.x - hipW, joints.pelvis.y);
+  ctx.lineTo(joints.pelvis.x + hipW, joints.pelvis.y);
+  ctx.lineTo(joints.chest.x + shoulderW, joints.chest.y - 0.04 * s);
+  ctx.lineTo(joints.chest.x - shoulderW, joints.chest.y - 0.04 * s);
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.strokeStyle = "rgba(0,0,0,0.25)";
   ctx.lineWidth = 1;
   ctx.stroke();
 }
 
-function drawHead(joints, skeleton, s, facing, skinColor) {
+function drawHead(joints, skeleton, s, skinColor) {
   const headR = 0.09 * s;
   drawCircle(joints.head.x, joints.head.y, headR, skinColor);
 
   // 髪
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillStyle = "rgba(40,30,20,0.8)";
   ctx.beginPath();
-  ctx.arc(joints.head.x, joints.head.y - headR * 0.3, headR * 0.95, 0, Math.PI, true);
+  ctx.arc(joints.head.x, joints.head.y - headR * 0.25, headR * 0.92, 0, Math.PI, true);
   ctx.fill();
 
   // 目
-  ctx.fillStyle = "rgba(0,0,0,0.8)";
-  const eyeY = joints.head.y - headR * 0.2;
-  drawCircle(joints.head.x - headR * 0.25 * facing, eyeY, headR * 0.12, "rgba(0,0,0,0.8)");
-  drawCircle(joints.head.x + headR * 0.25 * facing, eyeY, headR * 0.12, "rgba(0,0,0,0.8)");
+  const eyeY = joints.head.y - headR * 0.15;
+  const eyeDx = headR * 0.3;
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.beginPath();
+  ctx.arc(joints.head.x - eyeDx, eyeY, headR * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(joints.head.x + eyeDx, eyeY, headR * 0.1, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-function drawArm(joints, skeleton, s, facing, skinColor, side) {
+function drawArm(joints, skeleton, s, skinColor, side) {
   const isRight = side === "R";
   const shoulder = isRight ? joints.shoulderR : joints.shoulderL;
   const elbow = isRight ? joints.elbowR : joints.elbowL;
@@ -516,16 +568,16 @@ function drawArm(joints, skeleton, s, facing, skinColor, side) {
   const hand = isRight ? joints.handR : joints.handL;
 
   // 上腕
-  drawFilledLimb(shoulder.x, shoulder.y, elbow.x, elbow.y, 0.05 * s, skinColor);
+  drawFilledLimb(shoulder.x, shoulder.y, elbow.x, elbow.y, 0.052 * s, skinColor);
 
   // 前腕
-  drawFilledLimb(elbow.x, elbow.y, wrist.x, wrist.y, 0.04 * s, skinColor);
+  drawFilledLimb(elbow.x, elbow.y, wrist.x, wrist.y, 0.044 * s, skinColor);
 
   // 手
-  drawCircle(hand.x, hand.y, 0.035 * s, skinColor);
+  drawCircle(hand.x, hand.y, 0.038 * s, skinColor);
 }
 
-function drawLeg(joints, skeleton, s, facing, skinColor, side) {
+function drawLeg(joints, skeleton, s, skinColor, side) {
   const isRight = side === "R";
   const hip = isRight ? joints.hipR : joints.hipL;
   const knee = isRight ? joints.kneeR : joints.kneeL;
@@ -533,28 +585,30 @@ function drawLeg(joints, skeleton, s, facing, skinColor, side) {
   const foot = isRight ? joints.footR : joints.footL;
 
   // 大腿
-  drawFilledLimb(hip.x, hip.y, knee.x, knee.y, 0.055 * s, "rgba(100,60,40,0.9)");
+  drawFilledLimb(hip.x, hip.y, knee.x, knee.y, 0.058 * s, "rgba(100,60,40,0.88)");
 
   // 下腿
-  drawFilledLimb(knee.x, knee.y, ankle.x, ankle.y, 0.05 * s, "rgba(100,60,40,0.9)");
+  drawFilledLimb(knee.x, knee.y, ankle.x, ankle.y, 0.052 * s, "rgba(85,50,30,0.88)");
 
   // 足
-  ctx.fillStyle = "rgba(80,40,20,0.9)";
+  ctx.fillStyle = "rgba(70,35,15,0.9)";
+  const footL = 0.05 * s;
+  const footH = 0.035 * s;
   ctx.beginPath();
-  ctx.ellipse(foot.x, foot.y, 0.045 * s, 0.035 * s, 0, 0, Math.PI * 2);
+  ctx.ellipse(foot.x, foot.y, footL, footH, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
-function drawRacket(joints, skeleton, s, facing, racketColor) {
-  const hand = joints.wristR; // 右手で持つと仮定（左利きは別途）
-  const racket = joints.racketR;
+function drawRacket(joints, skeleton, s, racketColor, isLeftHanded) {
+  const hand = isLeftHanded ? joints.handL : joints.handR;
+  const racket = isLeftHanded ? joints.racketL : joints.racketR;
 
-  // ラケットハンドル
-  drawFilledLimb(hand.x, hand.y, racket.x, racket.y, 0.025 * s, "#8B4513");
+  // ハンドル
+  drawFilledLimb(hand.x, hand.y, racket.x, racket.y, 0.028 * s, "#8B5A3C");
 
   // ラケット面
-  const frameW = 0.08 * s;
-  const frameH = 0.12 * s;
+  const frameW = 0.085 * s;
+  const frameH = 0.125 * s;
   const angle = Math.atan2(racket.y - hand.y, racket.x - hand.x);
 
   ctx.save();
@@ -563,18 +617,18 @@ function drawRacket(joints, skeleton, s, facing, racketColor) {
 
   // フレーム
   ctx.strokeStyle = racketColor;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
   ctx.ellipse(0, 0, frameW, frameH, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // ガット
-  ctx.strokeStyle = "rgba(200,200,200,0.6)";
-  ctx.lineWidth = 0.5;
-  for (let i = -3; i <= 3; i++) {
+  // ガット（仕上げ）
+  ctx.strokeStyle = "rgba(200,200,200,0.5)";
+  ctx.lineWidth = 0.6;
+  for (let i = -4; i <= 4; i++) {
     ctx.beginPath();
-    ctx.moveTo(frameW * (i / 3.5), -frameH);
-    ctx.lineTo(frameW * (i / 3.5), frameH);
+    ctx.moveTo(frameW * (i / 4.5), -frameH);
+    ctx.lineTo(frameW * (i / 4.5), frameH);
     ctx.stroke();
   }
 
@@ -592,44 +646,43 @@ export function drawHumanoid(pl) {
   ctx.save();
   ctx.translate(g.x, g.y);
 
-  // 体をボールの方へ向ける（yaw回転）
+  // 体をボールへ向ける
   const bodyYaw = pl.pose !== "swing" ? bodyYawToBall(pl) : 0;
   if (bodyYaw) ctx.transform(Math.cos(bodyYaw), 0, 0, 1, 0, 0);
 
-  // facing（正面=1, 背面=-1）
   const facing = pl.facing === "backward" ? -1 : 1;
+  const isLeftHanded = pl.stats.handed === "left";
 
-  // スケルトンポーズ計算
   const skeleton = calcSkeletonPose(pl, pl.swingK || 0);
+  const joints = calcSkeletonWorldPos(skeleton, 0, 0, facing, s, isLeftHanded);
 
-  // 関節座標計算
-  const joints = calcSkeletonWorldPos(skeleton, 0, 0, facing, s);
+  // === 描画順序 ===
+  drawShadow(0, 0, s);
 
-  // 描画順序（z-order制御）
-  drawShadow(0, 0, s, skeleton);
-
-  // 脚（背面時も手前）
-  drawLeg(joints, skeleton, s, facing, "rgba(100,60,40,0.9)", "L");
-  drawLeg(joints, skeleton, s, facing, "rgba(100,60,40,0.9)", "R");
+  // 脚
+  drawLeg(joints, skeleton, s, "rgba(100,60,40,0.88)", "L");
+  drawLeg(joints, skeleton, s, "rgba(100,60,40,0.88)", "R");
 
   // 胴体
-  drawTorso(joints, skeleton, s, facing, pl.color || "#E8B4A8");
+  drawTorso(joints, skeleton, s, pl.color || "#E8B4A8");
 
   // 頭
-  drawHead(joints, skeleton, s, facing, pl.color || "#E8B4A8");
+  drawHead(joints, skeleton, s, pl.color || "#E8B4A8");
 
-  // 腕（背面時の奥行き判定）
+  // 腕・ラケット（z-order 制御）
   const isBackface = facing < 0;
-  if (isBackface && skeleton.foreWrap > 0.5) {
-    // フォロースルー時は腕が後ろ
-    drawArm(joints, skeleton, s, facing, pl.color || "#E8B4A8", "R");
-    drawArm(joints, skeleton, s, facing, pl.color || "#E8B4A8", "L");
-    drawRacket(joints, skeleton, s, facing, pl.skin || "#FF6B6B");
+  const isFollowThrough = skeleton.foreWrap > 0.4;
+
+  if (isBackface && isFollowThrough) {
+    // 背面フォロースルー：奥の腕を先に描画
+    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "R");
+    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "L");
+    drawRacket(joints, skeleton, s, pl.skin || "#FF6B6B", isLeftHanded);
   } else {
-    // 通常は腕が前
-    drawArm(joints, skeleton, s, facing, pl.color || "#E8B4A8", "L");
-    drawArm(joints, skeleton, s, facing, pl.color || "#E8B4A8", "R");
-    drawRacket(joints, skeleton, s, facing, pl.skin || "#FF6B6B");
+    // 通常：手前の腕を先に描画
+    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "L");
+    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "R");
+    drawRacket(joints, skeleton, s, pl.skin || "#FF6B6B", isLeftHanded);
   }
 
   // プレイヤーラベル
@@ -640,7 +693,7 @@ export function drawHumanoid(pl) {
     ctx.fillText(pl.label, 0, -0.4 * s);
   }
 
-  // 操作可能表示（controlledプレイヤー）
+  // 操作可能表示
   if (pl === rallyControlled && pl.pose === "ready") {
     const isBack = pl.swingSide === "back";
     const text = isBack ? "バック" : "フォア";
