@@ -111,23 +111,30 @@ function calcSkeletonPose(pl, swingK) {
   skeleton.kneeBendL = isFront ? 0.25 : 0.15;
 
   // === READY / IDLE / PREP ===
+  // ラケットは腰に下げず、胸〜顔の高さに構える（いつでもボレーできる姿勢）。
+  // 利き腕でラケットヘッドを高く保ち、反対の手で軽く支える両手構え。
   if (isReady) {
     if (isFront) {
-      // 前衛：低く構える
-      skeleton.kneeBendR = 0.25;
-      skeleton.kneeBendL = 0.25;
-      skeleton.torsoLean = 0.25;
-      skeleton.shoulderRotationR = isForehand ? -0.15 : 0;
-      skeleton.shoulderRotationL = isForehand ? 0 : -0.15;
-      skeleton.elbowBendR = isForehand ? 0.20 : 0.15;
-      skeleton.elbowBendL = isForehand ? 0.15 : 0.20;
+      // 前衛：常に低い構え（深い膝曲げ・前傾・低重心）
+      skeleton.kneeBendR = 0.32;
+      skeleton.kneeBendL = 0.32;
+      skeleton.crouch = 0.30;
+      skeleton.torsoLean = 0.32;
     } else {
-      // 後衛：やや高め
-      skeleton.shoulderRotationR = isForehand ? -0.2 : 0;
-      skeleton.shoulderRotationL = isForehand ? 0 : -0.2;
-      skeleton.elbowBendR = isForehand ? 0.20 : 0.12;
-      skeleton.elbowBendL = isForehand ? 0.12 : 0.20;
+      // 後衛：やや高めだが直立はしない
+      skeleton.kneeBendR = 0.20;
+      skeleton.kneeBendL = 0.20;
+      skeleton.crouch = 0.16;
+      skeleton.torsoLean = 0.18;
     }
+    // ラケットを持つ腕：上腕を軽く前へ、肘を曲げてラケットヘッドを高く
+    skeleton.shoulderRotationR = -0.28;
+    skeleton.elbowBendR = 0.42;
+    skeleton.wristAngleR = -0.18;
+    // 支える腕：体の前で軽く添える
+    skeleton.shoulderRotationL = -0.20;
+    skeleton.elbowBendL = 0.40;
+    skeleton.wristAngleL = -0.10;
     return skeleton;
   }
 
@@ -352,11 +359,12 @@ function calcSkeletonWorldPos(skeleton, basePx, basePy, facing, s, isLeftHanded)
   const joints = {};
 
   // 寸法（スケール s に対して）
-  const torsoH = 0.25 * s;
+  // 人体比率：頭を大きめ・首を長め・胴体を長めにしてソフトテニス選手らしく
+  const torsoH = 0.30 * s;
   const shoulderW = skeleton.shoulderWidth * s;
   const hipW = skeleton.hipWidth * s;
-  const neckH = 0.05 * s;
-  const headR = 0.09 * s;
+  const neckH = 0.072 * s;
+  const headR = 0.112 * s;
 
   const armU = 0.16 * s;
   const armF = 0.15 * s;
@@ -539,7 +547,7 @@ function drawTorso(joints, skeleton, s, skinColor) {
 }
 
 function drawHead(joints, skeleton, s, skinColor) {
-  const headR = 0.09 * s;
+  const headR = 0.112 * s;
   drawCircle(joints.head.x, joints.head.y, headR, skinColor);
 
   // 髪
@@ -567,14 +575,14 @@ function drawArm(joints, skeleton, s, skinColor, side) {
   const wrist = isRight ? joints.wristR : joints.wristL;
   const hand = isRight ? joints.handR : joints.handL;
 
-  // 上腕
-  drawFilledLimb(shoulder.x, shoulder.y, elbow.x, elbow.y, 0.052 * s, skinColor);
+  // 上腕（筋肉質に太め）
+  drawFilledLimb(shoulder.x, shoulder.y, elbow.x, elbow.y, 0.066 * s, skinColor);
 
   // 前腕
-  drawFilledLimb(elbow.x, elbow.y, wrist.x, wrist.y, 0.044 * s, skinColor);
+  drawFilledLimb(elbow.x, elbow.y, wrist.x, wrist.y, 0.055 * s, skinColor);
 
   // 手
-  drawCircle(hand.x, hand.y, 0.038 * s, skinColor);
+  drawCircle(hand.x, hand.y, 0.044 * s, skinColor);
 }
 
 function drawLeg(joints, skeleton, s, skinColor, side) {
@@ -584,11 +592,11 @@ function drawLeg(joints, skeleton, s, skinColor, side) {
   const ankle = isRight ? joints.ankleR : joints.ankleL;
   const foot = isRight ? joints.footR : joints.footL;
 
-  // 大腿
-  drawFilledLimb(hip.x, hip.y, knee.x, knee.y, 0.058 * s, "rgba(100,60,40,0.88)");
+  // 大腿（筋肉質に太め）
+  drawFilledLimb(hip.x, hip.y, knee.x, knee.y, 0.074 * s, "rgba(100,60,40,0.88)");
 
   // 下腿
-  drawFilledLimb(knee.x, knee.y, ankle.x, ankle.y, 0.052 * s, "rgba(85,50,30,0.88)");
+  drawFilledLimb(knee.x, knee.y, ankle.x, ankle.y, 0.064 * s, "rgba(85,50,30,0.88)");
 
   // 足
   ctx.fillStyle = "rgba(70,35,15,0.9)";
@@ -603,21 +611,22 @@ function drawRacket(joints, skeleton, s, racketColor, isLeftHanded) {
   const hand = isLeftHanded ? joints.handL : joints.handR;
   const racket = isLeftHanded ? joints.racketL : joints.racketR;
 
-  // ハンドル
-  drawFilledLimb(hand.x, hand.y, racket.x, racket.y, 0.028 * s, "#8B5A3C");
-
-  // ラケット面
-  const frameW = 0.085 * s;
-  const frameH = 0.125 * s;
+  // ハンドル（グリップは長め）
   const angle = Math.atan2(racket.y - hand.y, racket.x - hand.x);
+  const frameW = 0.092 * s;
+  const frameH = 0.137 * s;
+  // ラケット面の中心を手からさらに先へ（グリップを長く見せる）
+  const faceCx = racket.x + Math.cos(angle) * frameH * 0.7;
+  const faceCy = racket.y + Math.sin(angle) * frameH * 0.7;
+  drawFilledLimb(hand.x, hand.y, faceCx, faceCy, 0.026 * s, "#8B5A3C");
 
   ctx.save();
-  ctx.translate(racket.x, racket.y);
+  ctx.translate(faceCx, faceCy);
   ctx.rotate(angle);
 
-  // フレーム
+  // フレーム（細めでデカラケ感を避ける）
   ctx.strokeStyle = racketColor;
-  ctx.lineWidth = 2.2;
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
   ctx.ellipse(0, 0, frameW, frameH, 0, 0, Math.PI * 2);
   ctx.stroke();
@@ -650,8 +659,11 @@ export function drawHumanoid(pl) {
   const bodyYaw = pl.pose !== "swing" ? bodyYawToBall(pl) : 0;
   if (bodyYaw) ctx.transform(Math.cos(bodyYaw), 0, 0, 1, 0, 0);
 
-  const facing = pl.facing === "backward" ? -1 : 1;
+  const facing = pl.facing < 0 ? -1 : 1;
   const isLeftHanded = pl.stats.handed === "left";
+  const skinColor = pl.skin || "#F1C7A8";
+  const shirtColor = pl.color || "#6366F1";
+  const racketColor = "#EAB308"; // ラケットフレーム色（共通）
 
   const skeleton = calcSkeletonPose(pl, pl.swingK || 0);
   const joints = calcSkeletonWorldPos(skeleton, 0, 0, facing, s, isLeftHanded);
@@ -660,46 +672,47 @@ export function drawHumanoid(pl) {
   drawShadow(0, 0, s);
 
   // 脚
-  drawLeg(joints, skeleton, s, "rgba(100,60,40,0.88)", "L");
-  drawLeg(joints, skeleton, s, "rgba(100,60,40,0.88)", "R");
+  drawLeg(joints, skeleton, s, skinColor, "L");
+  drawLeg(joints, skeleton, s, skinColor, "R");
 
-  // 胴体
-  drawTorso(joints, skeleton, s, pl.color || "#E8B4A8");
+  // 胴体（ユニフォーム色）
+  drawTorso(joints, skeleton, s, shirtColor);
 
-  // 頭
-  drawHead(joints, skeleton, s, pl.color || "#E8B4A8");
+  // 頭（肌色）
+  drawHead(joints, skeleton, s, skinColor);
 
-  // 腕・ラケット（z-order 制御）
-  const isBackface = facing < 0;
+  // 腕・ラケット（z-order 制御）。腕は肌色。
   const isFollowThrough = skeleton.foreWrap > 0.4;
 
-  if (isBackface && isFollowThrough) {
+  if (facing < 0 && isFollowThrough) {
     // 背面フォロースルー：奥の腕を先に描画
-    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "R");
-    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "L");
-    drawRacket(joints, skeleton, s, pl.skin || "#FF6B6B", isLeftHanded);
+    drawArm(joints, skeleton, s, skinColor, "R");
+    drawArm(joints, skeleton, s, skinColor, "L");
+    drawRacket(joints, skeleton, s, racketColor, isLeftHanded);
   } else {
     // 通常：手前の腕を先に描画
-    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "L");
-    drawArm(joints, skeleton, s, pl.color || "#E8B4A8", "R");
-    drawRacket(joints, skeleton, s, pl.skin || "#FF6B6B", isLeftHanded);
+    drawArm(joints, skeleton, s, skinColor, "L");
+    drawArm(joints, skeleton, s, skinColor, "R");
+    drawRacket(joints, skeleton, s, racketColor, isLeftHanded);
   }
 
-  // プレイヤーラベル
+  const headTop = joints.head.y - 0.112 * s;
+
+  // プレイヤーラベル（頭のすぐ上）
   if (pl.label) {
     ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.font = "600 " + Math.max(8, 0.28 * s) + "px sans-serif";
+    ctx.font = "600 " + Math.max(8, 0.26 * s) + "px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(pl.label, 0, -0.4 * s);
+    ctx.fillText(pl.label, 0, headTop - 0.08 * s);
   }
 
-  // 操作可能表示
+  // 操作可能表示（ラベルのさらに上）
   if (pl === rallyControlled && pl.pose === "ready") {
     const isBack = pl.swingSide === "back";
     const text = isBack ? "バック" : "フォア";
     const color = isBack ? "#F59E0B" : "#3B82F6";
     const bw = 0.95 * s;
-    const by = -0.62 * s;
+    const by = headTop - 0.5 * s;
     ctx.fillStyle = color;
     roundRect(ctx, -bw / 2, by, bw, 0.36 * s, 0.1 * s);
     ctx.fill();
