@@ -1194,3 +1194,5 @@ function syncViewport() {
 window.addEventListener("resize", syncViewport);
 window.addEventListener("orientationchange", syncViewport);
 syncViewport();
+
+/* 3D 関連は削除済み */

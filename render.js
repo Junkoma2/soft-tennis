@@ -576,36 +576,8 @@ export function drawBall() {
   ctx.stroke();
 }
 
-/* ---- 簡易人型の選手: 移動ステップ・スプリットステップ用のローカル演出state ----
- * 当たり判定・タイミング・state構造には触れず、描画side専用のキャッシュとして
- * 選手オブジェクトをキーにしたWeakMapで「前回描画時の位置」と「歩行位相」だけ持つ。 */
-const moveAnimState = new WeakMap();
-function getMoveAnim(pl) {
-  let a = moveAnimState.get(pl);
-  if (!a) {
-    a = { lastX: pl.x, lastY: pl.y, phase: 0, lastNow: performance.now() };
-    moveAnimState.set(pl, a);
-  }
-  return a;
-}
-
-// バウンド後のボールの予測打点へ体を向ける（正対）ためのヨー角（画面回転の近似）。
-// よりリアルな打球アニメーションへの第一歩として、選手は常に「次にボールが来る地点」へ
-// 体をひねって正対する。予測打点が読めないときは現在のボール位置を向く。
-function bodyYawToBall(pl) {
-  let tx = ball.x, ty = ball.y;
-  const lp = predictHighContact() || predictLanding();
-  if (lp) { tx = lp.x; ty = lp.y; }
-  const me = project(pl.x, pl.y, 0);
-  const tg = project(tx, ty, 0);
-  const dxs = tg.x - me.x;                          // 画面上の左右ずれ(px)
-  const depth = Math.max(90, Math.abs(me.y - tg.y) + 110); // 奥行き感（小さいほど大きく向く）
-  const yaw = Math.atan2(dxs, depth);
-  return Math.max(-0.6, Math.min(0.6, yaw));        // 背骨まわりのヨー（直立のまま左右へ向く）
-}
-
-/* ---- 簡易人型の選手 ---- */
-export function drawHumanoid(pl) {
+/* プレイヤー描画は player-2d.js へ移動
+ * import { drawHumanoid } from "./player-2d.js"; 参照 */
   const g = project(pl.x, pl.y, 0);
   const s = g.s; // px/m
 
