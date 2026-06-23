@@ -1140,7 +1140,10 @@ export function update(dt) {
     (Math.abs(ball.x) > outX && ball.vx * ball.x > 0);
   if (escaping) {
     const hitterIsPlayer = ball.lastHitter === "player";
-    if (ball.bounces >= 1) awardPoint(ball.y < 0, "ツーバウンド");
+    // 一度もバウンドせず場外へ抜けたサーブはフォルト（2本制を維持）。
+    // ここで awardPoint すると wide なサーブが即失点になりセカンドサーブが消える。
+    if (ball.serving && ball.bounces === 0) serveFault("サービスコートに入らなかった");
+    else if (ball.bounces >= 1) awardPoint(ball.y < 0, "ツーバウンド");
     else awardPoint(!hitterIsPlayer, hitterIsPlayer ? "アウト" : "相手のアウト");
   }
 }
