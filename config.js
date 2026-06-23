@@ -249,6 +249,7 @@ export const TUNING = {
     frontMiddleChance: 0.18,        // ミドルを張る確率（残りは定位置）
     frontVolleyReach: 1.05,  // 守備時のボレーリーチ（明確に届く球だけ拾い、深い球は後衛へ通す）
     poachReach: 2.0,         // ポーチに出たときのリーチ
+    poachMaxPace: 11.0,      // ポーチで飛び出す球の横方向ペース上限。これより速い抜き球には踏み込まない
   },
 };
 
