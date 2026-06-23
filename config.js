@@ -82,10 +82,12 @@ export const TUNING = {
         sigmaExtra: 0.05,  // 速い分、散らばりはやや大きめ
       },
       // スライス: フラットよりやや低い打点が適正。フラットより遅れて落下する軌道。
+      // spinMagBase はバウンドの低さ・滑り（横方向の失速）を決める。通常スピンでも
+      // 低く滑るカットの感触が出るよう、低スキッド域に届く値にしている。
       slice: {
         speed: 19.0, zone: { min: 1.4, ideal: 2.3, max: 3.4 },
         depthOffset: 1.6,
-        spinKind: "slice", spinMagBase: 1.1, color: "#38BDF8", label: "スライス",
+        spinKind: "slice", spinMagBase: 1.3, color: "#38BDF8", label: "スライス",
         sigmaExtra: 0.0,
       },
       // アンダーカット（セカンド向け）: 低い打点が適正。山なりで確実に入る安全球。
