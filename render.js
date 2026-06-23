@@ -579,3 +579,4 @@ export function drawBall() {
 }
 
 /* プレイヤー描画は player-2d.js へ移動
+ * import { drawHumanoid } from "./player-2d.js"; を参照 */
