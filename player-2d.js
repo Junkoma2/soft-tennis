@@ -21,7 +21,8 @@ import {
 } from "./state.js";
 
 import { TUNING } from "./config.js";
-import { predictHighContact, predictLanding, canPlayerHit } from "./main.js";
+import { predictHighContact, predictLanding } from "./main.js";
+import { canPlayerHit } from "./input.js";
 
 /* ========================================================
  * 描画用アニメーションキャッシュ
