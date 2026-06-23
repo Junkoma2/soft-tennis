@@ -593,6 +593,7 @@ export function tryReturnAI(side) {
   const myFront  = side === "player" ? front    : cpuFront;
   const myBack   = side === "player" ? back     : cpuBack;
   const oppBack  = side === "player" ? cpuBack  : back;
+  const oppFront = side === "player" ? cpuFront : front;
   // 自陣のy符号: player=+（y>0）、cpu=-（y<0）
   const homeSign = side === "player" ? 1 : -1;
   // 前衛ボレー判定用フラグ
@@ -716,6 +717,14 @@ export function tryReturnAI(side) {
         course = crossSign * (0.78 + Math.random() * 0.32);
       } else {
         course = (Math.random() - 0.5) * 1.9;
+      }
+      // 駆け引き: 相手前衛が詰めている側へ向いた球は、ポーチされやすいので
+      // ときどきオープン側（前衛のいない側）へ振り直す。常時ではなく確率的に
+      // 補正し、配球が一辺倒にならないようにする。前衛がセンター付近のときは補正しない。
+      const frontSign = oppFront.x >= 0 ? 1 : -1;
+      if (Math.abs(oppFront.x) > 0.6 && Math.sign(course) === frontSign &&
+          Math.random() < 0.6) {
+        course = -frontSign * (0.55 + Math.random() * 0.35);
       }
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
