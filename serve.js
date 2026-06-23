@@ -465,6 +465,23 @@ export function aiStartToss(team) {
   }, Math.round(TOSS_RISE_TIME * 1000) + 60);
 }
 
+// AIサーブのコース（aim=[-1,1]、+でサービスコート右方向）をレシーバー位置と
+// 球種から決める。カット系(slice/underCut)はレシーバーと逆サイドへ逃がしてワイドに
+// 切り、フラット/攻撃カットはレシーバーのボディ寄り（立ち位置側）を突く。
+// 配球意図はつけるが固定にはせず、乱数で散らばりを残す。
+function aiServeAimFor(team, type) {
+  const receiver = receiverPlayerFor(team === "player" ? "cpu" : "player");
+  const box = serviceBox(team);
+  const boxMid = (box.x1 + box.x2) / 2;
+  const boxHalf = Math.max(0.1, (box.x2 - box.x1) / 2);
+  // レシーバーが箱中央のどちら側に寄っているか（-1..1にクランプ）
+  const recSide = Math.max(-1, Math.min(1, (receiver.x - boxMid) / boxHalf));
+  const wide = (type === "slice" || type === "underCut");
+  // ボディ狙いはレシーバー側へ、ワイド狙いは逆側へ寄せる
+  const intent = (wide ? -recSide : recSide) * 0.7;
+  return Math.max(-1, Math.min(1, intent + (Math.random() * 2 - 1) * 0.35));
+}
+
 export function aiLaunchServe(team) {
   if (state !== "serve-toss") return;
   hideMessage();
@@ -484,7 +501,7 @@ export function aiLaunchServe(team) {
     spin: plan.spin,
     quality: 0.7 + Math.random() * 0.3,
     contactZ: zone.ideal + (Math.random() - 0.5) * 0.25,
-    aim: (Math.random() * 2 - 1) * 0.8,
+    aim: aiServeAimFor(team, plan.type),
   });
   startSwing(server, "fore");
 }
