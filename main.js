@@ -48,6 +48,7 @@ import {
 } from "./state.js";
 
 import { draw } from "./render.js";
+import { is3D, setRenderMode, getRenderMode } from "./render-mode.js";
 
 import {
   serverTeamNow, serverIsSecondOfPair, serverIsFrontPlayer, serveFromRight,
@@ -1153,12 +1154,46 @@ export function update(dt) {
  * ループ・画面遷移
  * =========================================================== */
 
+// --- 3D オーバーレイ（遅延ロード） ---
+let p3d = null, p3dLoading = false;
+function ensure3D() {
+  if (p3d || p3dLoading) return;
+  p3dLoading = true;
+  import("./player3d.js")
+    .then((m) => m.init3D(canvas).then(() => { p3d = m; }))
+    .catch((e) => { console.warn("3D初期化失敗、2Dにフォールバック:", e); setRenderMode("2d"); })
+    .finally(() => { p3dLoading = false; });
+}
+function render3DIfNeeded() {
+  if (is3D()) {
+    if (p3d && p3d.isReady3D()) { p3d.setOverlayVisible(true); p3d.render3D(); }
+    else ensure3D();
+  } else if (p3d) {
+    p3d.setOverlayVisible(false);
+  }
+}
+
 export function loop(now) {
   const dt = Math.min((now - lastTime) / 1000 || 0.016, 0.05);
   setLastTime(now);
   update(dt);
   draw();
+  render3DIfNeeded();
   setRafId(requestAnimationFrame(loop));
+}
+
+// 2D/3D 切り替えボタン（存在すれば配線）
+const renderModeControls = document.getElementById("render-mode-controls");
+if (renderModeControls) {
+  const syncBtns = () => {
+    renderModeControls.querySelectorAll(".ctrl-btn").forEach((b) => {
+      b.classList.toggle("is-active", b.dataset.render === getRenderMode());
+    });
+  };
+  renderModeControls.querySelectorAll(".ctrl-btn").forEach((b) => {
+    b.addEventListener("click", () => { setRenderMode(b.dataset.render); syncBtns(); });
+  });
+  syncBtns();
 }
 
 startBtn.addEventListener("click", function () {

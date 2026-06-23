@@ -14,6 +14,7 @@ import {
 } from "./state.js";
 
 import { drawHumanoid } from "./player-2d.js";
+import { is3D } from "./render-mode.js";
 
 import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
@@ -35,12 +36,14 @@ export function draw() {
   drawGroundEffects();
   drawBallShadow();
 
+  // 3D モードのときは人型を 2D で描かない（player3d.js のオーバーレイが描く）
+  const drawP = is3D() ? function () {} : drawHumanoid;
   const items = [
-    { y: cpuBack.y, fn: function () { drawHumanoid(cpuBack); } },
-    { y: cpuFront.y, fn: function () { drawHumanoid(cpuFront); } },
+    { y: cpuBack.y, fn: function () { drawP(cpuBack); } },
+    { y: cpuFront.y, fn: function () { drawP(cpuFront); } },
     { y: 0, fn: drawNet },
-    { y: front.y, fn: function () { drawHumanoid(front); } },
-    { y: back.y, fn: function () { drawHumanoid(back); } },
+    { y: front.y, fn: function () { drawP(front); } },
+    { y: back.y, fn: function () { drawP(back); } },
     { y: ball.y, fn: drawBall },
   ];
   items.sort(function (a, b) { return a.y - b.y; });
