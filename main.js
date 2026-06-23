@@ -153,7 +153,9 @@ export function pointLabel(points, opponentPoints) {
   }
   if (points >= 3 && opponentPoints >= 3) {
     if (points === opponentPoints) return "デュース";
-    return points > opponentPoints ? "アド" : "3";
+    // デュース以降は常に1点差。劣勢側に実点数（4,5…）や固定の「3」を出すと
+    // 点差を誤って読ませるため、アド/劣勢の関係だけを示す。
+    return points > opponentPoints ? "アド" : "−";
   }
   return POINT_LABELS[Math.min(points, 3)];
 }
