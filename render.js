@@ -13,6 +13,8 @@ import {
   player, cpu,
 } from "./state.js";
 
+import { drawHumanoid } from "./player-2d.js";
+
 import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
 } from "./serve.js";
