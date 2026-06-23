@@ -232,7 +232,7 @@ export const TUNING = {
   // 一方 friction（前後=水平の維持率）は低く保ち、「跳ねる高さはあるが前に伸びない＝
   // 失速する」というソフトテニス特有の体感を出す（着地前→後で大きく減速）。
   spin: {
-    slice: { friction: 0.36, restitution: 0.60 }, // スライス/カット: 低く滑る（高さ比≈0.36）
+    slice: { friction: 0.44, restitution: 0.60 }, // スライス/カット: 低いまま前に滑る（高さ比≈0.36、前後は flat より僅かに失速）
     drive: { friction: 0.54, restitution: 0.78 }, // ドライブ: 順回転で高く弾む（高さ比≈0.61）
     flat:  { friction: 0.46, restitution: 0.74 }, // 無回転: 規格準拠（高さ比≈0.55）
   },
