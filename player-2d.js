@@ -100,8 +100,8 @@ function calcSkeletonPose(pl, swingK) {
     crouch: 0.15,
     leadFootPlant: 0,
     foreWrap: 0,
-    shoulderWidth: 0.22,
-    hipWidth: 0.17,
+    shoulderWidth: 0.205,
+    hipWidth: 0.16,
   };
 
   // === 前衛専用：常に低い構え ===
@@ -364,8 +364,8 @@ function calcSkeletonWorldPos(skeleton, basePx, basePy, facing, s, isLeftHanded)
   const torsoH = 0.42 * s;   // 胴体を伸ばす
   const shoulderW = skeleton.shoulderWidth * s;
   const hipW = skeleton.hipWidth * s;
-  const neckH = 0.05 * s;    // 首は短く（頭を肩に近づける）
-  const headR = 0.129 * s;   // 頭を大きく
+  const neckH = 0.04 * s;    // 首は短く（頭を肩に近づける。さらに詰めてかわいさ強調）
+  const headR = 0.150 * s;   // 頭を大きく（デフォルメ比率を強めてかわいく）
 
   const armU = 0.20 * s;     // 上腕を長く
   const armF = 0.19 * s;     // 前腕を長く
@@ -548,7 +548,7 @@ function drawTorso(joints, skeleton, s, skinColor) {
 }
 
 function drawHead(joints, skeleton, s, skinColor) {
-  const headR = 0.129 * s;
+  const headR = 0.150 * s;
   drawCircle(joints.head.x, joints.head.y, headR, skinColor);
 
   // 髪
@@ -649,9 +649,12 @@ function drawRacket(joints, skeleton, s, racketColor, isLeftHanded) {
  * メイン描画関数（エクスポート）
  * ======================================================== */
 
+// キャラクター全体の見た目スケール倍率（コート座標・当たり判定には影響しない表示専用の補正）
+const CHARACTER_SCALE = 1.18;
+
 export function drawHumanoid(pl) {
   const g = project(pl.x, pl.y, 0);
-  const s = g.s;
+  const s = g.s * CHARACTER_SCALE;
 
   ctx.save();
   ctx.translate(g.x, g.y);
@@ -697,7 +700,7 @@ export function drawHumanoid(pl) {
     drawRacket(joints, skeleton, s, racketColor, isLeftHanded);
   }
 
-  const headTop = joints.head.y - 0.129 * s;
+  const headTop = joints.head.y - 0.150 * s;
 
   // プレイヤーラベル（頭のすぐ上）
   if (pl.label) {
