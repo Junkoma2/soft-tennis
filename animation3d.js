@@ -11,6 +11,8 @@
  * POSES に足すだけで拡張できる。
  */
 
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
 const D = Math.PI / 180;
 
 // rootLift: 骨盤 y のオフセット（負で重心を落とす＝しゃがむ）
@@ -94,6 +96,68 @@ export function applyPose(joints, poseAName, poseBName, t, baseHipY) {
   if (joints.pelvis) {
     joints.pelvis.position.y = (baseHipY || 0.78) + lerp(liftA, liftB, t);
   }
+}
+
+/* ========================================================
+ * 左手をラケットのグリップへ合わせる簡易2ボーンIK
+ * 右手(handR)の位置を chest ローカルで解き、左腕(shoulderL/elbowL)を
+ * そこへ届かせる。これで「右手で握り、左手を添える」両手構えになる。
+ * ======================================================== */
+const _vGrip = new THREE.Vector3();
+const _vTarget = new THREE.Vector3();
+const _vRoot = new THREE.Vector3();
+const _vAim = new THREE.Vector3();
+const _vAxis = new THREE.Vector3();
+const _vElbowDir = new THREE.Vector3();
+const _vx = new THREE.Vector3();
+const _vy = new THREE.Vector3();
+const _vz = new THREE.Vector3();
+const _mBasis = new THREE.Matrix4();
+const _POLE = new THREE.Vector3(0, -0.2, 1); // 肘を前下方へ逃がす
+const _GRIP_DROP = 0.045;                     // 右手のわずか下（グリップ側）へ添える
+
+function clamp1(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
+
+export function applyLeftHandGrip(joints, dims, root3D) {
+  const { chest, handR, shoulderL, elbowL } = joints;
+  if (!chest || !handR || !shoulderL || !elbowL || !dims) return;
+
+  // 右手(グリップ)の現在位置を chest ローカルへ
+  root3D.updateMatrixWorld(true);
+  handR.getWorldPosition(_vGrip);
+  _vTarget.copy(_vGrip);
+  chest.worldToLocal(_vTarget);
+  _vTarget.y -= _GRIP_DROP;
+
+  // shoulderL は chest の子。chest ローカルで2ボーンIKを解く。
+  _vRoot.copy(shoulderL.position);
+  _vAim.copy(_vTarget).sub(_vRoot);
+  const L1 = dims.upperArm, L2 = dims.foreArm;
+  let dist = _vAim.length();
+  dist = Math.min((L1 + L2) * 0.999, Math.max(Math.abs(L1 - L2) + 1e-3, dist));
+  _vAim.normalize();
+
+  const shoulderAng = Math.acos(clamp1((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist)));
+  const elbowAng = Math.acos(clamp1((L1 * L1 + L2 * L2 - dist * dist) / (2 * L1 * L2)));
+
+  // 曲げ平面の法線（肘を _POLE 方向へ向ける）
+  _vAxis.copy(_vAim).cross(_POLE);
+  if (_vAxis.lengthSq() < 1e-6) _vAxis.set(1, 0, 0);
+  _vAxis.normalize();
+
+  // 上腕方向：aim を肩角だけ _POLE 側へ持ち上げる
+  _vElbowDir.copy(_vAim).applyAxisAngle(_vAxis, shoulderAng);
+
+  // 肩の基底（local -y → elbowDir, local x → axis）
+  _vx.copy(_vAxis);
+  _vy.copy(_vElbowDir).negate();
+  _vz.copy(_vx).cross(_vy).normalize();
+  _vx.copy(_vy).cross(_vz).normalize();
+  _mBasis.makeBasis(_vx, _vy, _vz);
+  shoulderL.quaternion.setFromRotationMatrix(_mBasis);
+
+  // 肘：直線(π)から内側へ曲げる（ヒンジ=local x=axis）
+  elbowL.rotation.set(-(Math.PI - elbowAng), 0, 0);
 }
 
 /** 状態 pose 文字列 → 使用するポーズ名（プロトタイプ用の最小マッピング） */

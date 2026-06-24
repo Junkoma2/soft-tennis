@@ -15,7 +15,7 @@ import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
 import { back, front, cpuBack, cpuFront } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
-import { applyPose, poseNameForPlayer } from "./animation3d.js";
+import { applyPose, poseNameForPlayer, applyLeftHandGrip } from "./animation3d.js";
 
 let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
@@ -145,6 +145,8 @@ export function render3D() {
 
     const b = updateBlend(pl, dt);
     applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
+    // 右手のグリップへ左手を合わせる（両手構え）
+    applyLeftHandGrip(char.joints, char.group.userData.dims, char.group);
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);

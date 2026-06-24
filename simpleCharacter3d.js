@@ -222,6 +222,10 @@ export function createCharacter(opts) {
   shadow.scale.set(1, 0.7, 1);
   group.add(shadow);
 
-  group.userData.dims = { hipY, headTop: hipY + torsoLen + 0.08 + headR * 1.9 };
+  group.userData.dims = {
+    hipY,
+    headTop: hipY + torsoLen + 0.08 + headR * 1.9,
+    upperArm, foreArm, // 左手IK用の上腕・前腕長
+  };
   return { group, joints, materials };
 }
