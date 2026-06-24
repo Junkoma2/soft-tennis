@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3Dフォームラボ | ソフトテニス</title>
+  <meta name="description" content="ソフトテニスの3Dキャラクターとフォームを単体で確認する開発用ビューア。" />
+  <link rel="stylesheet" href="model-viewer.css" />
+</head>
+<body>
+  <main class="lab-shell">
+    <header class="lab-header">
+      <div>
+        <p class="eyebrow">SOFT TENNIS / FORM LAB</p>
+        <h1>3Dフォームラボ</h1>
+        <p class="intro">ゲーム進行から切り離して、キャラクターの姿勢とスイングだけを確認できます。</p>
+      </div>
+      <a class="back-link" href="./?render=3d">コートへ戻る</a>
+    </header>
+
+    <div class="workspace">
+      <section class="stage-card" aria-label="3Dモデル表示">
+        <canvas id="viewer-canvas"></canvas>
+        <div class="stage-labels" aria-hidden="true">
+          <span id="role-badge">後衛</span>
+          <strong id="motion-label">構え</strong>
+        </div>
+        <p class="drag-hint">ドラッグで回転 ・ ホイールで拡大</p>
+        <div class="view-buttons" aria-label="視点">
+          <button type="button" data-view="front" class="is-active">正面</button>
+          <button type="button" data-view="side">横</button>
+          <button type="button" data-view="back">背面</button>
+        </div>
+      </section>
+
+      <aside class="control-card">
+        <div class="control-heading">
+          <span>CONTROL DESK</span>
+          <strong id="play-state">再生中</strong>
+        </div>
+
+        <label class="field">
+          <span>モデル</span>
+          <select id="model-select">
+            <option value="blue">プレイヤー・ブルー</option>
+            <option value="orange">ライバル・オレンジ</option>
+            <option value="mint">トレーニング・ミント</option>
+          </select>
+        </label>
+
+        <fieldset class="field">
+          <legend>ポジション</legend>
+          <div class="segmented">
+            <label><input type="radio" name="role" value="rear" checked /><span>後衛</span></label>
+            <label><input type="radio" name="role" value="front" /><span>前衛</span></label>
+          </div>
+        </fieldset>
+
+        <label class="field">
+          <span>状況・フォーム</span>
+          <select id="motion-select"></select>
+        </label>
+
+        <fieldset class="field">
+          <legend>利き腕</legend>
+          <div class="segmented">
+            <label><input type="radio" name="handed" value="right" checked /><span>右利き</span></label>
+            <label><input type="radio" name="handed" value="left" /><span>左利き</span></label>
+          </div>
+        </fieldset>
+
+        <div class="transport">
+          <button id="play-button" class="play-button" type="button">一時停止</button>
+          <button id="restart-button" class="sub-button" type="button">最初から</button>
+        </div>
+
+        <label class="field range-field">
+          <span><span>動作位置</span><output id="phase-output">0%</output></span>
+          <input id="phase-range" type="range" min="0" max="100" value="0" />
+        </label>
+
+        <label class="field range-field">
+          <span><span>再生速度</span><output id="speed-output">1.0×</output></span>
+          <input id="speed-range" type="range" min="0.25" max="1.5" step="0.25" value="1" />
+        </label>
+
+        <div class="pose-note">
+          <span>現在の定義</span>
+          <code id="pose-code">rearReady</code>
+          <p id="pose-description">低い重心と、ストロークへ移りやすい後衛の構え。</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script type="module" src="model-viewer.js"></script>
+</body>
+</html>

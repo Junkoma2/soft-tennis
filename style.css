@@ -172,6 +172,13 @@ main {
   opacity: .9;
 }
 
+.model-viewer-link {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+
 /* ---- スコアボード ----
  * スコアは render.js の drawScore がキャンバス上部（空の領域）に直接描画するため、
  * HTMLのスコア枠は表示しない（要素はJSの参照先として残す）。 */

@@ -15,13 +15,16 @@ import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
 import { back, front, cpuBack, cpuFront } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
-import { applyPose, poseNameForPlayer } from "./animation3d.js";
+import {
+  applyPose, poseNameForPlayer, applyLeftHandGrip,
+  swingPhaseOf, applySwingPhase,
+} from "./animation3d.js";
 
 let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
 let initialized = false;
 let lastTime = 0;
-const BASE_HIP_Y = 0.78;
+const BASE_HIP_Y = 0.86; // simpleCharacter3d の hipY と一致させる（脚を伸ばした分）
 
 // 各選手のポーズ補間状態
 const blendState = new Map();
@@ -34,7 +37,7 @@ function getBlend(pl) {
 // 見た目チューニング
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)
 const ASPECT = 0.62;     // ビューポート横/縦比
-const VH_K = 1.62;       // ビューポート縦 = s * VH_K
+const VH_K = 1.82;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.11;  // 足元がビューポート下から何割の位置に出るか
 
 export function isReady3D() { return initialized; }
@@ -99,12 +102,18 @@ function setColors(pl) {
   char.materials.skin.color.set(pl.skin || 0xf1c7a8);
 }
 
-function updateBlend(pl, dt) {
+function updateBlend(pl, targetName, dt) {
   const b = getBlend(pl);
-  const target = poseNameForPlayer(pl);
-  if (target !== b.b) { b.a = b.b; b.b = target; b.t = 0; }
+  if (targetName !== b.b) { b.a = b.b; b.b = targetName; b.t = 0; }
   b.t = Math.min(1, b.t + dt * 6); // 補間速度
   return b;
+}
+
+// スイング中はブレンドを使わずフェーズ駆動で確定するが、抜けた直後に
+// フォロースルーから滑らかに構えへ戻れるよう、ブレンド起点を follow に固定。
+function pinBlend(pl, name) {
+  const b = getBlend(pl);
+  b.a = b.b = name; b.t = 1;
 }
 
 export function render3D() {
@@ -132,19 +141,35 @@ export function render3D() {
     const vw = vh * ASPECT;
     const vpX = Math.round(g.x - vw / 2);
     const vpYbottom = Math.round((H - g.y) - FEET_FRAC * vh);
+    const isFront = (pl === front || pl === cpuFront);
 
     // 画面外スキップ
     if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) continue;
 
     setColors(pl);
 
-    // 左利きは左右反転（プロト：group を X 反転）
-    char.group.scale.x = (pl.stats && pl.stats.handed === "left") ? -1 : 1;
+    // ラケットはモデルの +x 側に付くが、モデルは前方=+z で組まれているため
+    // +x は解剖学的な左側。右利きを正しく「右手持ち」にするには X 反転が要る。
+    // （左利きは反転なしで +x=左手のまま）
+    char.group.scale.x = (pl.stats && pl.stats.handed === "left") ? 1 : -1;
     // カメラ正対：手前側(facing>0)はそのまま、奥側(facing<0)は後ろ向きに
     char.group.rotation.y = (pl.facing < 0) ? Math.PI : 0;
 
-    const b = updateBlend(pl, dt);
-    applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
+    if (pl.pose === "swing") {
+      // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
+      const side = pl.swingSide === "back" ? "back" : "fore";
+      applySwingPhase(char.joints, side, swingPhaseOf(pl), BASE_HIP_Y, isFront);
+      pinBlend(pl, side === "back" ? "backhandFollow" : (isFront ? "forehandFollow" : "rearForehandFollow"));
+      // 振り抜き中は片手（左手IKは当てない）
+    } else {
+      const name = poseNameForPlayer(pl, isFront);
+      const b = updateBlend(pl, name, dt);
+      applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
+      // 構え・ボレーのみ左手をグリップへ添える（両手構え）
+      if (name === "ready" || name === "rearReady" || name === "forehandVolleyTakeback") {
+        applyLeftHandGrip(char.joints, char.group.userData.dims, char.group);
+      }
+    }
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);
