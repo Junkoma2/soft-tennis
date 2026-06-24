@@ -141,6 +141,7 @@ export function render3D() {
     const vw = vh * ASPECT;
     const vpX = Math.round(g.x - vw / 2);
     const vpYbottom = Math.round((H - g.y) - FEET_FRAC * vh);
+    const isFront = (pl === front || pl === cpuFront);
 
     // 画面外スキップ
     if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) continue;
@@ -157,15 +158,15 @@ export function render3D() {
     if (pl.pose === "swing") {
       // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
       const side = pl.swingSide === "back" ? "back" : "fore";
-      applySwingPhase(char.joints, side, swingPhaseOf(pl), BASE_HIP_Y);
-      pinBlend(pl, side === "back" ? "backhandFollow" : "forehandFollow");
+      applySwingPhase(char.joints, side, swingPhaseOf(pl), BASE_HIP_Y, isFront);
+      pinBlend(pl, side === "back" ? "backhandFollow" : (isFront ? "forehandFollow" : "rearForehandFollow"));
       // 振り抜き中は片手（左手IKは当てない）
     } else {
-      const name = poseNameForPlayer(pl);
+      const name = poseNameForPlayer(pl, isFront);
       const b = updateBlend(pl, name, dt);
       applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
       // 構え・ボレーのみ左手をグリップへ添える（両手構え）
-      if (name === "ready" || name === "forehandVolleyTakeback") {
+      if (name === "ready" || name === "rearReady" || name === "forehandVolleyTakeback") {
         applyLeftHandGrip(char.joints, char.group.userData.dims, char.group);
       }
     }

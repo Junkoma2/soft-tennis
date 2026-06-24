@@ -38,6 +38,23 @@ export const POSES = {
     footL:     { x: 32, y: 0,  z: 0 },
   },
 
+  rearReady: {
+    rootLift: -0.19,
+    chest:     { x: 12, y: 12, z: 0 },
+    head:      { x: -4, y: -10, z: 0 },
+    shoulderR: { x: 72, y: 6,  z: 14 },
+    elbowR:    { x: -90, y: 0, z: 0 },
+    handR:     { x: -12, y: 0, z: 0 },
+    shoulderL: { x: 46, y: 8,  z: -18 },
+    elbowL:    { x: -74, y: 0, z: 0 },
+    hipR:      { x: 30, y: 0,  z: 0 },
+    kneeR:     { x: -70, y: 0, z: 0 },
+    footR:     { x: 28, y: 0,  z: 0 },
+    hipL:      { x: 34, y: 0,  z: 0 },
+    kneeL:     { x: -66, y: 0, z: 0 },
+    footL:     { x: 30, y: 0,  z: 0 },
+  },
+
   // フォアボレーのテイクバック：右肩を少し引き、ラケットを右耳後方へ。
   // 左手で軽く支える。体は横向きになりすぎず、次の踏み込みに入れる低い姿勢。
   forehandVolleyTakeback: {
@@ -76,6 +93,23 @@ export const POSES = {
     kneeL:     { x: -64, y: 0, z: 0 },
     footL:     { x: 32, y: 0, z: 0 },
   },
+
+  rearForehandTakeback: {
+    rootLift: -0.17,
+    chest:     { x: 18, y: 30, z: 0 },
+    head:      { x: -4, y: -14, z: 0 },
+    shoulderR: { x: 90, y: -4, z: 22 },
+    elbowR:    { x: -76, y: 0, z: 0 },
+    handR:     { x: -12, y: 0, z: 0 },
+    shoulderL: { x: 30, y: 4, z: -26 },
+    elbowL:    { x: -64, y: 0, z: 0 },
+    hipR:      { x: 28, y: 0, z: 0 },
+    kneeR:     { x: -64, y: 0, z: 0 },
+    footR:     { x: 30, y: 0, z: 0 },
+    hipL:      { x: 38, y: 0, z: 0 },
+    kneeL:     { x: -72, y: 0, z: 0 },
+    footL:     { x: 32, y: 0, z: 0 },
+  },
   forehandContact: {
     rootLift: -0.10,
     chest:     { x: 8,  y: 2,  z: 0 },    // 正面まで戻す
@@ -92,6 +126,23 @@ export const POSES = {
     kneeL:     { x: -58, y: 0, z: 0 },
     footL:     { x: 30, y: 0, z: 0 },
   },
+
+  rearForehandContact: {
+    rootLift: -0.14,
+    chest:     { x: 10, y: 4, z: 0 },
+    head:      { x: 0, y: -4, z: 0 },
+    shoulderR: { x: 90, y: 10, z: 10 },
+    elbowR:    { x: -34, y: 0, z: 0 },
+    handR:     { x: -6, y: 0, z: 0 },
+    shoulderL: { x: 34, y: 0, z: -14 },
+    elbowL:    { x: -68, y: 0, z: 0 },
+    hipR:      { x: 26, y: 0, z: 0 },
+    kneeR:     { x: -56, y: 0, z: 0 },
+    footR:     { x: 28, y: 0, z: 0 },
+    hipL:      { x: 32, y: 0, z: 0 },
+    kneeL:     { x: -62, y: 0, z: 0 },
+    footL:     { x: 30, y: 0, z: 0 },
+  },
   forehandFollow: {
     rootLift: -0.10,
     chest:     { x: 10, y: -48, z: 0 },   // 左へ振り抜き（uncoil）
@@ -106,6 +157,23 @@ export const POSES = {
     footR:     { x: 26, y: 0, z: 0 },
     hipL:      { x: 28, y: 0, z: 0 },
     kneeL:     { x: -56, y: 0, z: 0 },
+    footL:     { x: 28, y: 0, z: 0 },
+  },
+
+  rearForehandFollow: {
+    rootLift: -0.14,
+    chest:     { x: 12, y: -34, z: 0 },
+    head:      { x: 0, y: 20, z: 0 },
+    shoulderR: { x: 78, y: 16, z: -24 },
+    elbowR:    { x: -86, y: 0, z: 0 },
+    handR:     { x: -14, y: 0, z: 0 },
+    shoulderL: { x: 22, y: 0, z: -8 },
+    elbowL:    { x: -56, y: 0, z: 0 },
+    hipR:      { x: 24, y: 0, z: 0 },
+    kneeR:     { x: -52, y: 0, z: 0 },
+    footR:     { x: 26, y: 0, z: 0 },
+    hipL:      { x: 28, y: 0, z: 0 },
+    kneeL:     { x: -58, y: 0, z: 0 },
     footL:     { x: 28, y: 0, z: 0 },
   },
 
@@ -163,10 +231,15 @@ export const POSES = {
 
 // スイングの3キーフレーム（phase 0..1）。impact がやや早め。
 const SWING_KEYS = {
-  fore: [
+  frontFore: [
     { p: 0.0, pose: "forehandTakeback" },
     { p: 0.40, pose: "forehandContact" },
     { p: 1.0, pose: "forehandFollow" },
+  ],
+  rearFore: [
+    { p: 0.0, pose: "rearForehandTakeback" },
+    { p: 0.42, pose: "rearForehandContact" },
+    { p: 1.0, pose: "rearForehandFollow" },
   ],
   back: [
     { p: 0.0, pose: "backhandTakeback" },
@@ -289,8 +362,10 @@ export function swingPhaseOf(pl) {
 }
 
 /** phase に応じ、SWING_KEYS の隣接2キーフレームを補間して joints へ適用。 */
-export function applySwingPhase(joints, side, phase, baseHipY) {
-  const keys = SWING_KEYS[side] || SWING_KEYS.fore;
+export function applySwingPhase(joints, side, phase, baseHipY, isFront) {
+  const keys = side === "back"
+    ? SWING_KEYS.back
+    : (isFront ? SWING_KEYS.frontFore : SWING_KEYS.rearFore);
   let i = 0;
   while (i < keys.length - 1 && phase > keys[i + 1].p) i++;
   const k0 = keys[i];
@@ -308,7 +383,11 @@ export function applySwingPhase(joints, side, phase, baseHipY) {
  */
 export function poseNameForPlayer(pl, isFront) {
   const p = pl && pl.pose;
-  if (p === "prep") return pl.swingSide === "back" ? "backhandTakeback" : "forehandTakeback";
-  if (p === "volley") return "forehandVolleyTakeback";
-  return "ready";
+  const front = !!isFront;
+  if (p === "prep") {
+    if (pl.swingSide === "back") return "backhandTakeback";
+    return front ? "forehandTakeback" : "rearForehandTakeback";
+  }
+  if (p === "volley") return front ? "forehandVolleyTakeback" : "rearReady";
+  return front ? "ready" : "rearReady";
 }
