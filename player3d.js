@@ -15,7 +15,7 @@ import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
 import { back, front, cpuBack, cpuFront } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
-import { applyPose, poseNameForPlayer } from "./animation3d.js";
+import { applyPose, resolvePose } from "./animation3d.js";
 
 let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
@@ -99,10 +99,17 @@ function setColors(pl) {
   char.materials.skin.color.set(pl.skin || 0xf1c7a8);
 }
 
-function updateBlend(pl, dt) {
+// 非スイング状態の遷移を a→b で平滑化。スイング中はフェーズ駆動が直接確定するため、
+// 復帰時に前ポーズへ滑らかに戻れるよう b を即時追従させておく。
+function updateBlend(pl, targetName, dt, swinging) {
   const b = getBlend(pl);
-  const target = poseNameForPlayer(pl);
-  if (target !== b.b) { b.a = b.b; b.b = target; b.t = 0; }
+  if (swinging) {
+    // スイング中はブレンドを使わない。復帰直後の起点を最新に保つ。
+    b.a = b.b = targetName || b.b;
+    b.t = 1;
+    return b;
+  }
+  if (targetName !== b.b) { b.a = b.b; b.b = targetName; b.t = 0; }
   b.t = Math.min(1, b.t + dt * 6); // 補間速度
   return b;
 }
@@ -143,8 +150,11 @@ export function render3D() {
     // カメラ正対：手前側(facing>0)はそのまま、奥側(facing<0)は後ろ向きに
     char.group.rotation.y = (pl.facing < 0) ? Math.PI : 0;
 
-    const b = updateBlend(pl, dt);
-    applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
+    const isFront = (pl === front || pl === cpuFront);
+    const r = resolvePose(pl, char.joints, BASE_HIP_Y, isFront);
+    const b = updateBlend(pl, r.name, dt, r.swinging);
+    // スイング中は resolvePose が joints を確定済み。それ以外は遷移ブレンドを適用。
+    if (!r.swinging) applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);
