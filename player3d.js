@@ -138,8 +138,10 @@ export function render3D() {
 
     setColors(pl);
 
-    // 左利きは左右反転（プロト：group を X 反転）
-    char.group.scale.x = (pl.stats && pl.stats.handed === "left") ? -1 : 1;
+    // ラケットはモデルの +x 側に付くが、モデルは前方=+z で組まれているため
+    // +x は解剖学的な左側。右利きを正しく「右手持ち」にするには X 反転が要る。
+    // （左利きは反転なしで +x=左手のまま）
+    char.group.scale.x = (pl.stats && pl.stats.handed === "left") ? 1 : -1;
     // カメラ正対：手前側(facing>0)はそのまま、奥側(facing<0)は後ろ向きに
     char.group.rotation.y = (pl.facing < 0) ? Math.PI : 0;
 
