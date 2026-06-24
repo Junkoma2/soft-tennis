@@ -21,7 +21,7 @@ let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
 let initialized = false;
 let lastTime = 0;
-const BASE_HIP_Y = 0.78;
+const BASE_HIP_Y = 0.86; // simpleCharacter3d の hipY と一致させる（脚を伸ばした分）
 
 // 各選手のポーズ補間状態
 const blendState = new Map();
@@ -34,7 +34,7 @@ function getBlend(pl) {
 // 見た目チューニング
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)
 const ASPECT = 0.62;     // ビューポート横/縦比
-const VH_K = 1.62;       // ビューポート縦 = s * VH_K
+const VH_K = 1.82;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.11;  // 足元がビューポート下から何割の位置に出るか
 
 export function isReady3D() { return initialized; }

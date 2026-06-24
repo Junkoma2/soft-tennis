@@ -89,11 +89,12 @@ export function createCharacter(opts) {
   const joints = {};
 
   // 寸法（デフォルメ：頭大きめ・胴太め・手足太め）
-  const hipY = 0.78;        // 骨盤の高さ
-  const torsoLen = 0.52;    // 骨盤→胸
-  const upperArm = 0.30, foreArm = 0.28, armR = 0.075;
-  const thigh = 0.40, shin = 0.38, legR = 0.10;
-  const headR = 0.20;
+  // Mii / Wii Sports Resort 風の比率へ：頭+10% 腕+15% 脚+10% 肩幅+15% 胴やや短め。
+  const hipY = 0.86;        // 骨盤の高さ（脚を伸ばした分だけ持ち上げ、足を接地させる）
+  const torsoLen = 0.47;    // 骨盤→胸（やや短く）
+  const upperArm = 0.345, foreArm = 0.322, armR = 0.075;
+  const thigh = 0.44, shin = 0.418, legR = 0.10;
+  const headR = 0.22;
 
   // root（足元）→ pelvis
   const pelvis = makePivot(0, hipY, 0);
@@ -140,8 +141,8 @@ export function createCharacter(opts) {
     head.add(eye);
   });
 
-  // 肩幅・股幅
-  const shoulderX = 0.26, hipX = 0.13;
+  // 肩幅・股幅（肩幅+15%）
+  const shoulderX = 0.30, hipX = 0.13;
   const chestTopY = -0.02; // chest 原点付近に肩
 
   // ---- 右腕 ----

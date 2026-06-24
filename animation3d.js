@@ -15,38 +15,43 @@ const D = Math.PI / 180;
 
 // rootLift: 骨盤 y のオフセット（負で重心を落とす＝しゃがむ）
 export const POSES = {
+  // 構え：直立厳禁。膝・股関節を曲げ、約18°前傾し低重心。
+  // ラケットは顔の横〜胸の前に高く保ち（腰へ下げない）、左手を軽く添える。
   ready: {
-    rootLift: -0.10,
-    chest:     { x: 14, y: 0,  z: 0 },
-    head:      { x: 4,  y: 0,  z: 0 },
-    shoulderR: { x: 72, y: 0,  z: 16 },
-    elbowR:    { x: -98, y: 0, z: 0 },
-    handR:     { x: -10, y: 0, z: 0 },
-    shoulderL: { x: 70, y: 0,  z: -20 },
-    elbowL:    { x: -104, y: 0, z: 0 },
-    hipR:      { x: 24, y: 0,  z: 0 },
-    kneeR:     { x: -50, y: 0, z: 0 },
-    footR:     { x: 26, y: 0,  z: 0 },
-    hipL:      { x: 24, y: 0,  z: 0 },
-    kneeL:     { x: -50, y: 0, z: 0 },
-    footL:     { x: 26, y: 0,  z: 0 },
+    rootLift: -0.15,                     // 重心を落とす
+    chest:     { x: 16, y: 0,  z: 0 },   // 前傾 ~16°
+    head:      { x: -6, y: 0,  z: 0 },   // 前傾しても視線は前
+    // 両腕を高く前へ。abduction(z)は小さく抑え、両手を中央へ寄せて顔〜胸の前で構える。
+    shoulderR: { x: 82, y: 0,  z: 10 },  // 上腕を高く前へ
+    elbowR:    { x: -104, y: 0, z: 0 },  // 肘を深く曲げ、ヘッドを顔の高さへ
+    handR:     { x: -12, y: 0, z: 0 },
+    shoulderL: { x: 80, y: 0,  z: -12 }, // 左手をグリップへ添える
+    elbowL:    { x: -108, y: 0, z: 0 },
+    hipR:      { x: 32, y: 0,  z: 0 },   // 股関節を曲げる
+    kneeR:     { x: -62, y: 0, z: 0 },   // 膝を曲げる
+    footR:     { x: 32, y: 0,  z: 0 },
+    hipL:      { x: 32, y: 0,  z: 0 },
+    kneeL:     { x: -62, y: 0, z: 0 },
+    footL:     { x: 32, y: 0,  z: 0 },
   },
 
+  // フォアボレーのテイクバック：右肩を少し引き、ラケットを右耳後方へ。
+  // 左手で軽く支える。体は横向きになりすぎず、次の踏み込みに入れる低い姿勢。
   forehandVolleyTakeback: {
-    rootLift: -0.08,
-    chest:     { x: 10, y: 30, z: 0 },   // 上体を右へひねる
-    head:      { x: 2,  y: -18, z: 0 },  // 視線はボール（正面寄り）
-    shoulderR: { x: -34, y: 0, z: 26 },  // 右肩を引き上げる
-    elbowR:    { x: -120, y: 0, z: 0 },  // ラケットを右耳後方へ
-    handR:     { x: -20, y: 0, z: 0 },
-    shoulderL: { x: 54, y: 10, z: -22 }, // 左手で軽く支える
-    elbowL:    { x: -88, y: 0, z: 0 },
-    hipR:      { x: 22, y: 0, z: 0 },
-    kneeR:     { x: -46, y: 0, z: 0 },
-    footR:     { x: 24, y: 0, z: 0 },
-    hipL:      { x: 26, y: 0, z: 0 },
-    kneeL:     { x: -52, y: 0, z: 0 },
-    footL:     { x: 24, y: 0, z: 0 },
+    rootLift: -0.15,                     // 構えと同等に低く
+    chest:     { x: 16, y: 20, z: 0 },   // ひねりは控えめ（横向きになりすぎない）
+    head:      { x: -4, y: -14, z: 0 },  // 視線はボール（正面寄り）
+    shoulderR: { x: -26, y: 0, z: 24 },  // 右肩を少し引き上げる
+    elbowR:    { x: -116, y: 0, z: 0 },  // ラケットを右耳後方へ
+    handR:     { x: -18, y: 0, z: 0 },
+    shoulderL: { x: 56, y: 8, z: -24 },  // 左手で軽く支える
+    elbowL:    { x: -92, y: 0, z: 0 },
+    hipR:      { x: 34, y: 0, z: 0 },    // 踏み込みに入れる低い構え
+    kneeR:     { x: -66, y: 0, z: 0 },
+    footR:     { x: 32, y: 0, z: 0 },
+    hipL:      { x: 36, y: 0, z: 0 },
+    kneeL:     { x: -68, y: 0, z: 0 },
+    footL:     { x: 32, y: 0, z: 0 },
   },
 };
 
