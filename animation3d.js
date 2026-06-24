@@ -12,6 +12,7 @@
  */
 
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { TUNING } from "./config.js";
 
 const D = Math.PI / 180;
 
@@ -55,6 +56,123 @@ export const POSES = {
     kneeL:     { x: -68, y: 0, z: 0 },
     footL:     { x: 32, y: 0, z: 0 },
   },
+
+  // ===== フォアハンド・ストローク（水平に振り抜く「びんた」） =====
+  // 体のひねり(chest.y)で、肩の高さに保った腕＝ラケットを水平に薙ぎ払う。
+  // takeback(右へ大きくコイル) → contact(正面で腕を伸ばす) → follow(左へ振り抜く)。
+  forehandTakeback: {
+    rootLift: -0.12,
+    chest:     { x: 10, y: 50,  z: 0 },   // 右へコイル（+y で右腕が後ろ -z へ）
+    head:      { x: -2, y: -36, z: 0 },   // 視線はボール（正面）
+    shoulderR: { x: 84, y: -6, z: 30 },   // 腕を肩の高さで右後方へ
+    elbowR:    { x: -76, y: 0, z: 0 },     // 肘を曲げ、ヘッドを後方へ立てる
+    handR:     { x: -16, y: 0, z: 0 },
+    shoulderL: { x: 32, y: 0, z: -34 },   // 左腕は前でバランス
+    elbowL:    { x: -60, y: 0, z: 0 },
+    hipR:      { x: 30, y: 0, z: 0 },      // 体重は後ろ脚(右)
+    kneeR:     { x: -58, y: 0, z: 0 },
+    footR:     { x: 30, y: 0, z: 0 },
+    hipL:      { x: 34, y: 0, z: 0 },
+    kneeL:     { x: -64, y: 0, z: 0 },
+    footL:     { x: 32, y: 0, z: 0 },
+  },
+  forehandContact: {
+    rootLift: -0.10,
+    chest:     { x: 8,  y: 2,  z: 0 },    // 正面まで戻す
+    head:      { x: 0,  y: 0,  z: 0 },
+    shoulderR: { x: 92, y: 8, z: 12 },    // 腕を前へ伸ばし、肩の高さで打点
+    elbowR:    { x: -26, y: 0, z: 0 },     // 肘がほぼ伸びる
+    handR:     { x: -6, y: 0, z: 0 },
+    shoulderL: { x: 36, y: 0, z: -18 },
+    elbowL:    { x: -72, y: 0, z: 0 },
+    hipR:      { x: 26, y: 0, z: 0 },      // 体重は前脚(左)へ
+    kneeR:     { x: -52, y: 0, z: 0 },
+    footR:     { x: 28, y: 0, z: 0 },
+    hipL:      { x: 30, y: 0, z: 0 },
+    kneeL:     { x: -58, y: 0, z: 0 },
+    footL:     { x: 30, y: 0, z: 0 },
+  },
+  forehandFollow: {
+    rootLift: -0.10,
+    chest:     { x: 10, y: -48, z: 0 },   // 左へ振り抜き（uncoil）
+    head:      { x: 0,  y: 28, z: 0 },
+    shoulderR: { x: 80, y: 22, z: -34 },  // 腕が左へ薙ぎ払われる（肩の高さ維持）
+    elbowR:    { x: -94, y: 0, z: 0 },     // 左肩越しに巻き取る
+    handR:     { x: -16, y: 0, z: 0 },
+    shoulderL: { x: 24, y: 0, z: -8 },
+    elbowL:    { x: -58, y: 0, z: 0 },
+    hipR:      { x: 24, y: 0, z: 0 },
+    kneeR:     { x: -50, y: 0, z: 0 },
+    footR:     { x: 26, y: 0, z: 0 },
+    hipL:      { x: 28, y: 0, z: 0 },
+    kneeL:     { x: -56, y: 0, z: 0 },
+    footL:     { x: 28, y: 0, z: 0 },
+  },
+
+  // ===== バックハンド・ストローク（水平に振り抜く） =====
+  // フォアの鏡。左へコイル → 正面 → 右へ振り抜く。
+  backhandTakeback: {
+    rootLift: -0.12,
+    chest:     { x: 10, y: -44, z: 0 },   // 左へコイル
+    head:      { x: -2, y: 32, z: 0 },
+    shoulderR: { x: 72, y: 0, z: 64 },    // 右腕を体の左前へ引き込む
+    elbowR:    { x: -90, y: 0, z: 0 },
+    handR:     { x: -14, y: 0, z: 0 },
+    shoulderL: { x: 40, y: 0, z: -50 },   // 左手で支える
+    elbowL:    { x: -84, y: 0, z: 0 },
+    hipR:      { x: 32, y: 0, z: 0 },
+    kneeR:     { x: -62, y: 0, z: 0 },
+    footR:     { x: 30, y: 0, z: 0 },
+    hipL:      { x: 30, y: 0, z: 0 },
+    kneeL:     { x: -58, y: 0, z: 0 },
+    footL:     { x: 30, y: 0, z: 0 },
+  },
+  backhandContact: {
+    rootLift: -0.10,
+    chest:     { x: 8,  y: 0,  z: 0 },
+    head:      { x: 0,  y: 0,  z: 0 },
+    shoulderR: { x: 88, y: 0, z: 22 },    // 体の前で腕を伸ばす
+    elbowR:    { x: -28, y: 0, z: 0 },
+    handR:     { x: -6, y: 0, z: 0 },
+    shoulderL: { x: 42, y: 0, z: -24 },
+    elbowL:    { x: -60, y: 0, z: 0 },
+    hipR:      { x: 26, y: 0, z: 0 },
+    kneeR:     { x: -52, y: 0, z: 0 },
+    footR:     { x: 28, y: 0, z: 0 },
+    hipL:      { x: 28, y: 0, z: 0 },
+    kneeL:     { x: -54, y: 0, z: 0 },
+    footL:     { x: 28, y: 0, z: 0 },
+  },
+  backhandFollow: {
+    rootLift: -0.10,
+    chest:     { x: 10, y: 42, z: 0 },    // 右へ振り抜き
+    head:      { x: 0,  y: -26, z: 0 },
+    shoulderR: { x: 82, y: -12, z: -12 }, // 腕が右へ薙ぎ払われる
+    elbowR:    { x: -66, y: 0, z: 0 },
+    handR:     { x: -12, y: 0, z: 0 },
+    shoulderL: { x: 28, y: 0, z: -10 },
+    elbowL:    { x: -54, y: 0, z: 0 },
+    hipR:      { x: 24, y: 0, z: 0 },
+    kneeR:     { x: -50, y: 0, z: 0 },
+    footR:     { x: 26, y: 0, z: 0 },
+    hipL:      { x: 26, y: 0, z: 0 },
+    kneeL:     { x: -52, y: 0, z: 0 },
+    footL:     { x: 26, y: 0, z: 0 },
+  },
+};
+
+// スイングの3キーフレーム（phase 0..1）。impact がやや早め。
+const SWING_KEYS = {
+  fore: [
+    { p: 0.0, pose: "forehandTakeback" },
+    { p: 0.40, pose: "forehandContact" },
+    { p: 1.0, pose: "forehandFollow" },
+  ],
+  back: [
+    { p: 0.0, pose: "backhandTakeback" },
+    { p: 0.40, pose: "backhandContact" },
+    { p: 1.0, pose: "backhandFollow" },
+  ],
 };
 
 const JOINT_NAMES = [
@@ -160,10 +278,37 @@ export function applyLeftHandGrip(joints, dims, root3D) {
   elbowL.rotation.set(-(Math.PI - elbowAng), 0, 0);
 }
 
-/** 状態 pose 文字列 → 使用するポーズ名（プロトタイプ用の最小マッピング） */
-export function poseNameForPlayer(pl) {
+/* ========================================================
+ * スイング位相（swingT 由来）
+ * ======================================================== */
+
+/** swingT(残り時間) → phase 0..1（0=テイクバック開始, 1=振り抜き終了）。 */
+export function swingPhaseOf(pl) {
+  const dur = (TUNING.tempo && TUNING.tempo.swingDuration) || 0.42;
+  return Math.max(0, Math.min(1, 1 - (pl.swingT || 0) / dur));
+}
+
+/** phase に応じ、SWING_KEYS の隣接2キーフレームを補間して joints へ適用。 */
+export function applySwingPhase(joints, side, phase, baseHipY) {
+  const keys = SWING_KEYS[side] || SWING_KEYS.fore;
+  let i = 0;
+  while (i < keys.length - 1 && phase > keys[i + 1].p) i++;
+  const k0 = keys[i];
+  const k1 = keys[Math.min(i + 1, keys.length - 1)];
+  const span = k1.p - k0.p;
+  const t = span > 0 ? (phase - k0.p) / span : 0;
+  applyPose(joints, k0.pose, k1.pose, Math.max(0, Math.min(1, t)), baseHipY);
+}
+
+/**
+ * 状態 pose → 使用する静的ポーズ名（スイング以外）。
+ * - prep（ため／テイクバック）: フォア/バックのテイクバック
+ * - volley（前衛ボレー）: フォアボレーのテイクバック（両手）
+ * - その他（idle/ready/recover）: 構え
+ */
+export function poseNameForPlayer(pl, isFront) {
   const p = pl && pl.pose;
-  if (p === "swing" && pl.swingSide === "fore") return "forehandVolleyTakeback";
-  // 将来：volley/serve/back 等をここで分岐
+  if (p === "prep") return pl.swingSide === "back" ? "backhandTakeback" : "forehandTakeback";
+  if (p === "volley") return "forehandVolleyTakeback";
   return "ready";
 }

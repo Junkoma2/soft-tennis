@@ -15,7 +15,10 @@ import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
 import { back, front, cpuBack, cpuFront } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
-import { applyPose, poseNameForPlayer, applyLeftHandGrip } from "./animation3d.js";
+import {
+  applyPose, poseNameForPlayer, applyLeftHandGrip,
+  swingPhaseOf, applySwingPhase,
+} from "./animation3d.js";
 
 let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
@@ -99,12 +102,18 @@ function setColors(pl) {
   char.materials.skin.color.set(pl.skin || 0xf1c7a8);
 }
 
-function updateBlend(pl, dt) {
+function updateBlend(pl, targetName, dt) {
   const b = getBlend(pl);
-  const target = poseNameForPlayer(pl);
-  if (target !== b.b) { b.a = b.b; b.b = target; b.t = 0; }
+  if (targetName !== b.b) { b.a = b.b; b.b = targetName; b.t = 0; }
   b.t = Math.min(1, b.t + dt * 6); // 補間速度
   return b;
+}
+
+// スイング中はブレンドを使わずフェーズ駆動で確定するが、抜けた直後に
+// フォロースルーから滑らかに構えへ戻れるよう、ブレンド起点を follow に固定。
+function pinBlend(pl, name) {
+  const b = getBlend(pl);
+  b.a = b.b = name; b.t = 1;
 }
 
 export function render3D() {
@@ -145,10 +154,21 @@ export function render3D() {
     // カメラ正対：手前側(facing>0)はそのまま、奥側(facing<0)は後ろ向きに
     char.group.rotation.y = (pl.facing < 0) ? Math.PI : 0;
 
-    const b = updateBlend(pl, dt);
-    applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
-    // 右手のグリップへ左手を合わせる（両手構え）
-    applyLeftHandGrip(char.joints, char.group.userData.dims, char.group);
+    if (pl.pose === "swing") {
+      // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
+      const side = pl.swingSide === "back" ? "back" : "fore";
+      applySwingPhase(char.joints, side, swingPhaseOf(pl), BASE_HIP_Y);
+      pinBlend(pl, side === "back" ? "backhandFollow" : "forehandFollow");
+      // 振り抜き中は片手（左手IKは当てない）
+    } else {
+      const name = poseNameForPlayer(pl);
+      const b = updateBlend(pl, name, dt);
+      applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
+      // 構え・ボレーのみ左手をグリップへ添える（両手構え）
+      if (name === "ready" || name === "forehandVolleyTakeback") {
+        applyLeftHandGrip(char.joints, char.group.userData.dims, char.group);
+      }
+    }
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);
