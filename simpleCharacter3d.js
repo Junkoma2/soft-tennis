@@ -53,6 +53,18 @@ function makeRacket(frameMat, gripMat) {
   shaft.position.y = 0.28;
   racket.add(shaft);
 
+  // スロート（三角部分）。左手を添える位置もここに置く。
+  const throatLen = 0.15;
+  [-1, 1].forEach((side) => {
+    const throatBar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, throatLen, 8), frameMat);
+    throatBar.position.set(side * 0.048, 0.405, 0);
+    throatBar.rotation.z = side * -0.70;
+    racket.add(throatBar);
+  });
+  const throatTarget = makePivot(0, 0.405, 0.025);
+  racket.add(throatTarget);
+  racket.userData.throatTarget = throatTarget;
+
   // フレーム（楕円リング）: TorusGeometry を縦長にスケール
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.022, 10, 28), frameMat);
   ring.position.y = 0.52;
@@ -96,14 +108,21 @@ export function createCharacter(opts) {
   const thigh = 0.44, shin = 0.418, legR = 0.10;
   const headR = 0.22;
 
+  // 足元を支点に全身を傾けるルート。後衛の構えはここで足首から前傾させる。
+  const leanRoot = makePivot(0, 0, 0);
+  joints.leanRoot = leanRoot;
+  group.add(leanRoot);
+
   // root（足元）→ pelvis
   const pelvis = makePivot(0, hipY, 0);
   joints.pelvis = pelvis;
-  group.add(pelvis);
+  leanRoot.add(pelvis);
 
   // 骨盤（丸い箱）
   const pelvisMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.20, 0.10, 6, 14), materials.shorts);
   pelvisMesh.rotation.z = Math.PI / 2;
+  // モデルの正面は +Z。骨盤の量感は背面(-Z)へ寄せ、お尻の位置を明確にする。
+  pelvisMesh.position.z = -0.055;
   pelvisMesh.scale.set(1, 1.2, 0.9);
   pelvisMesh.castShadow = true;
   pelvis.add(pelvisMesh);
@@ -130,16 +149,21 @@ export function createCharacter(opts) {
   headMesh.scale.set(0.95, 1.05, 0.95);
   head.add(headMesh);
   // 髪（上半球）
-  const hairMesh = new THREE.Mesh(new THREE.SphereGeometry(headR * 1.02, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), materials.hair);
-  hairMesh.position.y = headR * 0.12;
+  // 額までの浅いキャップに留め、正面(+Z)の目を覆わない。
+  const hairMesh = new THREE.Mesh(new THREE.SphereGeometry(headR * 1.02, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.42), materials.hair);
+  hairMesh.position.y = headR * 0.10;
   head.add(hairMesh);
   // 目（簡易）
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
   [-1, 1].forEach((sx) => {
     const eye = makeSphere(eyeMat, headR * 0.10, 8);
-    eye.position.set(sx * headR * 0.35, headR * 0.05, headR * 0.9);
+    eye.position.set(sx * headR * 0.35, headR * 0.02, headR * 0.97);
     head.add(eye);
   });
+  // 小さな鼻で正面を一目で判別できるようにする。
+  const nose = makeSphere(materials.skin, headR * 0.075, 8);
+  nose.position.set(0, -headR * 0.08, headR * 0.99);
+  head.add(nose);
 
   // 肩幅・股幅（肩幅+15%）
   const shoulderX = 0.30, hipX = 0.13;
@@ -153,6 +177,7 @@ export function createCharacter(opts) {
   const elbowR = makePivot(0, -upperArm, 0);
   joints.elbowR = elbowR;
   shoulderR.add(elbowR);
+  elbowR.add(makeSphere(materials.skin, armR * 0.92, 10));
   elbowR.add(makeLimb(materials.skin, armR * 0.92, armR * 0.8, foreArm));
   const handR = makePivot(0, -foreArm, 0);
   joints.handR = handR;
@@ -162,6 +187,7 @@ export function createCharacter(opts) {
   const racket = makeRacket(materials.racket, materials.grip);
   racket.position.y = -armR * 0.5;
   joints.racket = racket;
+  joints.racketThroat = racket.userData.throatTarget;
   handR.add(racket);
 
   // ---- 左腕 ----
@@ -172,6 +198,7 @@ export function createCharacter(opts) {
   const elbowL = makePivot(0, -upperArm, 0);
   joints.elbowL = elbowL;
   shoulderL.add(elbowL);
+  elbowL.add(makeSphere(materials.skin, armR * 0.92, 10));
   elbowL.add(makeLimb(materials.skin, armR * 0.92, armR * 0.8, foreArm));
   const handL = makePivot(0, -foreArm, 0);
   joints.handL = handL;
@@ -186,14 +213,18 @@ export function createCharacter(opts) {
   const kneeR = makePivot(0, -thigh, 0);
   joints.kneeR = kneeR;
   hipR.add(kneeR);
+  kneeR.add(makeSphere(materials.skin, legR * 0.88, 10));
   kneeR.add(makeLimb(materials.skin, legR * 0.85, legR * 0.7, shin));
   const footR = makePivot(0, -shin, 0);
   joints.footR = footR;
   kneeR.add(footR);
   const footRMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.10, 4, 8), materials.shorts);
   footRMesh.rotation.x = Math.PI / 2;
+  footRMesh.position.y = 0.075;
   footRMesh.position.z = 0.05;
   footRMesh.castShadow = true;
+  footRMesh.userData.groundRadius = 0.08;
+  joints.shoeR = footRMesh;
   footR.add(footRMesh);
 
   // ---- 左脚 ----
@@ -204,14 +235,18 @@ export function createCharacter(opts) {
   const kneeL = makePivot(0, -thigh, 0);
   joints.kneeL = kneeL;
   hipL.add(kneeL);
+  kneeL.add(makeSphere(materials.skin, legR * 0.88, 10));
   kneeL.add(makeLimb(materials.skin, legR * 0.85, legR * 0.7, shin));
   const footL = makePivot(0, -shin, 0);
   joints.footL = footL;
   kneeL.add(footL);
   const footLMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.10, 4, 8), materials.shorts);
   footLMesh.rotation.x = Math.PI / 2;
+  footLMesh.position.y = 0.075;
   footLMesh.position.z = 0.05;
   footLMesh.castShadow = true;
+  footLMesh.userData.groundRadius = 0.08;
+  joints.shoeL = footLMesh;
   footL.add(footLMesh);
 
   // 接地影（簡易ブロブ）

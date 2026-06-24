@@ -1,8 +1,9 @@
 /**
  * 3D キャラのポーズ定義と補間
  *
- * 各ポーズは関節ごとの回転角（度）。limb ピボットは既定で -y（下）を向くので、
- * rotation.x が正 = 先端が後ろ(-z)へ / 負 = 前(+z, カメラ側)へ動く。
+ * 各ポーズは関節ごとの回転角（度）。モデルの正面は +z。
+ * 胸・頭は Three.js の回転をそのまま使い、下向き(-y)に伸びる手足は適用時に
+ * X 回転を反転する。これによりポーズ値では正を「前へ曲げる」として扱える。
  * 右利き前衛・カメラ正対を基準にしている。
  *
  * まずは ready と forehandVolleyTakeback の 2 ポーズ。
@@ -25,7 +26,7 @@ export const POSES = {
     chest:     { x: 16, y: 0,  z: 0 },   // 前傾 ~16°
     head:      { x: -6, y: 0,  z: 0 },   // 前傾しても視線は前
     // 両腕を高く前へ。abduction(z)は小さく抑え、両手を中央へ寄せて顔〜胸の前で構える。
-    shoulderR: { x: 82, y: 0,  z: 10 },  // 上腕を高く前へ
+    shoulderR: { x: 82, y: 0,  z: -26 }, // ラケットを身体中央の正面へ
     elbowR:    { x: -104, y: 0, z: 0 },  // 肘を深く曲げ、ヘッドを顔の高さへ
     handR:     { x: -12, y: 0, z: 0 },
     shoulderL: { x: 80, y: 0,  z: -12 }, // 左手をグリップへ添える
@@ -39,20 +40,21 @@ export const POSES = {
   },
 
   rearReady: {
-    rootLift: -0.19,
-    chest:     { x: 12, y: 12, z: 0 },
-    head:      { x: -4, y: -10, z: 0 },
-    shoulderR: { x: 72, y: 6,  z: 14 },
+    bodyLean: 12,
+    rootLift: -0.08,
+    chest:     { x: 0, y: 0, z: 0 },
+    head:      { x: 0, y: 0, z: 0 },
+    shoulderR: { x: 72, y: 6,  z: -28 },
     elbowR:    { x: -90, y: 0, z: 0 },
-    handR:     { x: -12, y: 0, z: 0 },
+    handR:     { x: 15, y: 0, z: 0 },
     shoulderL: { x: 46, y: 8,  z: -18 },
     elbowL:    { x: -74, y: 0, z: 0 },
-    hipR:      { x: 30, y: 0,  z: 0 },
-    kneeR:     { x: -70, y: 0, z: 0 },
-    footR:     { x: 28, y: 0,  z: 0 },
-    hipL:      { x: 34, y: 0,  z: 0 },
-    kneeL:     { x: -66, y: 0, z: 0 },
-    footL:     { x: 30, y: 0,  z: 0 },
+    hipR:      { x: 14, y: 0,  z: 14 },
+    kneeR:     { x: -28, y: 0, z: 0 },
+    footR:     { x: 26, y: 0,  z: 0 },
+    hipL:      { x: 14, y: 0,  z: -14 },
+    kneeL:     { x: -28, y: 0, z: 0 },
+    footL:     { x: 26, y: 0,  z: 0 },
   },
 
   // フォアボレーのテイクバック：右肩を少し引き、ラケットを右耳後方へ。
@@ -61,9 +63,9 @@ export const POSES = {
     rootLift: -0.15,                     // 構えと同等に低く
     chest:     { x: 16, y: 20, z: 0 },   // ひねりは控えめ（横向きになりすぎない）
     head:      { x: -4, y: -14, z: 0 },  // 視線はボール（正面寄り）
-    shoulderR: { x: -26, y: 0, z: 24 },  // 右肩を少し引き上げる
-    elbowR:    { x: -116, y: 0, z: 0 },  // ラケットを右耳後方へ
-    handR:     { x: -18, y: 0, z: 0 },
+    shoulderR: { x: 60, y: 0, z: 8 },    // 腕を身体の前に保って軽く右へ引く
+    elbowR:    { x: -90, y: 0, z: 0 },   // 肘を畳み、ラケットヘッドを上へ
+    handR:     { x: -12, y: 0, z: 0 },
     shoulderL: { x: 56, y: 8, z: -24 },  // 左手で軽く支える
     elbowL:    { x: -92, y: 0, z: 0 },
     hipR:      { x: 34, y: 0, z: 0 },    // 踏み込みに入れる低い構え
@@ -95,20 +97,23 @@ export const POSES = {
   },
 
   rearForehandTakeback: {
-    rootLift: -0.17,
-    chest:     { x: 18, y: 30, z: 0 },
-    head:      { x: -4, y: -14, z: 0 },
-    shoulderR: { x: 90, y: -4, z: 22 },
-    elbowR:    { x: -76, y: 0, z: 0 },
-    handR:     { x: -12, y: 0, z: 0 },
-    shoulderL: { x: 30, y: 4, z: -26 },
-    elbowL:    { x: -64, y: 0, z: 0 },
-    hipR:      { x: 28, y: 0, z: 0 },
-    kneeR:     { x: -64, y: 0, z: 0 },
-    footR:     { x: 30, y: 0, z: 0 },
-    hipL:      { x: 38, y: 0, z: 0 },
-    kneeL:     { x: -72, y: 0, z: 0 },
-    footL:     { x: 32, y: 0, z: 0 },
+    bodyLean: 11,
+    rootLift: -0.09,
+    rootShiftX: 0.055,
+    pelvisTurn: 12,
+    chest:     { x: 1, y: 34, z: 0 },
+    head:      { x: -1, y: -22, z: 0 },
+    shoulderR: { x: 64, y: -12, z: 26 },
+    elbowR:    { x: -108, y: 0, z: 0 },
+    handR:     { x: -18, y: 0, z: 0 },
+    shoulderL: { x: 88, y: -8, z: -14 },
+    elbowL:    { x: -10, y: 0, z: 0 },
+    hipR:      { x: 18, y: 0, z: 16 },
+    kneeR:     { x: -38, y: 0, z: 0 },
+    footR:     { x: 24, y: 0, z: 0 },
+    hipL:      { x: 12, y: 0, z: -16 },
+    kneeL:     { x: -26, y: 0, z: 0 },
+    footL:     { x: 20, y: 0, z: 0 },
   },
   forehandContact: {
     rootLift: -0.10,
@@ -128,6 +133,7 @@ export const POSES = {
   },
 
   rearForehandContact: {
+    bodyLean: 6,
     rootLift: -0.14,
     chest:     { x: 10, y: 4, z: 0 },
     head:      { x: 0, y: -4, z: 0 },
@@ -161,6 +167,7 @@ export const POSES = {
   },
 
   rearForehandFollow: {
+    bodyLean: 8,
     rootLift: -0.14,
     chest:     { x: 12, y: -34, z: 0 },
     head:      { x: 0, y: 20, z: 0 },
@@ -253,13 +260,40 @@ const JOINT_NAMES = [
   "shoulderL", "elbowL", "hipR", "kneeR", "footR", "hipL", "kneeL", "footL",
 ];
 
+// 腕と脚のメッシュは各ピボットから local -Y へ伸びる。
+// そのため、上向きに連なる胸・頭とは X 回転の前後が逆になる。
+// ポーズ定義は「正=前へ曲げる」の感覚で保ち、適用時にだけ反転する。
+const DOWNWARD_LIMB_JOINTS = new Set([
+  "shoulderR", "elbowR", "shoulderL", "elbowL",
+  "hipR", "kneeR", "footR", "hipL", "kneeL", "footL",
+]);
+
 function lerp(a, b, t) { return a + (b - a) * t; }
 
-function lerpEuler(jointPose, ea, eb, t) {
+const _shoeWorld = new THREE.Vector3();
+
+function alignShoesToGround(joints) {
+  const { pelvis, leanRoot, shoeR, shoeL } = joints;
+  if (!pelvis || !shoeR || !shoeL) return;
+
+  pelvis.updateWorldMatrix(true, true);
+  let lowest = Infinity;
+  for (const shoe of [shoeR, shoeL]) {
+    shoe.getWorldPosition(_shoeWorld);
+    lowest = Math.min(lowest, _shoeWorld.y - (shoe.userData.groundRadius || 0));
+  }
+
+  // leanRoot の傾きで local Y と world Y に差が出るため補正する。
+  const yProjection = leanRoot ? Math.max(0.25, Math.abs(Math.cos(leanRoot.rotation.x))) : 1;
+  pelvis.position.y += (0.01 - lowest) / yProjection;
+}
+
+function lerpEuler(name, jointPose, ea, eb, t) {
   ea = ea || { x: 0, y: 0, z: 0 };
   eb = eb || { x: 0, y: 0, z: 0 };
+  const xSign = DOWNWARD_LIMB_JOINTS.has(name) ? -1 : 1;
   jointPose.rotation.set(
-    lerp(ea.x, eb.x, t) * D,
+    lerp(ea.x, eb.x, t) * D * xSign,
     lerp(ea.y, eb.y, t) * D,
     lerp(ea.z, eb.z, t) * D
   );
@@ -277,50 +311,58 @@ export function applyPose(joints, poseAName, poseBName, t, baseHipY) {
   const A = POSES[poseAName] || POSES.ready;
   const B = POSES[poseBName] || A;
 
+  const leanA = A.bodyLean || 0;
+  const leanB = B.bodyLean || 0;
+  if (joints.leanRoot) joints.leanRoot.rotation.x = lerp(leanA, leanB, t) * D;
+
   for (const name of JOINT_NAMES) {
-    if (joints[name]) lerpEuler(joints[name], A[name], B[name], t);
+    if (joints[name]) lerpEuler(name, joints[name], A[name], B[name], t);
   }
 
   // 重心（骨盤 y）
   const liftA = A.rootLift || 0;
   const liftB = B.rootLift || 0;
   if (joints.pelvis) {
+    joints.pelvis.position.x = lerp(A.rootShiftX || 0, B.rootShiftX || 0, t);
     joints.pelvis.position.y = (baseHipY || 0.78) + lerp(liftA, liftB, t);
+    joints.pelvis.rotation.y = lerp(A.pelvisTurn || 0, B.pelvisTurn || 0, t) * D;
   }
+  alignShoesToGround(joints);
 }
 
 /* ========================================================
- * 左手をラケットのグリップへ合わせる簡易2ボーンIK
- * 右手(handR)の位置を chest ローカルで解き、左腕(shoulderL/elbowL)を
- * そこへ届かせる。これで「右手で握り、左手を添える」両手構えになる。
+ * 左手をラケットのスロート（三角部分）へ合わせる簡易2ボーンIK
+ * throat の位置を chest ローカルで解き、左腕(shoulderL/elbowL)を
+ * 身体の前からそこへ届かせる。
  * ======================================================== */
 const _vGrip = new THREE.Vector3();
 const _vTarget = new THREE.Vector3();
 const _vRoot = new THREE.Vector3();
 const _vAim = new THREE.Vector3();
-const _vAxis = new THREE.Vector3();
-const _vElbowDir = new THREE.Vector3();
-const _vx = new THREE.Vector3();
-const _vy = new THREE.Vector3();
-const _vz = new THREE.Vector3();
-const _mBasis = new THREE.Matrix4();
-const _POLE = new THREE.Vector3(0, -0.2, 1); // 肘を前下方へ逃がす
-const _GRIP_DROP = 0.045;                     // 右手のわずか下（グリップ側）へ添える
+const _vPole = new THREE.Vector3();
+const _vElbowPos = new THREE.Vector3();
+const _vUpperDir = new THREE.Vector3();
+const _vLowerDir = new THREE.Vector3();
+const _vLocalLower = new THREE.Vector3();
+const _qShoulderInv = new THREE.Quaternion();
+const _DOWN = new THREE.Vector3(0, -1, 0);
+const _LEFT_ELBOW_POLE = new THREE.Vector3(-0.54, -0.36, 0.34);
 
 function clamp1(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
 export function applyLeftHandGrip(joints, dims, root3D) {
-  const { chest, handR, shoulderL, elbowL } = joints;
-  if (!chest || !handR || !shoulderL || !elbowL || !dims) return;
+  const { chest, handR, racketThroat, shoulderL, elbowL } = joints;
+  const supportTarget = racketThroat || handR;
+  if (!chest || !supportTarget || !shoulderL || !elbowL || !dims) return;
 
-  // 右手(グリップ)の現在位置を chest ローカルへ
+  // ラケットのスロート（三角部分）を chest ローカルへ。
   root3D.updateMatrixWorld(true);
-  handR.getWorldPosition(_vGrip);
+  supportTarget.getWorldPosition(_vGrip);
   _vTarget.copy(_vGrip);
   chest.worldToLocal(_vTarget);
-  _vTarget.y -= _GRIP_DROP;
+  _vTarget.z += 0.08; // 手と前腕を胴体表面より前へ出す
 
-  // shoulderL は chest の子。chest ローカルで2ボーンIKを解く。
+  // shoulderL は chest の子。肘を身体の外側かつ前方へ逃がして解く。
   _vRoot.copy(shoulderL.position);
   _vAim.copy(_vTarget).sub(_vRoot);
   const L1 = dims.upperArm, L2 = dims.foreArm;
@@ -329,26 +371,24 @@ export function applyLeftHandGrip(joints, dims, root3D) {
   _vAim.normalize();
 
   const shoulderAng = Math.acos(clamp1((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist)));
-  const elbowAng = Math.acos(clamp1((L1 * L1 + L2 * L2 - dist * dist) / (2 * L1 * L2)));
 
-  // 曲げ平面の法線（肘を _POLE 方向へ向ける）
-  _vAxis.copy(_vAim).cross(_POLE);
-  if (_vAxis.lengthSq() < 1e-6) _vAxis.set(1, 0, 0);
-  _vAxis.normalize();
+  // aim に直交する pole 成分を作り、その方向へ肘を置く。
+  _vPole.copy(_LEFT_ELBOW_POLE).sub(_vRoot);
+  _vPole.addScaledVector(_vAim, -_vPole.dot(_vAim));
+  if (_vPole.lengthSq() < 1e-6) _vPole.set(-1, 0, 1);
+  _vPole.normalize();
+  _vElbowPos.copy(_vRoot)
+    .addScaledVector(_vAim, Math.cos(shoulderAng) * L1)
+    .addScaledVector(_vPole, Math.sin(shoulderAng) * L1);
 
-  // 上腕方向：aim を肩角だけ _POLE 側へ持ち上げる
-  _vElbowDir.copy(_vAim).applyAxisAngle(_vAxis, shoulderAng);
+  _vUpperDir.copy(_vElbowPos).sub(_vRoot).normalize();
+  _vLowerDir.copy(_vTarget).sub(_vElbowPos).normalize();
 
-  // 肩の基底（local -y → elbowDir, local x → axis）
-  _vx.copy(_vAxis);
-  _vy.copy(_vElbowDir).negate();
-  _vz.copy(_vx).cross(_vy).normalize();
-  _vx.copy(_vy).cross(_vz).normalize();
-  _mBasis.makeBasis(_vx, _vy, _vz);
-  shoulderL.quaternion.setFromRotationMatrix(_mBasis);
-
-  // 肘：直線(π)から内側へ曲げる（ヒンジ=local x=axis）
-  elbowL.rotation.set(-(Math.PI - elbowAng), 0, 0);
+  // 上腕・前腕をそれぞれ解いた方向へ向ける。円柱なのでねじりは不要。
+  shoulderL.quaternion.setFromUnitVectors(_DOWN, _vUpperDir);
+  _qShoulderInv.copy(shoulderL.quaternion).invert();
+  _vLocalLower.copy(_vLowerDir).applyQuaternion(_qShoulderInv);
+  elbowL.quaternion.setFromUnitVectors(_DOWN, _vLocalLower);
 }
 
 /* ========================================================
