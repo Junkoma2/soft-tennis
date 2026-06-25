@@ -22,31 +22,34 @@ export const POSES = {
   // 構え：直立厳禁。膝・股関節を曲げ、約18°前傾し低重心。
   // ラケットは顔の横〜胸の前に高く保ち（腰へ下げない）、左手を軽く添える。
   ready: {
-    rootLift: -0.15,                     // 重心を落とす
-    chest:     { x: 16, y: 0,  z: 0 },   // 前傾 ~16°
-    head:      { x: -6, y: 0,  z: 0 },   // 前傾しても視線は前
+    bodyLean: 8,
+    rootLift: -0.06,
+    chest:     { x: 0, y: 0,  z: 0 },
+    head:      { x: 0, y: 0,  z: 0 },
     // 両腕を高く前へ。abduction(z)は小さく抑え、両手を中央へ寄せて顔〜胸の前で構える。
-    shoulderR: { x: 82, y: 0,  z: -26 }, // ラケットを身体中央の正面へ
-    elbowR:    { x: -104, y: 0, z: 0 },  // 肘を深く曲げ、ヘッドを顔の高さへ
-    handR:     { x: -12, y: 0, z: 0 },
+    shoulderR: { x: 38, y: 4,  z: -26 },
+    elbowR:    { x: -48, y: 0, z: 0 },
+    handR:     { x: 4, y: 0, z: 0 },
+    racket:    { x: 104, y: 0, z: 0 },
     shoulderL: { x: 80, y: 0,  z: -12 }, // 左手をグリップへ添える
     elbowL:    { x: -108, y: 0, z: 0 },
-    hipR:      { x: 32, y: 0,  z: 0 },   // 股関節を曲げる
-    kneeR:     { x: -62, y: 0, z: 0 },   // 膝を曲げる
-    footR:     { x: 32, y: 0,  z: 0 },
-    hipL:      { x: 32, y: 0,  z: 0 },
-    kneeL:     { x: -62, y: 0, z: 0 },
-    footL:     { x: 32, y: 0,  z: 0 },
+    hipR:      { x: 10, y: 0,  z: 12 },
+    kneeR:     { x: -22, y: 0, z: 0 },
+    footR:     { x: 20, y: 0,  z: 0 },
+    hipL:      { x: 10, y: 0,  z: -12 },
+    kneeL:     { x: -22, y: 0, z: 0 },
+    footL:     { x: 20, y: 0,  z: 0 },
   },
 
   rearReady: {
-    bodyLean: 12,
+    bodyLean: 8,
     rootLift: -0.08,
     chest:     { x: 0, y: 0, z: 0 },
     head:      { x: 0, y: 0, z: 0 },
-    shoulderR: { x: 72, y: 6,  z: -28 },
-    elbowR:    { x: -90, y: 0, z: 0 },
-    handR:     { x: 15, y: 0, z: 0 },
+    shoulderR: { x: 36, y: 6,  z: -28 },
+    elbowR:    { x: -48, y: 0, z: 0 },
+    handR:     { x: 4, y: 0, z: 0 },
+    racket:    { x: 102, y: 0, z: 0 },
     shoulderL: { x: 46, y: 8,  z: -18 },
     elbowL:    { x: -74, y: 0, z: 0 },
     hipR:      { x: 14, y: 0,  z: 14 },
@@ -60,54 +63,62 @@ export const POSES = {
   // フォアボレーのテイクバック：右肩を少し引き、ラケットを右耳後方へ。
   // 左手で軽く支える。体は横向きになりすぎず、次の踏み込みに入れる低い姿勢。
   forehandVolleyTakeback: {
-    rootLift: -0.15,                     // 構えと同等に低く
-    chest:     { x: 16, y: 20, z: 0 },   // ひねりは控えめ（横向きになりすぎない）
-    head:      { x: -4, y: -14, z: 0 },  // 視線はボール（正面寄り）
-    shoulderR: { x: 60, y: 0, z: 8 },    // 腕を身体の前に保って軽く右へ引く
-    elbowR:    { x: -90, y: 0, z: 0 },   // 肘を畳み、ラケットヘッドを上へ
-    handR:     { x: -12, y: 0, z: 0 },
+    bodyLean: 7,
+    rootLift: -0.07,
+    pelvisTurn: 6,
+    chest:     { x: 0, y: 12, z: 0 },
+    head:      { x: 0, y: -8, z: 0 },
+    shoulderR: { x: 46, y: -4, z: -20 },
+    elbowR:    { x: -54, y: 0, z: 0 },
+    handR:     { x: -6, y: 0, z: 0 },
+    racket:    { x: 92, y: 0, z: 0 },
     shoulderL: { x: 56, y: 8, z: -24 },  // 左手で軽く支える
     elbowL:    { x: -92, y: 0, z: 0 },
-    hipR:      { x: 34, y: 0, z: 0 },    // 踏み込みに入れる低い構え
-    kneeR:     { x: -66, y: 0, z: 0 },
-    footR:     { x: 32, y: 0, z: 0 },
-    hipL:      { x: 36, y: 0, z: 0 },
-    kneeL:     { x: -68, y: 0, z: 0 },
-    footL:     { x: 32, y: 0, z: 0 },
+    hipR:      { x: 12, y: 0, z: 12 },
+    kneeR:     { x: -26, y: 0, z: 0 },
+    footR:     { x: 20, y: 0, z: 0 },
+    hipL:      { x: 12, y: 0, z: -12 },
+    kneeL:     { x: -26, y: 0, z: 0 },
+    footL:     { x: 20, y: 0, z: 0 },
   },
 
   // ===== フォアハンド・ストローク（水平に振り抜く「びんた」） =====
   // 体のひねり(chest.y)で、肩の高さに保った腕＝ラケットを水平に薙ぎ払う。
   // takeback(右へ大きくコイル) → contact(正面で腕を伸ばす) → follow(左へ振り抜く)。
   forehandTakeback: {
-    rootLift: -0.12,
-    chest:     { x: 10, y: 50,  z: 0 },   // 右へコイル（+y で右腕が後ろ -z へ）
-    head:      { x: -2, y: -36, z: 0 },   // 視線はボール（正面）
-    shoulderR: { x: 84, y: -6, z: 30 },   // 腕を肩の高さで右後方へ
-    elbowR:    { x: -76, y: 0, z: 0 },     // 肘を曲げ、ヘッドを後方へ立てる
-    handR:     { x: -16, y: 0, z: 0 },
-    shoulderL: { x: 32, y: 0, z: -34 },   // 左腕は前でバランス
-    elbowL:    { x: -60, y: 0, z: 0 },
-    hipR:      { x: 30, y: 0, z: 0 },      // 体重は後ろ脚(右)
-    kneeR:     { x: -58, y: 0, z: 0 },
-    footR:     { x: 30, y: 0, z: 0 },
-    hipL:      { x: 34, y: 0, z: 0 },
-    kneeL:     { x: -64, y: 0, z: 0 },
-    footL:     { x: 32, y: 0, z: 0 },
+    bodyLean: 7,
+    rootLift: -0.07,
+    rootShiftX: 0.035,
+    pelvisTurn: 10,
+    chest:     { x: 0, y: 32, z: 0 },
+    head:      { x: 0, y: -22, z: 0 },
+    shoulderR: { x: 54, y: -14, z: 30 },
+    elbowR:    { x: -54, y: 0, z: 0 },
+    handR:     { x: -8, y: 0, z: 0 },
+    racket:    { x: 92, y: 0, z: 0 },
+    shoulderL: { x: 88, y: -8, z: -12 },
+    elbowL:    { x: -10, y: 0, z: 0 },
+    hipR:      { x: 14, y: 0, z: 14 },
+    kneeR:     { x: -30, y: 0, z: 0 },
+    footR:     { x: 22, y: 0, z: 0 },
+    hipL:      { x: 10, y: 0, z: -14 },
+    kneeL:     { x: -22, y: 0, z: 0 },
+    footL:     { x: 18, y: 0, z: 0 },
   },
 
   rearForehandTakeback: {
-    bodyLean: 11,
+    bodyLean: 9,
     rootLift: -0.09,
     rootShiftX: 0.055,
     pelvisTurn: 12,
-    chest:     { x: 1, y: 34, z: 0 },
-    head:      { x: -1, y: -22, z: 0 },
-    shoulderR: { x: 64, y: -12, z: 26 },
-    elbowR:    { x: -108, y: 0, z: 0 },
-    handR:     { x: -18, y: 0, z: 0 },
-    shoulderL: { x: 88, y: -8, z: -14 },
-    elbowL:    { x: -10, y: 0, z: 0 },
+    chest:     { x: 0, y: 42, z: 0 },
+    head:      { x: 0, y: -30, z: 0 },
+    shoulderR: { x: 54, y: -18, z: 34 },
+    elbowR:    { x: -54, y: 0, z: 0 },
+    handR:     { x: -8, y: 0, z: 0 },
+    racket:    { x: 90, y: 0, z: 0 },
+    shoulderL: { x: 96, y: -10, z: -10 },
+    elbowL:    { x: -6, y: 0, z: 0 },
     hipR:      { x: 18, y: 0, z: 16 },
     kneeR:     { x: -38, y: 0, z: 0 },
     footR:     { x: 24, y: 0, z: 0 },
@@ -116,123 +127,149 @@ export const POSES = {
     footL:     { x: 20, y: 0, z: 0 },
   },
   forehandContact: {
-    rootLift: -0.10,
-    chest:     { x: 8,  y: 2,  z: 0 },    // 正面まで戻す
-    head:      { x: 0,  y: 0,  z: 0 },
-    shoulderR: { x: 92, y: 8, z: 12 },    // 腕を前へ伸ばし、肩の高さで打点
-    elbowR:    { x: -26, y: 0, z: 0 },     // 肘がほぼ伸びる
-    handR:     { x: -6, y: 0, z: 0 },
-    shoulderL: { x: 36, y: 0, z: -18 },
-    elbowL:    { x: -72, y: 0, z: 0 },
-    hipR:      { x: 26, y: 0, z: 0 },      // 体重は前脚(左)へ
-    kneeR:     { x: -52, y: 0, z: 0 },
-    footR:     { x: 28, y: 0, z: 0 },
-    hipL:      { x: 30, y: 0, z: 0 },
-    kneeL:     { x: -58, y: 0, z: 0 },
-    footL:     { x: 30, y: 0, z: 0 },
+    bodyLean: 5,
+    rootLift: -0.05,
+    rootShiftX: -0.035,
+    pelvisTurn: -6,
+    chest:     { x: 1, y: -4, z: 0 },
+    head:      { x: 0, y: 3, z: 0 },
+    shoulderR: { x: 88, y: 12, z: 2 },
+    elbowR:    { x: -16, y: 0, z: 0 },
+    handR:     { x: 0, y: 0, z: 0 },
+    racket:    { x: 82, y: -8, z: -14 },
+    shoulderL: { x: 42, y: -10, z: 22 },
+    elbowL:    { x: -34, y: 0, z: 0 },
+    hipR:      { x: 14, y: 0, z: 12 },
+    kneeR:     { x: -28, y: 0, z: 0 },
+    footR:     { x: 20, y: 0, z: 0 },
+    hipL:      { x: 10, y: 0, z: -12 },
+    kneeL:     { x: -20, y: 0, z: 0 },
+    footL:     { x: 16, y: 0, z: 0 },
   },
 
   rearForehandContact: {
     bodyLean: 6,
-    rootLift: -0.14,
-    chest:     { x: 10, y: 4, z: 0 },
-    head:      { x: 0, y: -4, z: 0 },
-    shoulderR: { x: 90, y: 10, z: 10 },
-    elbowR:    { x: -34, y: 0, z: 0 },
-    handR:     { x: -6, y: 0, z: 0 },
-    shoulderL: { x: 34, y: 0, z: -14 },
-    elbowL:    { x: -68, y: 0, z: 0 },
-    hipR:      { x: 26, y: 0, z: 0 },
-    kneeR:     { x: -56, y: 0, z: 0 },
-    footR:     { x: 28, y: 0, z: 0 },
-    hipL:      { x: 32, y: 0, z: 0 },
-    kneeL:     { x: -62, y: 0, z: 0 },
-    footL:     { x: 30, y: 0, z: 0 },
+    rootLift: -0.07,
+    rootShiftX: -0.05,
+    pelvisTurn: -8,
+    chest:     { x: 2, y: -6, z: 0 },
+    head:      { x: -1, y: 4, z: 0 },
+    shoulderR: { x: 88, y: 14, z: 2 },
+    elbowR:    { x: -14, y: 0, z: 0 },
+    handR:     { x: 0, y: 0, z: 0 },
+    racket:    { x: 80, y: -8, z: -16 },
+    shoulderL: { x: 44, y: -12, z: 24 },
+    elbowL:    { x: -34, y: 0, z: 0 },
+    hipR:      { x: 16, y: 0, z: 12 },
+    kneeR:     { x: -30, y: 0, z: 0 },
+    footR:     { x: 22, y: 0, z: 0 },
+    hipL:      { x: 12, y: 0, z: -14 },
+    kneeL:     { x: -24, y: 0, z: 0 },
+    footL:     { x: 18, y: 0, z: 0 },
   },
   forehandFollow: {
-    rootLift: -0.10,
-    chest:     { x: 10, y: -48, z: 0 },   // 左へ振り抜き（uncoil）
-    head:      { x: 0,  y: 28, z: 0 },
-    shoulderR: { x: 80, y: 22, z: -34 },  // 腕が左へ薙ぎ払われる（肩の高さ維持）
-    elbowR:    { x: -94, y: 0, z: 0 },     // 左肩越しに巻き取る
+    bodyLean: 4,
+    rootLift: -0.03,
+    rootShiftX: -0.05,
+    pelvisTurn: -20,
+    chest:     { x: 1, y: -38, z: 0 },
+    head:      { x: 0, y: 26, z: 0 },
+    shoulderR: { x: 76, y: 24, z: -42 },
+    elbowR:    { x: -72, y: 0, z: 0 },
     handR:     { x: -16, y: 0, z: 0 },
-    shoulderL: { x: 24, y: 0, z: -8 },
-    elbowL:    { x: -58, y: 0, z: 0 },
-    hipR:      { x: 24, y: 0, z: 0 },
-    kneeR:     { x: -50, y: 0, z: 0 },
-    footR:     { x: 26, y: 0, z: 0 },
-    hipL:      { x: 28, y: 0, z: 0 },
-    kneeL:     { x: -56, y: 0, z: 0 },
-    footL:     { x: 28, y: 0, z: 0 },
+    racket:    { x: 96, y: -10, z: -20 },
+    shoulderL: { x: 34, y: -18, z: 28 },
+    elbowL:    { x: -30, y: 0, z: 0 },
+    hipR:      { x: 24, y: 0, z: 6 },
+    kneeR:     { x: -42, y: 0, z: 0 },
+    footR:     { x: 20, y: 0, z: 0 },
+    hipL:      { x: 8, y: 0, z: -10 },
+    kneeL:     { x: -18, y: 0, z: 0 },
+    footL:     { x: 14, y: 0, z: 0 },
   },
 
   rearForehandFollow: {
-    bodyLean: 8,
-    rootLift: -0.14,
-    chest:     { x: 12, y: -34, z: 0 },
-    head:      { x: 0, y: 20, z: 0 },
-    shoulderR: { x: 78, y: 16, z: -24 },
-    elbowR:    { x: -86, y: 0, z: 0 },
-    handR:     { x: -14, y: 0, z: 0 },
-    shoulderL: { x: 22, y: 0, z: -8 },
-    elbowL:    { x: -56, y: 0, z: 0 },
-    hipR:      { x: 24, y: 0, z: 0 },
-    kneeR:     { x: -52, y: 0, z: 0 },
-    footR:     { x: 26, y: 0, z: 0 },
-    hipL:      { x: 28, y: 0, z: 0 },
-    kneeL:     { x: -58, y: 0, z: 0 },
-    footL:     { x: 28, y: 0, z: 0 },
+    bodyLean: 5,
+    rootLift: -0.04,
+    rootShiftX: -0.075,
+    pelvisTurn: -26,
+    chest:     { x: 2, y: -48, z: 0 },
+    head:      { x: -1, y: 32, z: 0 },
+    shoulderR: { x: 76, y: 28, z: -48 },
+    elbowR:    { x: -74, y: 0, z: 0 },
+    handR:     { x: -18, y: 0, z: 0 },
+    racket:    { x: 98, y: -12, z: -22 },
+    shoulderL: { x: 36, y: -20, z: 30 },
+    elbowL:    { x: -30, y: 0, z: 0 },
+    hipR:      { x: 28, y: 0, z: 6 },
+    kneeR:     { x: -48, y: 0, z: 0 },
+    footR:     { x: 22, y: 0, z: 0 },
+    hipL:      { x: 10, y: 0, z: -12 },
+    kneeL:     { x: -20, y: 0, z: 0 },
+    footL:     { x: 16, y: 0, z: 0 },
   },
 
   // ===== バックハンド・ストローク（水平に振り抜く） =====
   // フォアの鏡。左へコイル → 正面 → 右へ振り抜く。
   backhandTakeback: {
-    rootLift: -0.12,
-    chest:     { x: 10, y: -44, z: 0 },   // 左へコイル
-    head:      { x: -2, y: 32, z: 0 },
-    shoulderR: { x: 72, y: 0, z: 64 },    // 右腕を体の左前へ引き込む
-    elbowR:    { x: -90, y: 0, z: 0 },
-    handR:     { x: -14, y: 0, z: 0 },
-    shoulderL: { x: 40, y: 0, z: -50 },   // 左手で支える
-    elbowL:    { x: -84, y: 0, z: 0 },
-    hipR:      { x: 32, y: 0, z: 0 },
-    kneeR:     { x: -62, y: 0, z: 0 },
-    footR:     { x: 30, y: 0, z: 0 },
-    hipL:      { x: 30, y: 0, z: 0 },
-    kneeL:     { x: -58, y: 0, z: 0 },
-    footL:     { x: 30, y: 0, z: 0 },
+    bodyLean: 8,
+    rootLift: -0.08,
+    rootShiftX: 0.04,
+    pelvisTurn: -10,
+    chest:     { x: 0, y: -38, z: 0 },
+    head:      { x: 0, y: 26, z: 0 },
+    shoulderR: { x: 76, y: 4, z: 60 },
+    elbowR:    { x: -60, y: 0, z: 0 },
+    handR:     { x: -10, y: 0, z: 0 },
+    racket:    { x: 88, y: 10, z: 8 },
+    shoulderL: { x: 48, y: 10, z: -20 },
+    elbowL:    { x: -42, y: 0, z: 0 },
+    hipR:      { x: 12, y: 0, z: 14 },
+    kneeR:     { x: -26, y: 0, z: 0 },
+    footR:     { x: 20, y: 0, z: 0 },
+    hipL:      { x: 14, y: 0, z: -14 },
+    kneeL:     { x: -30, y: 0, z: 0 },
+    footL:     { x: 22, y: 0, z: 0 },
   },
   backhandContact: {
-    rootLift: -0.10,
-    chest:     { x: 8,  y: 0,  z: 0 },
-    head:      { x: 0,  y: 0,  z: 0 },
-    shoulderR: { x: 88, y: 0, z: 22 },    // 体の前で腕を伸ばす
-    elbowR:    { x: -28, y: 0, z: 0 },
-    handR:     { x: -6, y: 0, z: 0 },
-    shoulderL: { x: 42, y: 0, z: -24 },
-    elbowL:    { x: -60, y: 0, z: 0 },
-    hipR:      { x: 26, y: 0, z: 0 },
-    kneeR:     { x: -52, y: 0, z: 0 },
-    footR:     { x: 28, y: 0, z: 0 },
-    hipL:      { x: 28, y: 0, z: 0 },
-    kneeL:     { x: -54, y: 0, z: 0 },
-    footL:     { x: 28, y: 0, z: 0 },
+    bodyLean: 6,
+    rootLift: -0.06,
+    rootShiftX: -0.04,
+    pelvisTurn: 6,
+    chest:     { x: 1, y: 8, z: 0 },
+    head:      { x: 0, y: -5, z: 0 },
+    shoulderR: { x: 88, y: -8, z: 18 },
+    elbowR:    { x: -18, y: 0, z: 0 },
+    handR:     { x: 0, y: 0, z: 0 },
+    racket:    { x: 82, y: 8, z: 14 },
+    shoulderL: { x: 38, y: 18, z: -24 },
+    elbowL:    { x: -30, y: 0, z: 0 },
+    hipR:      { x: 10, y: 0, z: 12 },
+    kneeR:     { x: -20, y: 0, z: 0 },
+    footR:     { x: 16, y: 0, z: 0 },
+    hipL:      { x: 14, y: 0, z: -12 },
+    kneeL:     { x: -28, y: 0, z: 0 },
+    footL:     { x: 20, y: 0, z: 0 },
   },
   backhandFollow: {
-    rootLift: -0.10,
-    chest:     { x: 10, y: 42, z: 0 },    // 右へ振り抜き
-    head:      { x: 0,  y: -26, z: 0 },
-    shoulderR: { x: 82, y: -12, z: -12 }, // 腕が右へ薙ぎ払われる
-    elbowR:    { x: -66, y: 0, z: 0 },
-    handR:     { x: -12, y: 0, z: 0 },
-    shoulderL: { x: 28, y: 0, z: -10 },
-    elbowL:    { x: -54, y: 0, z: 0 },
-    hipR:      { x: 24, y: 0, z: 0 },
-    kneeR:     { x: -50, y: 0, z: 0 },
-    footR:     { x: 26, y: 0, z: 0 },
-    hipL:      { x: 26, y: 0, z: 0 },
-    kneeL:     { x: -52, y: 0, z: 0 },
-    footL:     { x: 26, y: 0, z: 0 },
+    bodyLean: 5,
+    rootLift: -0.04,
+    rootShiftX: -0.06,
+    pelvisTurn: 22,
+    chest:     { x: 1, y: 42, z: 0 },
+    head:      { x: 0, y: -28, z: 0 },
+    shoulderR: { x: 78, y: -18, z: -34 },
+    elbowR:    { x: -68, y: 0, z: 0 },
+    handR:     { x: -14, y: 0, z: 0 },
+    racket:    { x: 96, y: 12, z: 20 },
+    shoulderL: { x: 72, y: 22, z: 34 },
+    elbowL:    { x: -18, y: 0, z: 0 },
+    hipR:      { x: 8, y: 0, z: 10 },
+    kneeR:     { x: -18, y: 0, z: 0 },
+    footR:     { x: 14, y: 0, z: 0 },
+    hipL:      { x: 24, y: 0, z: -6 },
+    kneeL:     { x: -42, y: 0, z: 0 },
+    footL:     { x: 20, y: 0, z: 0 },
   },
 };
 
@@ -256,7 +293,7 @@ const SWING_KEYS = {
 };
 
 const JOINT_NAMES = [
-  "chest", "head", "shoulderR", "elbowR", "handR",
+  "chest", "head", "shoulderR", "elbowR", "handR", "racket",
   "shoulderL", "elbowL", "hipR", "kneeR", "footR", "hipL", "kneeL", "footL",
 ];
 
@@ -264,11 +301,22 @@ const JOINT_NAMES = [
 // そのため、上向きに連なる胸・頭とは X 回転の前後が逆になる。
 // ポーズ定義は「正=前へ曲げる」の感覚で保ち、適用時にだけ反転する。
 const DOWNWARD_LIMB_JOINTS = new Set([
-  "shoulderR", "elbowR", "shoulderL", "elbowL",
+  "shoulderR", "shoulderL",
   "hipR", "kneeR", "footR", "hipL", "kneeL", "footL",
+]);
+const LOWER_BODY_JOINTS = new Set([
+  "hipR", "kneeR", "footR", "hipL", "kneeL", "footL",
+]);
+const RACKET_ARM_JOINTS = new Set([
+  "shoulderR", "elbowR", "handR", "racket",
 ]);
 
 function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+function smoothstep(v) {
+  const t = clamp01(v);
+  return t * t * (3 - 2 * t);
+}
 
 const _shoeWorld = new THREE.Vector3();
 
@@ -307,25 +355,32 @@ function lerpEuler(name, jointPose, ea, eb, t) {
  * @param {number} t
  * @param {number} baseHipY simpleCharacter のデフォルト骨盤 y（0.78）
  */
-export function applyPose(joints, poseAName, poseBName, t, baseHipY) {
+export function applyPose(joints, poseAName, poseBName, t, baseHipY, timing) {
   const A = POSES[poseAName] || POSES.ready;
   const B = POSES[poseBName] || A;
+  const lowerT = timing ? timing.lower : t;
+  const torsoT = timing ? timing.torso : t;
+  const armT = timing ? timing.arm : t;
 
   const leanA = A.bodyLean || 0;
   const leanB = B.bodyLean || 0;
-  if (joints.leanRoot) joints.leanRoot.rotation.x = lerp(leanA, leanB, t) * D;
+  if (joints.leanRoot) joints.leanRoot.rotation.x = lerp(leanA, leanB, torsoT) * D;
 
   for (const name of JOINT_NAMES) {
-    if (joints[name]) lerpEuler(name, joints[name], A[name], B[name], t);
+    if (!joints[name]) continue;
+    const jointT = LOWER_BODY_JOINTS.has(name)
+      ? lowerT
+      : (RACKET_ARM_JOINTS.has(name) ? armT : torsoT);
+    lerpEuler(name, joints[name], A[name], B[name], jointT);
   }
 
   // 重心（骨盤 y）
   const liftA = A.rootLift || 0;
   const liftB = B.rootLift || 0;
   if (joints.pelvis) {
-    joints.pelvis.position.x = lerp(A.rootShiftX || 0, B.rootShiftX || 0, t);
-    joints.pelvis.position.y = (baseHipY || 0.78) + lerp(liftA, liftB, t);
-    joints.pelvis.rotation.y = lerp(A.pelvisTurn || 0, B.pelvisTurn || 0, t) * D;
+    joints.pelvis.position.x = lerp(A.rootShiftX || 0, B.rootShiftX || 0, lowerT);
+    joints.pelvis.position.y = (baseHipY || 0.78) + lerp(liftA, liftB, lowerT);
+    joints.pelvis.rotation.y = lerp(A.pelvisTurn || 0, B.pelvisTurn || 0, lowerT) * D;
   }
   alignShoesToGround(joints);
 }
@@ -346,7 +401,7 @@ const _vLowerDir = new THREE.Vector3();
 const _vLocalLower = new THREE.Vector3();
 const _qShoulderInv = new THREE.Quaternion();
 const _DOWN = new THREE.Vector3(0, -1, 0);
-const _LEFT_ELBOW_POLE = new THREE.Vector3(-0.54, -0.36, 0.34);
+const _LEFT_ELBOW_POLE = new THREE.Vector3(-0.86, -0.26, 0.38);
 
 function clamp1(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -412,7 +467,15 @@ export function applySwingPhase(joints, side, phase, baseHipY, isFront) {
   const k1 = keys[Math.min(i + 1, keys.length - 1)];
   const span = k1.p - k0.p;
   const t = span > 0 ? (phase - k0.p) / span : 0;
-  applyPose(joints, k0.pose, k1.pose, Math.max(0, Math.min(1, t)), baseHipY);
+  const clampedT = clamp01(t);
+  const torsoDelay = isFront ? 0.04 : 0.08;
+  const armDelay = isFront ? 0.11 : (side === "back" ? 0.16 : 0.18);
+  // 脚と骨盤を先行させ、胸・肩、最後にラケットが追いつく。
+  applyPose(joints, k0.pose, k1.pose, clampedT, baseHipY, {
+    lower: smoothstep(clampedT),
+    torso: smoothstep((clampedT - torsoDelay) / (1 - torsoDelay)),
+    arm: smoothstep((clampedT - armDelay) / (1 - armDelay)),
+  });
 }
 
 /**
