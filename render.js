@@ -1,5 +1,5 @@
 import {
-  TUNING, COURT, W, H, SHOT_FAMILY_META,
+  TUNING, COURT, W, H, G, HIT_REACH, CPU_REACH, VOLLEY_REACH, SHOT_FAMILY_META,
 } from "./config.js";
 
 import {
@@ -11,6 +11,7 @@ import {
   state, spectatorMode, cpuServePlan, serveReady,
   back, front, cpuBack, cpuFront, matchTime, serveCategory,
   player, cpu,
+  debugDraw,
 } from "./state.js";
 
 import { drawHumanoid } from "./player-2d.js";
@@ -21,7 +22,7 @@ import {
 } from "./serve.js";
 
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
-import { canPlayerHit } from "./input.js";
+import { canPlayerHit, distToBall } from "./input.js";
 
 /* ===========================================================
  * 描画
@@ -34,6 +35,8 @@ export function draw() {
   drawLandingMarker();
   drawAimCursor();
   drawGroundEffects();
+  drawDebugTrajectory();
+  drawDebugHitboxes();
   drawBallShadow();
 
   // 3D モードのときは人型を 2D で描かない（player3d.js のオーバーレイが描く）
@@ -363,6 +366,168 @@ export function drawLandingMarker() {
 }
 
 /* ---- 着地点カーソル（ため中の狙い・ゴーストリング） ---- */
+function drawWorldEllipse(cx, cy, rx, ry, color, fillColor) {
+  const steps = 40;
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const a = (Math.PI * 2 * i) / steps;
+    const p = project(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry, 0);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  if (fillColor) {
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawDebugHitboxFor(pl, opts) {
+  const reach = opts.reach * (pl.stats?.reach || 1);
+  const highPenalty = Math.max(0, ball.z - 1.85) * 0.55;
+  const lowPenalty = Math.max(0, 0.35 - ball.z) * 0.8;
+  const zPenalty = highPenalty + lowPenalty;
+  const groundReach = opts.weighted
+    ? Math.sqrt(Math.max(0, reach * reach - zPenalty * zPenalty))
+    : reach;
+  const rx = opts.weighted ? groundReach / 1.18 : groundReach;
+  const ry = opts.weighted ? groundReach / 1.5 : groundReach;
+  const distance = opts.weighted ? distToBall(pl) : Math.hypot(ball.x - pl.x, ball.y - pl.y);
+  const active = opts.controlled ? canPlayerHit(pl) : distance <= reach;
+  const color = active ? "rgba(74,222,128,0.95)" : opts.color;
+  const fillColor = active ? "rgba(74,222,128,0.13)" : opts.fillColor;
+  drawWorldEllipse(pl.x, pl.y, rx, ry, color, fillColor);
+
+  const p = project(pl.x, pl.y, 0);
+  ctx.font = "700 10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillStyle = active ? "#BBF7D0" : "#F8FAFC";
+  ctx.strokeStyle = "rgba(15,23,42,0.8)";
+  ctx.lineWidth = 3;
+  const label = `${distance.toFixed(1)} / ${reach.toFixed(1)}`;
+  ctx.strokeText(label, p.x, p.y - Math.max(14, 0.8 * p.s));
+  ctx.fillText(label, p.x, p.y - Math.max(14, 0.8 * p.s));
+}
+
+function drawDebugHitboxes() {
+  if (!debugDraw.hitboxes) return;
+  if (state === "ready") return;
+  ctx.save();
+  ctx.setLineDash([8, 5]);
+  drawDebugHitboxFor(back, {
+    reach: HIT_REACH,
+    weighted: true,
+    controlled: rallyControlled === back,
+    color: "rgba(56,189,248,0.95)",
+    fillColor: "rgba(56,189,248,0.10)",
+  });
+  drawDebugHitboxFor(front, {
+    reach: VOLLEY_REACH,
+    weighted: false,
+    controlled: rallyControlled === front,
+    color: "rgba(56,189,248,0.8)",
+    fillColor: "rgba(56,189,248,0.08)",
+  });
+  drawDebugHitboxFor(cpuBack, {
+    reach: TUNING.ai?.backReach || CPU_REACH,
+    weighted: true,
+    controlled: false,
+    color: "rgba(251,113,133,0.9)",
+    fillColor: "rgba(251,113,133,0.08)",
+  });
+  drawDebugHitboxFor(cpuFront, {
+    reach: TUNING.ai?.frontVolleyReach || VOLLEY_REACH,
+    weighted: false,
+    controlled: false,
+    color: "rgba(251,113,133,0.75)",
+    fillColor: "rgba(251,113,133,0.07)",
+  });
+  ctx.restore();
+}
+
+function bouncePreviewVelocity(vx, vy, vz) {
+  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
+  const flat = TUNING.spin.flat;
+  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
+  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
+  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
+  return { vx: vx * friction, vy: vy * friction, vz: -vz * restitution };
+}
+
+function drawDebugTrajectory() {
+  if (!debugDraw.trajectory) return;
+  if (state === "ready") return;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  if (ball.trail.length > 1) {
+    ctx.strokeStyle = "rgba(255,255,255,0.42)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ball.trail.forEach((pt, i) => {
+      const p = project(pt.x, pt.y, pt.z);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+  }
+
+  const pts = [];
+  let x = ball.x;
+  let y = ball.y;
+  let z = ball.z;
+  let vx = ball.vx;
+  let vy = ball.vy;
+  let vz = ball.vz;
+  let bounces = ball.bounces;
+  const dt = 0.055;
+  const dragPerStep = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
+
+  for (let i = 0; i < 120; i++) {
+    pts.push({ x, y, z: Math.max(0, z), bounces });
+    x += vx * dt;
+    y += vy * dt;
+    z += vz * dt;
+    vz -= G * dt;
+    vx *= dragPerStep;
+    vy *= dragPerStep;
+    if (z <= 0 && vz < 0) {
+      bounces++;
+      z = 0;
+      if (bounces > 2) break;
+      const bounced = bouncePreviewVelocity(vx, vy, vz);
+      vx = bounced.vx;
+      vy = bounced.vy;
+      vz = bounced.vz;
+    }
+  }
+
+  ctx.strokeStyle = ball.trailColor || "rgba(251,146,60,0.95)";
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([10, 6]);
+  ctx.beginPath();
+  pts.forEach((pt, i) => {
+    const p = project(pt.x, pt.y, pt.z);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  pts.forEach((pt) => {
+    if (pt.z > 0.12) return;
+    const p = project(pt.x, pt.y, 0);
+    ctx.fillStyle = pt.bounces === ball.bounces ? "rgba(250,204,21,0.8)" : "rgba(248,250,252,0.65)";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(2, 0.16 * p.s), 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
 export function drawAimCursor() {
   if (spectatorMode) return; // 観戦モードはマウス操作の狙いカーソルを表示しない
   // サーブの構え/トス中（自分がサーバー）は、対角サービスコート上に狙いカーソルを表示

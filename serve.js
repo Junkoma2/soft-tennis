@@ -26,6 +26,8 @@ import {
 // サーブのパワー/回転は UI ではなく打つ選手の能力(stats)から内部で決める。
 // serve（球速）が高い選手は強いサーブ、control（精度）が高い選手はよく回転をかける、
 // というイメージ。3段階モデル(weak/mid/strong)へ写像する。
+const SERVE_INITIAL_SPEED_MUL = 1.08;
+
 function statLevel(v) {
   if (v == null) return "mid";
   if (v >= 1.06) return "strong";
@@ -526,7 +528,7 @@ export function launchServeBall(team, server, stats, cfg) {
   // 球速・目標深さ・回転は型ごとの設定から決まる。
   // depthOffset はサービスラインからの手前への距離（大きいほど浅く入る）。
   // 回転が強いほどさらに浅く落ちる（カット系の食い込み/減速を表現）
-  let speed = tcfg.speed * stats.serve * powerMul;
+  let speed = tcfg.speed * SERVE_INITIAL_SPEED_MUL * stats.serve * powerMul;
   let ty = targetDepth * (COURT.serviceY - tcfg.depthOffset - 0.6 * (spinMul - 1));
   ball.spin = tcfg.spinKind;
   ball.spinMag = tcfg.spinMagBase * spinMul;

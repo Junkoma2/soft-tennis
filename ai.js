@@ -13,7 +13,7 @@ import {
 } from "./serve.js";
 
 import {
-  predictLanding, predictHighContact, insideCourt, hitBall, showMessage, hideMessage, canSwingNow,
+  predictLanding, predictHighContact, predictStrokeContact, insideCourt, hitBall, showMessage, hideMessage, canSwingNow,
   isBackhandFor,
 } from "./main.js";
 
@@ -180,17 +180,21 @@ export function moveAutoAI(p, side, dt) {
   if (!receiveDone && state === "rally" && ball.lastHitter === opponentTeam) {
     if (p === receiverPlayerFor(myTeam)) {
       const landing = predictLanding();
+      const strokeContact = predictStrokeContact();
       let tx = p.x, ty = p.y;
       if (ball.bounces >= 1) {
-        tx = ball.x + ball.vx * 0.2;
-        ty = homeSign > 0 ? Math.min(COURT.halfL + 5.0, Math.max(4.0, ball.y + ball.vy * 0.2))
-                          : Math.max(-(COURT.halfL + 5.0), Math.min(-4.0, ball.y + ball.vy * 0.2));
+        const cx = strokeContact ? strokeContact.x : ball.x + ball.vx * 0.2;
+        const cy = strokeContact ? strokeContact.y : ball.y + ball.vy * 0.2;
+        tx = cx;
+        ty = homeSign > 0 ? Math.min(COURT.halfL + 5.0, Math.max(4.0, cy))
+                          : Math.max(-(COURT.halfL + 5.0), Math.min(-4.0, cy));
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         // サーブも球種・速さからバウンド後の頂点を予測し、そこで高い打点で迎える。
         const hc = predictHighContact();
-        let depth = hc ? Math.abs(hc.y) : Math.abs(landing.y) + 0.6;
+        const contact = strokeContact || hc;
+        let depth = contact ? Math.abs(contact.y) : Math.abs(landing.y) + 0.6;
         depth = Math.min(COURT.halfL + 5.0, Math.max(Math.abs(landing.y), depth));
-        tx = Math.max(-COURT.halfW, Math.min(COURT.halfW, hc ? hc.x : landing.x));
+        tx = Math.max(-COURT.halfW, Math.min(COURT.halfW, contact ? contact.x : landing.x));
         ty = homeSign > 0 ? depth : -depth;
       }
       moveToward(p, tx, ty, speed * 1.25 * dt, dt);
@@ -295,18 +299,21 @@ export function moveAutoAI(p, side, dt) {
     if (state === "rally" && ball.lastHitter === opponentTeam) {
       if ((side === "cpu" || spectatorMode) && matchTime - ball.lastHitTime < TUNING.ai.backReactionDelay) return;
       const landing = predictLanding();
+      const strokeContact = predictStrokeContact();
       let tx = backDevX(myTeam);
       let ty = homeBackY;
       let timeToContact = null;
       if (ball.bounces >= 1) {
         // バウンド後はボールへ寄せるが、ベースライン後方へ深追いしすぎない
         // （深く下がると落ちてきた球を低く打つことになる）。
-        tx = ball.x + ball.vx * 0.2;
+        const cx = strokeContact ? strokeContact.x : ball.x + ball.vx * 0.2;
+        const cy = strokeContact ? strokeContact.y : ball.y + ball.vy * 0.2;
+        tx = cx;
         ty = homeSign > 0
-          ? Math.min(COURT.halfL + 5.0, Math.max(4.5, ball.y + ball.vy * 0.2))
-          : Math.max(-(COURT.halfL + 5.0), Math.min(-4.5, ball.y + ball.vy * 0.2));
+          ? Math.min(COURT.halfL + 5.0, Math.max(4.5, cy))
+          : Math.max(-(COURT.halfL + 5.0), Math.min(-4.5, cy));
         // バウンド後は飛行時間の見積もりが難しいため、回り込み判定用に短い猶予のみ与える
-        timeToContact = 0.25;
+        timeToContact = strokeContact ? strokeContact.t : 0.25;
       } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
         const isLob = ball.spin === "flat" && ball.z > 2.0 &&
           Math.abs(landing.y) > COURT.serviceY;
@@ -314,16 +321,17 @@ export function moveAutoAI(p, side, dt) {
         // 予測し、そこに構える。これでバウンド地点へ走り込まず、最も高い打点で打てる。
         // ドライブ/フラットは高く弾むので奥め、スライスは低く滑るので手前、と自動で変わる。
         const hc = predictHighContact();
-        let depth = hc ? Math.abs(hc.y) : Math.abs(landing.y) + 0.6;
+        const contact = strokeContact || hc;
+        let depth = contact ? Math.abs(contact.y) : Math.abs(landing.y) + 0.6;
         // バウンドより手前にはしない・コート後方に出すぎない
         depth = Math.min(COURT.halfL + 5.0, Math.max(Math.abs(landing.y), depth));
-        const hx = hc ? hc.x : landing.x;
+        const hx = contact ? contact.x : landing.x;
         const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
         tx = Math.max(-xCap, Math.min(xCap, hx));
         ty = homeSign > 0 ? depth : -depth;
         // 着地までの時間 + バウンド頂点までの時間 ≒ 実際に打つまでの残り時間。
         // これを基準に「フォアへ回り込めるか」を判定する。
-        timeToContact = landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
+        timeToContact = contact ? contact.t : landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
       }
       // ボールが利き手と逆側（バック）に来そうなら、間に合う見込みのときだけ
       // フォアで打てる位置へ積極的に回り込む（間に合わなければそのままバックハンドで対応）。

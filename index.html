@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <meta name="apple-mobile-web-app-title" content="ソフトテニス" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260625-02" />
 </head>
 <body>
   <div id="app">
@@ -157,6 +157,13 @@
             <button class="ctrl-btn ctrl-btn-primary" id="charge-btn" type="button">打つ</button>
           </div>
         </div>
+        <div class="controls debug-controls-row">
+          <div class="control-group" id="debug-controls">
+            <span class="control-label">デバッグ</span>
+            <button class="ctrl-btn" data-debug="hitboxes" type="button">当たり判定</button>
+            <button class="ctrl-btn" data-debug="trajectory" type="button">軌道</button>
+          </div>
+        </div>
 
         <p class="hint" id="hint-text">PC推奨：WASDで移動・マウスで狙い・打点ゾーンで左クリック=シュート/右クリック=カット/Space+クリック=ロブ</p>
       </div>
@@ -174,7 +181,7 @@
     </footer>
   </div>
 
-  <script type="module" src="main.js"></script>
-  <script src="version.js"></script>
+  <script type="module" src="main.js?v=20260625-02"></script>
+  <script src="version.js?v=20260625-02"></script>
 </body>
 </html>

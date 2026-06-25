@@ -13,7 +13,7 @@
 
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
-import { back, front, cpuBack, cpuFront } from "./state.js";
+import { back, front, cpuBack, cpuFront, ball } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import {
   applyPose, poseNameForPlayer, applyLeftHandGrip,
@@ -34,11 +34,19 @@ function getBlend(pl) {
   return b;
 }
 
+const motionState = new Map();
+function getMotion(pl) {
+  let m = motionState.get(pl);
+  if (!m) { m = { yaw: null, runPhase: 0 }; motionState.set(pl, m); }
+  return m;
+}
+
 // 見た目チューニング
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)
 const ASPECT = 0.62;     // ビューポート横/縦比
-const VH_K = 1.82;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
+const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.11;  // 足元がビューポート下から何割の位置に出るか
+const D = Math.PI / 180;
 
 export function isReady3D() { return initialized; }
 
@@ -116,6 +124,86 @@ function pinBlend(pl, name) {
   b.a = b.b = name; b.t = 1;
 }
 
+function baseYawFor(pl) {
+  return (pl.facing < 0) ? Math.PI : 0;
+}
+
+function yawForPlayer(pl) {
+  if (ball.bounces < 1 || Math.hypot(ball.vx, ball.vy) < 0.2) return baseYawFor(pl);
+  const receivingSide = (pl === back || pl === front) ? "player" : "cpu";
+  const incomingPlayerSide = ball.lastHitter === "cpu" && ball.vy > 0;
+  const incomingCpuSide = ball.lastHitter === "player" && ball.vy < 0;
+  if ((receivingSide === "player" && !incomingPlayerSide) ||
+      (receivingSide === "cpu" && !incomingCpuSide)) {
+    return baseYawFor(pl);
+  }
+  return Math.atan2(-ball.vx, -ball.vy);
+}
+
+function angleDelta(from, to) {
+  return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+}
+
+function smoothYawFor(pl, targetYaw, dt) {
+  const m = getMotion(pl);
+  if (m.yaw == null) {
+    m.yaw = targetYaw;
+    return targetYaw;
+  }
+  const alpha = 1 - Math.exp(-dt * 9);
+  m.yaw += angleDelta(m.yaw, targetYaw) * alpha;
+  return m.yaw;
+}
+
+function applyRunMotion(pl, joints, yaw, dt) {
+  if (!joints || pl.pose === "swing") return;
+  const vx = pl.vx || 0;
+  const vy = pl.vy || 0;
+  const speed = Math.hypot(vx, vy);
+  if (speed < 0.18) return;
+
+  const m = getMotion(pl);
+  m.runPhase += dt * (8 + Math.min(5, speed * 0.9));
+  const phase = m.runPhase;
+  const amp = Math.min(1, speed / 4.5);
+  const stride = Math.sin(phase);
+  const counter = Math.sin(phase + Math.PI);
+
+  const forwardX = Math.sin(yaw);
+  const forwardY = Math.cos(yaw);
+  const rightX = Math.cos(yaw);
+  const rightY = -Math.sin(yaw);
+  const forward = vx * forwardX + vy * forwardY;
+  const side = vx * rightX + vy * rightY;
+  const lateral = Math.abs(side) > Math.abs(forward) * 0.75;
+  const sideSign = side >= 0 ? 1 : -1;
+
+  if (joints.pelvis) {
+    joints.pelvis.position.y += Math.abs(stride) * 0.035 * amp;
+    joints.pelvis.rotation.z += (lateral ? -sideSign * 5 * amp : 0) * D;
+  }
+  if (joints.leanRoot) {
+    joints.leanRoot.rotation.x += (lateral ? 2 : -5) * amp * D;
+    joints.leanRoot.rotation.z += (lateral ? -sideSign * 7 * amp : sideSign * 1.5 * amp) * D;
+  }
+
+  if (joints.hipR) {
+    joints.hipR.rotation.x += (lateral ? 8 : 22) * stride * amp * D;
+    joints.hipR.rotation.z += (lateral ? sideSign * 16 * Math.abs(stride) : 0) * amp * D;
+  }
+  if (joints.hipL) {
+    joints.hipL.rotation.x += (lateral ? 8 : 22) * counter * amp * D;
+    joints.hipL.rotation.z += (lateral ? sideSign * -16 * Math.abs(counter) : 0) * amp * D;
+  }
+  if (joints.kneeR) joints.kneeR.rotation.x += -18 * Math.max(0, -stride) * amp * D;
+  if (joints.kneeL) joints.kneeL.rotation.x += -18 * Math.max(0, -counter) * amp * D;
+  if (joints.footR) joints.footR.rotation.x += 12 * Math.max(0, stride) * amp * D;
+  if (joints.footL) joints.footL.rotation.x += 12 * Math.max(0, counter) * amp * D;
+
+  if (joints.shoulderR) joints.shoulderR.rotation.x += (lateral ? 8 * sideSign : -14) * counter * amp * D;
+  if (joints.shoulderL) joints.shoulderL.rotation.x += (lateral ? -8 * sideSign : -14) * stride * amp * D;
+}
+
 export function render3D() {
   if (!initialized) return;
   syncOverlayRect();
@@ -153,7 +241,8 @@ export function render3D() {
     // （左利きは反転なしで +x=左手のまま）
     char.group.scale.x = (pl.stats && pl.stats.handed === "left") ? 1 : -1;
     // カメラ正対：手前側(facing>0)はそのまま、奥側(facing<0)は後ろ向きに
-    char.group.rotation.y = (pl.facing < 0) ? Math.PI : 0;
+    const renderYaw = smoothYawFor(pl, yawForPlayer(pl), dt);
+    char.group.rotation.y = renderYaw;
 
     if (pl.pose === "swing") {
       // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
@@ -169,6 +258,7 @@ export function render3D() {
       if (name === "ready" || name === "rearReady" || name === "forehandVolleyTakeback") {
         applyLeftHandGrip(char.joints, char.group.userData.dims, char.group);
       }
+      applyRunMotion(pl, char.joints, renderYaw, dt);
     }
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
@@ -188,4 +278,5 @@ export function dispose3D() {
   renderer = scene = camera = char = overlay = null;
   initialized = false;
   blendState.clear();
+  motionState.clear();
 }

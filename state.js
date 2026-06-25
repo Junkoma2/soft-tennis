@@ -23,6 +23,7 @@ export const resultTitle   = document.getElementById("result-title");
 export const resultDetail  = document.getElementById("result-detail");
 export const hintText      = document.getElementById("hint-text");
 export const shotControls  = document.getElementById("shot-controls");
+export const debugControls = document.getElementById("debug-controls");
 export const chargeBtn     = document.getElementById("charge-btn");
 export const serveCategoryControls = document.getElementById("serve-category-controls");
 export const aggressionControls = document.getElementById("aggression-controls");
@@ -78,6 +79,17 @@ export const cpuStats = {
 //  ready / serve-stance(トス前) / serve-toss(トス中) /
 //  rally / fault / point / gameset / matchend
 export let state = "ready";
+export const debugDraw = { hitboxes: false, trajectory: false };
+export let debugHitboxes = false;
+export let debugTrajectory = false;
+export function setDebugHitboxes(v) {
+  debugDraw.hitboxes = !!v;
+  debugHitboxes = debugDraw.hitboxes;
+}
+export function setDebugTrajectory(v) {
+  debugDraw.trajectory = !!v;
+  debugTrajectory = debugDraw.trajectory;
+}
 export let player = { games: 0, points: 0 };
 export let cpu = { games: 0, points: 0 };
 export let serveFaults = 0;     // 現在のポイントのフォルト数（0=ファースト、1=セカンド）

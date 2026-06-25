@@ -591,7 +591,11 @@ export function ballIncomingToPlayer() {
 }
 
 export function distToBall(p) {
-  return Math.hypot(ball.x - p.x, ball.y - p.y);
+  const dx = Math.abs(ball.x - p.x);
+  const dy = Math.abs(ball.y - p.y);
+  const highPenalty = Math.max(0, ball.z - 1.85) * 0.55;
+  const lowPenalty = Math.max(0, 0.35 - ball.z) * 0.8;
+  return Math.hypot(dx * 1.18, dy * 1.5, highPenalty + lowPenalty);
 }
 
 export function canPlayerHit(p) {

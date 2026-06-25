@@ -17,7 +17,7 @@ import {
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
   hintText, shotControls, chargeBtn, serveCategoryControls,
   aggressionControls, shotSelectControls, moveStick, moveStickKnob,
-  formationControls, controlsPanel,
+  formationControls, controlsPanel, debugControls,
   mouseAim, makeStats, playerStats, cpuStats,
   state, player, cpu, serveFaults, rafId, lastTime, pendingSwing, matchTime,
   setState, setServeFaults, incServeFaults, setRafId, setLastTime, setPendingSwing, setMatchTime, addMatchTime,
@@ -44,6 +44,7 @@ import {
   ballHittableSince, setBallHittableSince,
   pendingShot, pendingPower, pendingAimX, pendingAimY,
   setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
+  debugDraw, setDebugHitboxes, setDebugTrajectory,
   development,
 } from "./state.js";
 
@@ -69,6 +70,8 @@ import {
   updatePartner, updateRallyControlledAI, updateCpuBack, updateCpuFront,
   tryReturnAI, cpuTryReturn, partnerTryReturn,
 } from "./ai.js";
+
+const STROKE_INITIAL_SPEED_MUL = 1.08;
 
 export function resolveShotKey(family, contactZ, aimY) {
   if (family === "shoot") {
@@ -498,7 +501,7 @@ export function hitBall(opts) {
     ty = opts.aimY != null
       ? Math.max(-(COURT.halfL - 0.4), Math.min(-TUNING.aim.minDepth, opts.aimY))
       : depthDir * (def.depthMin + Math.random() * def.depthRange);
-    speed = def.speed * stats.power * ev.speedMul
+    speed = def.speed * STROKE_INITIAL_SPEED_MUL * stats.power * ev.speedMul
       * (1 + TUNING.charge.speedBonus * chargeK);
     sigma = ev.sigma / Math.min(Math.max(stats.control, 0.5), 1.3);
   } else {
@@ -507,7 +510,7 @@ export function hitBall(opts) {
     const accuracy = (backhand ? 0.7 : 1.0) * Math.min(stats.control, 1.3);
     tx = course * 3.5;
     sigma = 0.45 + 1.0 * Math.max(0, 1.1 - accuracy);
-    speed = def.speed * stats.power * (backhand ? 0.9 : 1.0)
+    speed = def.speed * STROKE_INITIAL_SPEED_MUL * stats.power * (backhand ? 0.9 : 1.0)
       * (1 + TUNING.charge.speedBonus * chargeK);
     // cpuSpeedScale は廃止（両チーム共通パラメータで対称化済み）
     ty = depthDir * (def.depthMin + Math.random() * def.depthRange);
@@ -831,10 +834,60 @@ export function predictHighContact() {
 // predictLanding の順に使い、どちらも得られなければ ball.x にフォールバックする。
 // バウンド後（ball.bounces>=1）は着地点の予測が出しづらいため、現在位置に
 // ボールの横移動の向きを少し加味した近い将来位置（0.15秒先）を使う。
+// バウンド後の軌道上で、ストロークしやすい高さまで落ちてくる位置を予測する。
+export function predictStrokeContact(contactZ) {
+  const targetZ = Math.max(0.35, contactZ == null ? 1.15 : contactZ);
+  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
+  const flat = TUNING.spin.flat;
+  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
+  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
+  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
+
+  if (ball.bounces >= 1) {
+    const disc = ball.vz * ball.vz - 2 * G * (targetZ - Math.max(ball.z, 0));
+    let t = 0.2;
+    if (disc >= 0) {
+      const root = Math.sqrt(disc);
+      const descendingT = (ball.vz + root) / G;
+      const risingT = (ball.vz - root) / G;
+      if (descendingT > 0.03) t = descendingT;
+      else if (risingT > 0.03) t = risingT;
+    }
+    t = Math.max(0.08, Math.min(1.4, t));
+    return { x: ball.x + ball.vx * t, y: ball.y + ball.vy * t, t: t, z: targetZ };
+  }
+
+  const landing = predictLanding();
+  if (!landing) return null;
+  const vzLand = Math.abs(ball.vz - G * landing.t);
+  const vxOut = ball.vx * friction;
+  const vyOut = ball.vy * friction;
+  const vzOut = vzLand * restitution;
+  const apexZ = (vzOut * vzOut) / (2 * G);
+  let afterBounceT;
+  if (apexZ >= targetZ) {
+    afterBounceT = (vzOut + Math.sqrt(Math.max(0, vzOut * vzOut - 2 * G * targetZ))) / G;
+  } else {
+    afterBounceT = vzOut / G;
+  }
+  afterBounceT = Math.max(0.08, Math.min(1.4, afterBounceT));
+  return {
+    x: landing.x + vxOut * afterBounceT,
+    y: landing.y + vyOut * afterBounceT,
+    t: landing.t + afterBounceT,
+    z: Math.min(targetZ, apexZ),
+    landing: landing,
+  };
+}
+
+// フォア/バック表示判定（swingSide）用の予測打点x。
 export function predictedContactX() {
   if (ball.bounces >= 1) {
-    return ball.x + ball.vx * 0.15;
+    const contact = predictStrokeContact();
+    return contact ? contact.x : ball.x + ball.vx * 0.15;
   }
+  const contact = predictStrokeContact();
+  if (contact) return contact.x;
   const hc = predictHighContact();
   if (hc) return hc.x;
   const landing = predictLanding();
@@ -1066,6 +1119,7 @@ export function update(dt) {
   // テイクバック準備（"prep"）に入ってよい（現状より少し早めの準備動作）。
   // 自陣側＝相手が打ったボールが自分のコート側(y>0)に入っている状態。
   const ballCrossedToOwnSide = ball.lastHitter === "cpu" && ball.y > 0;
+  const canPrepareSwing = !(cp.recoverT > 0) && cp.pose !== "swing";
   if (hittable) {
     if (ballHittableSince < 0) setBallHittableSince(matchTime);
     if (cp.pose !== "swing") {
@@ -1093,7 +1147,7 @@ export function update(dt) {
     // 観戦時は見た目のテイクバックだけ行い swingSide は触らない。
     if (!spectatorMode) {
       if (cp.pose === "idle") cp.swingSideLocked = false;
-      if (ballCrossedToOwnSide && cp.pose === "idle") {
+      if (canPrepareSwing && ballCrossedToOwnSide && cp.pose === "idle") {
         // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
         // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
         // ここで決めたフォア/バックは、続く ready/swing でも上書きせず引き継ぐ
@@ -1105,7 +1159,7 @@ export function update(dt) {
         cp.pose = "idle";
         cp.swingSideLocked = false;
       }
-    } else if (ballCrossedToOwnSide && cp.pose === "idle") {
+    } else if (canPrepareSwing && ballCrossedToOwnSide && cp.pose === "idle") {
       cp.pose = "prep";
     }
     if (charge.active && charge.source === "auto") {
@@ -1195,6 +1249,37 @@ if (renderModeControls) {
   });
   syncBtns();
 }
+
+let lastDebugPointerAt = 0;
+const syncDebugButtons = () => {
+  document.querySelectorAll("[data-debug]").forEach((b) => {
+    const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes : debugDraw.trajectory;
+    b.classList.toggle("is-active", active);
+  });
+};
+const toggleDebugButton = (b) => {
+  if (b.dataset.debug === "hitboxes") setDebugHitboxes(!debugDraw.hitboxes);
+  if (b.dataset.debug === "trajectory") setDebugTrajectory(!debugDraw.trajectory);
+  syncDebugButtons();
+  draw();
+};
+document.addEventListener("pointerdown", (e) => {
+  const b = e.target.closest && e.target.closest("[data-debug]");
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  lastDebugPointerAt = performance.now();
+  toggleDebugButton(b);
+}, true);
+document.addEventListener("click", (e) => {
+  const b = e.target.closest && e.target.closest("[data-debug]");
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (performance.now() - lastDebugPointerAt < 350) return;
+  toggleDebugButton(b);
+}, true);
+syncDebugButtons();
 
 startBtn.addEventListener("click", function () {
   startMatch();

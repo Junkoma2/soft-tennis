@@ -132,6 +132,17 @@ main {
   backdrop-filter: blur(2px);
   box-shadow: 0 2px 8px rgba(30, 27, 75, .18);
 }
+#screen-game .debug-controls-row {
+  top: auto;
+  bottom: 64px;
+}
+#screen-game .debug-controls-row .control-group {
+  background: rgba(15, 23, 42, .76);
+  border-color: rgba(148, 163, 184, .36);
+}
+#screen-game .debug-controls-row .control-label {
+  color: rgba(248, 250, 252, .82);
+}
 
 .description {
   color: var(--color-text-secondary);
