@@ -39,6 +39,49 @@ function makePivot(x, y, z) {
   return g;
 }
 
+function addLimbSideMarkers(parent, length, radius, innerSign, materials, markerStore) {
+  const markerLen = length * 0.78;
+  const y = -length / 2;
+  const offset = radius + 0.018;
+  [
+    { sign: innerSign, material: materials.inner },
+    { sign: -innerSign, material: materials.outer },
+  ].forEach(({ sign, material }) => {
+    const marker = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, markerLen, 8), material);
+    marker.position.set(sign * offset, y, 0);
+    marker.userData.sideMarker = true;
+    marker.visible = false;
+    parent.add(marker);
+    markerStore.push(marker);
+  });
+}
+
+function addHandOrientationMarkers(parent, radius, innerSign, materials, markerStore) {
+  [
+    { position: [innerSign * radius * 1.18, 0, 0], material: materials.inner },
+    { position: [-innerSign * radius * 1.18, 0, 0], material: materials.outer },
+    { position: [0, 0, radius * 1.22], material: materials.knuckle },
+  ].forEach(({ position, material }) => {
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.22, 8, 8), material);
+    marker.position.set(...position);
+    marker.userData.sideMarker = true;
+    marker.visible = false;
+    parent.add(marker);
+    markerStore.push(marker);
+  });
+}
+
+function addRacketBar(parent, material, ax, ay, bx, by, radius) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 8), material);
+  bar.position.set((ax + bx) / 2, (ay + by) / 2, 0.004);
+  bar.rotation.z = Math.atan2(-dx, dy);
+  parent.add(bar);
+  return bar;
+}
+
 // ラケット（右手に付ける）。グリップ→シャフト→楕円フレーム→簡易ガット。
 function makeRacket(frameMat, gripMat) {
   const racket = new THREE.Group();
@@ -53,15 +96,11 @@ function makeRacket(frameMat, gripMat) {
   shaft.position.y = 0.28;
   racket.add(shaft);
 
-  // スロート（三角部分）。左手を添える位置もここに置く。
-  const throatLen = 0.15;
-  [-1, 1].forEach((side) => {
-    const throatBar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, throatLen, 8), frameMat);
-    throatBar.position.set(side * 0.048, 0.405, 0);
-    throatBar.rotation.z = side * -0.70;
-    racket.add(throatBar);
-  });
-  const throatTarget = makePivot(0, 0.405, 0.025);
+  // スロート（三角部分）。面の外側でフレーム下端をY字に支える。
+  addRacketBar(racket, frameMat, 0.0, 0.30, 0.0, 0.355, 0.015);
+  addRacketBar(racket, frameMat, 0.0, 0.355, -0.078, 0.385, 0.014);
+  addRacketBar(racket, frameMat, 0.0, 0.355, 0.078, 0.385, 0.014);
+  const throatTarget = makePivot(0, 0.355, 0.025);
   racket.add(throatTarget);
   racket.userData.throatTarget = throatTarget;
 
@@ -96,9 +135,15 @@ export function createCharacter(opts) {
     racket: new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.6, metalness: 0.1 }),
     grip: new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 }),
   };
+  const sideMarkerMaterials = {
+    inner: new THREE.MeshBasicMaterial({ color: 0x22d3ee }),
+    outer: new THREE.MeshBasicMaterial({ color: 0xff4b4b }),
+    knuckle: new THREE.MeshBasicMaterial({ color: 0xffd400 }),
+  };
 
   const group = new THREE.Group();
   const joints = {};
+  const sideMarkers = [];
 
   // 寸法（デフォルメ：頭大きめ・胴太め・手足太め）
   // Mii / Wii Sports Resort 風の比率へ：頭+10% 腕+15% 脚+10% 肩幅+15% 胴やや短め。
@@ -174,15 +219,18 @@ export function createCharacter(opts) {
   joints.shoulderR = shoulderR;
   chest.add(shoulderR);
   shoulderR.add(makeLimb(materials.skin, armR, armR * 0.92, upperArm));
+  addLimbSideMarkers(shoulderR, upperArm, armR, -1, sideMarkerMaterials, sideMarkers);
   const elbowR = makePivot(0, -upperArm, 0);
   joints.elbowR = elbowR;
   shoulderR.add(elbowR);
   elbowR.add(makeSphere(materials.skin, armR * 0.92, 10));
   elbowR.add(makeLimb(materials.skin, armR * 0.92, armR * 0.8, foreArm));
+  addLimbSideMarkers(elbowR, foreArm, armR * 0.92, -1, sideMarkerMaterials, sideMarkers);
   const handR = makePivot(0, -foreArm, 0);
   joints.handR = handR;
   elbowR.add(handR);
   handR.add(makeSphere(materials.skin, armR * 1.05, 10));
+  addHandOrientationMarkers(handR, armR * 1.05, -1, sideMarkerMaterials, sideMarkers);
   // ラケットを右手へ
   const racket = makeRacket(materials.racket, materials.grip);
   racket.position.y = -armR * 0.5;
@@ -195,26 +243,31 @@ export function createCharacter(opts) {
   joints.shoulderL = shoulderL;
   chest.add(shoulderL);
   shoulderL.add(makeLimb(materials.skin, armR, armR * 0.92, upperArm));
+  addLimbSideMarkers(shoulderL, upperArm, armR, 1, sideMarkerMaterials, sideMarkers);
   const elbowL = makePivot(0, -upperArm, 0);
   joints.elbowL = elbowL;
   shoulderL.add(elbowL);
   elbowL.add(makeSphere(materials.skin, armR * 0.92, 10));
   elbowL.add(makeLimb(materials.skin, armR * 0.92, armR * 0.8, foreArm));
+  addLimbSideMarkers(elbowL, foreArm, armR * 0.92, 1, sideMarkerMaterials, sideMarkers);
   const handL = makePivot(0, -foreArm, 0);
   joints.handL = handL;
   elbowL.add(handL);
   handL.add(makeSphere(materials.skin, armR * 1.05, 10));
+  addHandOrientationMarkers(handL, armR * 1.05, 1, sideMarkerMaterials, sideMarkers);
 
   // ---- 右脚 ----
   const hipR = makePivot(hipX, -0.05, 0);
   joints.hipR = hipR;
   pelvis.add(hipR);
   hipR.add(makeLimb(materials.skin, legR, legR * 0.85, thigh));
+  addLimbSideMarkers(hipR, thigh, legR, -1, sideMarkerMaterials, sideMarkers);
   const kneeR = makePivot(0, -thigh, 0);
   joints.kneeR = kneeR;
   hipR.add(kneeR);
   kneeR.add(makeSphere(materials.skin, legR * 0.88, 10));
   kneeR.add(makeLimb(materials.skin, legR * 0.85, legR * 0.7, shin));
+  addLimbSideMarkers(kneeR, shin, legR * 0.85, -1, sideMarkerMaterials, sideMarkers);
   const footR = makePivot(0, -shin, 0);
   joints.footR = footR;
   kneeR.add(footR);
@@ -232,11 +285,13 @@ export function createCharacter(opts) {
   joints.hipL = hipL;
   pelvis.add(hipL);
   hipL.add(makeLimb(materials.skin, legR, legR * 0.85, thigh));
+  addLimbSideMarkers(hipL, thigh, legR, 1, sideMarkerMaterials, sideMarkers);
   const kneeL = makePivot(0, -thigh, 0);
   joints.kneeL = kneeL;
   hipL.add(kneeL);
   kneeL.add(makeSphere(materials.skin, legR * 0.88, 10));
   kneeL.add(makeLimb(materials.skin, legR * 0.85, legR * 0.7, shin));
+  addLimbSideMarkers(kneeL, shin, legR * 0.85, 1, sideMarkerMaterials, sideMarkers);
   const footL = makePivot(0, -shin, 0);
   joints.footL = footL;
   kneeL.add(footL);
@@ -262,5 +317,6 @@ export function createCharacter(opts) {
     headTop: hipY + torsoLen + 0.08 + headR * 1.9,
     upperArm, foreArm, // 左手IK用の上腕・前腕長
   };
+  group.userData.sideMarkers = sideMarkers;
   return { group, joints, materials };
 }
