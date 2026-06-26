@@ -179,7 +179,7 @@ export const TUNING = {
   // 打点品質 → 角度幅・球速・精度の変換係数
   contact: {
     idealLateral: 0.6,     // 体の横この距離(m)が適正打点（詰まり判定を緩和）。バック側で使用
-    idealLateralFore: 0.85, // フォア側の適正打点距離(m)。フォアは体からもう少し離れて打つため緩める
+    idealLateralFore: 1.05, // フォア側の適正打点距離(m)。フォアは体からもう少し離れて打つため緩める（懐を広げ、より遠い打点まで適正扱いにする）
     minLateral: 0.15,    // これ以下は「完全に詰まり」
     idealZLow: 0.5,      // この高さ範囲が標準打点
     idealZHigh: 1.3,
@@ -195,8 +195,8 @@ export const TUNING = {
     sigmaBad: 1.6,       // 打点が悪いときに加算される散らばり（ミス率上昇）
     backhandPower: 0.88, // バック側の威力倍率
     // 泳ぎ（打点が体から遠すぎる）
-    reachSlack: 0.6,     // ideal+この距離までは泳ぎ扱いにしない(m)
-    reachRange: 0.9,     // そこからこの幅で泳ぎ度が最大になる(m)
+    reachSlack: 0.75,    // ideal+この距離までは泳ぎ扱いにしない(m)（フォアの懐拡大に合わせて緩和）
+    reachRange: 1.05,    // そこからこの幅で泳ぎ度が最大になる(m)
     reachAngleDrop: 0.45, // 泳ぎ最大時の角度倍率低下
     reachSpeedDrop: 0.2,  // 泳ぎ最大時の球速低下
     // 前後の打点ズレ → 引っ張り/流しの変化

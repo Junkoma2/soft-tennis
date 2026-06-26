@@ -588,6 +588,56 @@ export function updateCpuFront(dt) {
   moveAutoAI(cpuFront, "cpu", dt);
 }
 
+/* ===========================================================
+ * 「間に合わない場所」狙い（弱点狙い）
+ *
+ * 相手前衛・後衛それぞれの現在位置から、コート幅(シングルスサイドライン
+ * ±singlesHalfW)を横方向にサンプリングし、両者とも横移動で追いつけない
+ * （想定到達時間 > 打球の飛行時間）x座標を探す。見つかれば「弱点」として
+ * その x を返す（見つからなければ null）。
+ *
+ * 飛行時間は深め(ベースライン付近)のストロークを想定した目安値で近似する
+ * （正確な弾道計算はコース決定前にはできないため、十分に保守的な値を使う）。
+ * 前衛は守備範囲が狭い分ネット際の球には強いが、ここでは「サイドへの
+ * 横移動」だけを評価し、駆け引き（クロス/ストレートのセオリー）を壊さない
+ * よう、existing のコース選択に対する“追加の一票”として弱く効かせる。
+ * =========================================================== */
+const OPEN_SPOT_FLIGHT_TIME = 0.85; // 後衛の深いストロークがコートを横切るおおよその時間(秒)
+const OPEN_SPOT_SAMPLES = 9;        // サイドライン間のサンプリング数
+
+// 指定x地点に、選手pが飛行時間内に横移動で到達できるか。
+function canCoverX(p, x, flightTime) {
+  if (!p) return false;
+  const speed = TUNING.move.aiSpeed * (p.stats ? p.stats.speed : 1) * 1.2; // 守備反応込みの目安速度
+  const reach = (p.role === "front" ? TUNING.ai.frontVolleyReach : TUNING.ai.backReach) *
+    (p.stats ? p.stats.reach : 1);
+  const dist = Math.max(0, Math.abs(x - p.x) - reach);
+  return dist <= speed * flightTime;
+}
+
+// 相手前衛・後衛のどちらも届かないxを探す。見つかれば最も「間に合わなさが大きい」
+// （両者の最短到達時間が長い）地点のxを返す。見つからなければnull。
+export function findOpenCourseX(oppBack, oppFront) {
+  const xMax = COURT.singlesHalfW - 0.2;
+  let bestX = null;
+  let bestGap = 0;
+  for (let i = 0; i < OPEN_SPOT_SAMPLES; i++) {
+    const x = -xMax + (2 * xMax) * (i / (OPEN_SPOT_SAMPLES - 1));
+    const backOk = canCoverX(oppBack, x, OPEN_SPOT_FLIGHT_TIME);
+    const frontOk = canCoverX(oppFront, x, OPEN_SPOT_FLIGHT_TIME);
+    if (backOk || frontOk) continue;
+    // どちらも届かない地点。両者の不足距離の小さい方（=「最も近かったほうの選手」が
+    // どれだけ届かなかったか）を弱点の強さとして使い、最も間に合わない地点を選ぶ。
+    const backGap = Math.abs(x - oppBack.x);
+    const frontGap = Math.abs(x - oppFront.x);
+    const gap = Math.min(backGap, frontGap);
+    if (gap > bestGap) {
+      bestGap = gap;
+      bestX = x;
+    }
+  }
+  return bestX;
+}
 
 // AI打球の共通ロジック（playerチーム・cpuチーム共通）。
 // side: "player"(自陣y+側) または "cpu"(自陣y-側)
@@ -733,6 +783,14 @@ export function tryReturnAI(side) {
       if (Math.abs(oppFront.x) > 0.6 && Math.sign(course) === frontSign &&
           Math.random() < 0.6) {
         course = -frontSign * (0.55 + Math.random() * 0.35);
+      }
+      // 弱点狙い: 相手前衛・後衛のどちらも横移動で間に合わない地点が
+      // 見つかったときは、高確率でそこを最優先で突く（決定打のチャンス）。
+      // 常時ではなく確率的に効かせ、駆け引き（クロス/ストレートのセオリー）
+      // による配球の読み合いを完全には上書きしない。
+      const openX = findOpenCourseX(oppBack, oppFront);
+      if (openX != null && Math.random() < 0.7) {
+        course = Math.max(-1, Math.min(1, openX / 4.6));
       }
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
