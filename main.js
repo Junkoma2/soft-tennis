@@ -47,7 +47,7 @@ import {
   development,
 } from "./state.js";
 
-import { draw } from "./render.js";
+import { draw } from "./render-20260626-07.js";
 import { is3D, setRenderMode, getRenderMode } from "./render-mode.js";
 import { setupDebugControls } from "./debug-ui.js";
 
@@ -1252,14 +1252,24 @@ if (renderModeControls) {
 
 setupDebugControls(draw);
 
-startBtn.addEventListener("click", function () {
+function beginMatchFromStartButton(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  if (screens.ready.hidden) return;
   startMatch();
   if (!rafId) {
     setLastTime(performance.now());
     setMatchTime(0);
     setRafId(requestAnimationFrame(loop));
   }
-});
+}
+
+startBtn.addEventListener("pointerdown", beginMatchFromStartButton);
+startBtn.addEventListener("click", beginMatchFromStartButton);
+startBtn.onclick = beginMatchFromStartButton;
+window.__softTennisStartReady = true;
 
 retryBtn.addEventListener("click", function () {
   showScreen("ready");
