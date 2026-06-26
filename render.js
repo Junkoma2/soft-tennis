@@ -22,7 +22,8 @@ import {
 } from "./serve.js";
 
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
-import { canPlayerHit, hitLineInfo } from "./input.js";
+import { canPlayerHit } from "./input.js";
+import { hitLineInfo } from "./hit-detection.js";
 
 /* ===========================================================
  * 描画

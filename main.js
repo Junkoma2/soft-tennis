@@ -17,7 +17,7 @@ import {
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
   hintText, shotControls, chargeBtn, serveCategoryControls,
   aggressionControls, shotSelectControls, moveStick, moveStickKnob,
-  formationControls, controlsPanel, debugControls,
+  formationControls, controlsPanel,
   mouseAim, makeStats, playerStats, cpuStats,
   state, player, cpu, serveFaults, rafId, lastTime, pendingSwing, matchTime,
   setState, setServeFaults, incServeFaults, setRafId, setLastTime, setPendingSwing, setMatchTime, addMatchTime,
@@ -44,12 +44,12 @@ import {
   ballHittableSince, setBallHittableSince,
   pendingShot, pendingPower, pendingAimX, pendingAimY,
   setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
-  debugDraw, setDebugHitboxes, setDebugTrajectory,
   development,
 } from "./state.js";
 
 import { draw } from "./render.js";
 import { is3D, setRenderMode, getRenderMode } from "./render-mode.js";
+import { setupDebugControls } from "./debug-ui.js";
 
 import {
   serverTeamNow, serverIsSecondOfPair, serverIsFrontPlayer, serveFromRight,
@@ -1250,24 +1250,7 @@ if (renderModeControls) {
   syncBtns();
 }
 
-const syncDebugButtons = () => {
-  debugControls.querySelectorAll("[data-debug]").forEach((b) => {
-    const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes : debugDraw.trajectory;
-    b.classList.toggle("is-active", active);
-  });
-};
-const toggleDebugButton = (b) => {
-  if (b.dataset.debug === "hitboxes") setDebugHitboxes(!debugDraw.hitboxes);
-  if (b.dataset.debug === "trajectory") setDebugTrajectory(!debugDraw.trajectory);
-  syncDebugButtons();
-  draw();
-};
-debugControls.querySelectorAll("[data-debug]").forEach((b) => b.addEventListener("click", (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  toggleDebugButton(b);
-}));
-syncDebugButtons();
+setupDebugControls(draw);
 
 startBtn.addEventListener("click", function () {
   startMatch();
