@@ -1250,9 +1250,8 @@ if (renderModeControls) {
   syncBtns();
 }
 
-let lastDebugPointerAt = 0;
 const syncDebugButtons = () => {
-  document.querySelectorAll("[data-debug]").forEach((b) => {
+  debugControls.querySelectorAll("[data-debug]").forEach((b) => {
     const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes : debugDraw.trajectory;
     b.classList.toggle("is-active", active);
   });
@@ -1263,22 +1262,11 @@ const toggleDebugButton = (b) => {
   syncDebugButtons();
   draw();
 };
-document.addEventListener("pointerdown", (e) => {
-  const b = e.target.closest && e.target.closest("[data-debug]");
-  if (!b) return;
+debugControls.querySelectorAll("[data-debug]").forEach((b) => b.addEventListener("click", (e) => {
   e.preventDefault();
   e.stopPropagation();
-  lastDebugPointerAt = performance.now();
   toggleDebugButton(b);
-}, true);
-document.addEventListener("click", (e) => {
-  const b = e.target.closest && e.target.closest("[data-debug]");
-  if (!b) return;
-  e.preventDefault();
-  e.stopPropagation();
-  if (performance.now() - lastDebugPointerAt < 350) return;
-  toggleDebugButton(b);
-}, true);
+}));
 syncDebugButtons();
 
 startBtn.addEventListener("click", function () {

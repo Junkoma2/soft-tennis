@@ -22,7 +22,7 @@ import {
 } from "./serve.js";
 
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
-import { canPlayerHit, distToBall } from "./input.js";
+import { canPlayerHit, hitLineInfo } from "./input.js";
 
 /* ===========================================================
  * 描画
@@ -385,20 +385,43 @@ function drawWorldEllipse(cx, cy, rx, ry, color, fillColor) {
 }
 
 function drawDebugHitboxFor(pl, opts) {
-  const reach = opts.reach * (pl.stats?.reach || 1);
-  const highPenalty = Math.max(0, ball.z - 1.85) * 0.55;
-  const lowPenalty = Math.max(0, 0.35 - ball.z) * 0.8;
-  const zPenalty = highPenalty + lowPenalty;
-  const groundReach = opts.weighted
-    ? Math.sqrt(Math.max(0, reach * reach - zPenalty * zPenalty))
-    : reach;
-  const rx = opts.weighted ? groundReach / 1.18 : groundReach;
-  const ry = opts.weighted ? groundReach / 1.5 : groundReach;
-  const distance = opts.weighted ? distToBall(pl) : Math.hypot(ball.x - pl.x, ball.y - pl.y);
-  const active = opts.controlled ? canPlayerHit(pl) : distance <= reach;
+  const info = hitLineInfo(pl);
+  const active = opts.controlled ? canPlayerHit(pl) : info.active;
   const color = active ? "rgba(74,222,128,0.95)" : opts.color;
   const fillColor = active ? "rgba(74,222,128,0.13)" : opts.fillColor;
-  drawWorldEllipse(pl.x, pl.y, rx, ry, color, fillColor);
+  const foreX = pl.x + info.foreDir * (info.foreWidth || 0.75);
+  const backX = pl.x - info.foreDir * (info.backWidth || 0.45);
+  const a = project(backX, pl.y, 0);
+  const b = project(foreX, pl.y, 0);
+  const c = project(pl.x, pl.y, 0);
+
+  ctx.setLineDash([8, 5]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = active ? 5 : 3;
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, Math.max(8, 0.34 * c.s), Math.max(5, 0.12 * c.s), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  if (info.contact) {
+    const cp = project(info.contact.x, info.contact.y, Math.min(1.0, info.contact.z));
+    ctx.fillStyle = active ? "#BBF7D0" : "#F8FAFC";
+    ctx.strokeStyle = "rgba(15,23,42,0.85)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cp.x, cp.y, active ? 7 : 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fill();
+  }
 
   const p = project(pl.x, pl.y, 0);
   ctx.font = "700 10px sans-serif";
@@ -407,7 +430,8 @@ function drawDebugHitboxFor(pl, opts) {
   ctx.fillStyle = active ? "#BBF7D0" : "#F8FAFC";
   ctx.strokeStyle = "rgba(15,23,42,0.8)";
   ctx.lineWidth = 3;
-  const label = `${distance.toFixed(1)} / ${reach.toFixed(1)}`;
+  const distance = Number.isFinite(info.distanceX) ? info.distanceX.toFixed(2) : "--";
+  const label = `${info.side} ${distance} / ${(info.width || 0).toFixed(2)}`;
   ctx.strokeText(label, p.x, p.y - Math.max(14, 0.8 * p.s));
   ctx.fillText(label, p.x, p.y - Math.max(14, 0.8 * p.s));
 }
@@ -671,6 +695,40 @@ export function drawTimingGauge() {
   }
 
   if (state === "rally" && charge.active) {
+    {
+    const k = chargeAmount();
+    const p = project(rallyControlled.x, rallyControlled.y, 0.15);
+    const pulse = 0.82 + 0.18 * Math.sin(performance.now() / 85);
+    const r = (0.38 + 0.42 * k) * p.s * pulse;
+    const readyColor = k >= 1 ? "245,158,11" : "99,102,241";
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = `rgba(${readyColor},${0.35 - i * 0.08})`;
+      ctx.lineWidth = 7 - i * 1.5;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, r * (1 + i * 0.18), r * 0.34 * (1 + i * 0.12), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.fillStyle = `rgba(${readyColor},0.92)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - Math.max(16, 0.38 * p.s), Math.max(5, 0.08 * p.s) + 8 * k, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = "800 14px sans-serif";
+    ctx.textAlign = "center";
+    const courseName = courseLabelFor(rallyControlled.x, aim.x).replace("・・, "");
+    const text = "ため " + courseName + (k >= 1 ? " MAX" : "");
+    ctx.strokeStyle = "rgba(15,23,42,0.82)";
+    ctx.lineWidth = 4;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.strokeText(text, p.x, p.y - Math.max(24, 0.52 * p.s));
+    ctx.fillText(text, p.x, p.y - Math.max(24, 0.52 * p.s));
+    return;
+    }
     // ためゲージ: たまるほど鋭い角度。コースとクリック案内を表示
     // （球種は左/右クリック・Space+クリックで決まるため、ここでは確定表示しない）
     const k = chargeAmount();
