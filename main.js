@@ -505,9 +505,12 @@ export function hitBall(opts) {
     sigma = ev.sigma / Math.min(Math.max(stats.control, 0.5), 1.3);
   } else {
     // AI: コース(-1..1)からそのまま目標を決める
+    // ※ 3.5 だとシングルスサイドライン(4.115)の内側で頭打ちになり、ダブルスの
+    //   アレー(4.115〜5.485)へ打つ球がほぼ無くなってしまうため、コース最大(±1)で
+    //   アレー内に収まる係数(4.6)へ広げる。
     const course = Math.max(-1, Math.min(1, opts.course || 0));
     const accuracy = (backhand ? 0.7 : 1.0) * Math.min(stats.control, 1.3);
-    tx = course * 3.5;
+    tx = course * 4.6;
     sigma = 0.45 + 1.0 * Math.max(0, 1.1 - accuracy);
     speed = def.speed * STROKE_INITIAL_SPEED_MUL * stats.power * (backhand ? 0.9 : 1.0)
       * (1 + TUNING.charge.speedBonus * chargeK);
