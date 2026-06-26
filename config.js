@@ -253,6 +253,38 @@ export const TUNING = {
     poachReach: 2.0,         // ポーチに出たときのリーチ
     poachMaxPace: 11.0,      // ポーチで飛び出す球の横方向ペース上限。これより速い抜き球には踏み込まない
   },
+  /* ---------------------------------------------------------
+   * CPUStyle（個性パラメータ）
+   * 前衛/後衛で完全に別ロジックにするのではなく、同じ判断ロジックの上で
+   * 「役割らしさ」をこのパラメータの差で表現する。
+   *   baseDepth     : 基本の守備深さ(0=ネット〜100=ベースライン)
+   *   netBias       : 前へ出たがる度(0-1)
+   *   aggression    : チャンスで攻める度(0-1)
+   *   riskTolerance : リスク許容(0-1)
+   *   poachBias     : ポーチ積極性(0-1)
+   *   lobFear       : ロブ警戒・後退の度合い(0-1)
+   *   recoveryBias  : 元の定位置へ戻る意識(0-1)
+   *   reaction      : 判断速度（大きいほど速く反応, 秒の逆数的な重み）
+   * ロール（前衛役/後衛役）はformationが初期値を補正するだけで、
+   * ロジック自体はこのパラメータを読む共通コードを通る。
+   * --------------------------------------------------------- */
+  cpuStyle: {
+    front: {
+      baseDepth: 20, netBias: 0.85, aggression: 0.55, riskTolerance: 0.5,
+      poachBias: 0.5, lobFear: 0.35, recoveryBias: 0.6, reaction: 1.1,
+    },
+    back: {
+      baseDepth: 85, netBias: 0.2, aggression: 0.35, riskTolerance: 0.35,
+      poachBias: 0.1, lobFear: 0.6, recoveryBias: 0.7, reaction: 1.0,
+    },
+  },
+  // formationによる補正（baseDepth/netBias等への加算・倍率）。
+  // ロジックは変えず、パラメータだけを補正する。
+  formationBias: {
+    "ganko":        { front: { netBiasAdd: 0 },     back: { baseDepthAdd: 0 } },
+    "double-back":  { front: { netBiasAdd: -0.45, baseDepthAdd: 55 }, back: { baseDepthAdd: 0 } },
+    "double-front": { front: { netBiasAdd: 0.05 }, back: { netBiasAdd: 0.35, baseDepthAdd: -35 } },
+  },
 };
 
 // canvas内部解像度。画面向きに応じて applyViewport() で切り替える（live binding）。
