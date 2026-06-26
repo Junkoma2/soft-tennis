@@ -13,7 +13,7 @@
 
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
-import { back, front, cpuBack, cpuFront, ball } from "./state.js";
+import { back, front, cpuBack, cpuFront, ball, state } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import {
   applyPose, poseNameForPlayer, applyLeftHandGrip,
@@ -45,7 +45,7 @@ function getMotion(pl) {
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)
 const ASPECT = 0.62;     // ビューポート横/縦比
 const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
-const FEET_FRAC = 0.11;  // 足元がビューポート下から何割の位置に出るか
+const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
 const D = Math.PI / 180;
 
 export function isReady3D() { return initialized; }
@@ -128,16 +128,26 @@ function baseYawFor(pl) {
   return (pl.facing < 0) ? Math.PI : 0;
 }
 
-function yawForPlayer(pl) {
-  if (ball.bounces < 1 || Math.hypot(ball.vx, ball.vy) < 0.2) return baseYawFor(pl);
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function isReceivingIncoming(pl) {
+  if (state !== "rally" || ball.serving || ball.bounces < 1 || Math.hypot(ball.vx, ball.vy) < 0.2) {
+    return false;
+  }
   const receivingSide = (pl === back || pl === front) ? "player" : "cpu";
   const incomingPlayerSide = ball.lastHitter === "cpu" && ball.vy > 0;
   const incomingCpuSide = ball.lastHitter === "player" && ball.vy < 0;
-  if ((receivingSide === "player" && !incomingPlayerSide) ||
-      (receivingSide === "cpu" && !incomingCpuSide)) {
-    return baseYawFor(pl);
-  }
-  return Math.atan2(-ball.vx, -ball.vy);
+  return (receivingSide === "player" && incomingPlayerSide) ||
+    (receivingSide === "cpu" && incomingCpuSide);
+}
+
+function yawForPlayer(pl) {
+  const base = baseYawFor(pl);
+  if (!isReceivingIncoming(pl)) return base;
+  const courseYaw = Math.atan2(-ball.vx, -ball.vy);
+  return base + clamp(angleDelta(base, courseYaw), -0.6, 0.6);
 }
 
 function angleDelta(from, to) {
@@ -146,6 +156,8 @@ function angleDelta(from, to) {
 
 function smoothYawFor(pl, targetYaw, dt) {
   const m = getMotion(pl);
+  if (!Number.isFinite(targetYaw)) targetYaw = baseYawFor(pl);
+  if (pl.pose === "swing" && Number.isFinite(m.yaw)) return m.yaw;
   if (m.yaw == null) {
     m.yaw = targetYaw;
     return targetYaw;
@@ -157,6 +169,7 @@ function smoothYawFor(pl, targetYaw, dt) {
 
 function applyRunMotion(pl, joints, yaw, dt) {
   if (!joints || pl.pose === "swing") return;
+  if (!Number.isFinite(yaw) || !Number.isFinite(pl.vx) || !Number.isFinite(pl.vy)) return;
   const vx = pl.vx || 0;
   const vy = pl.vy || 0;
   const speed = Math.hypot(vx, vy);
@@ -179,12 +192,10 @@ function applyRunMotion(pl, joints, yaw, dt) {
   const sideSign = side >= 0 ? 1 : -1;
 
   if (joints.pelvis) {
-    joints.pelvis.position.y += Math.abs(stride) * 0.035 * amp;
-    joints.pelvis.rotation.z += (lateral ? -sideSign * 5 * amp : 0) * D;
+    joints.pelvis.position.y += Math.abs(stride) * 0.025 * amp;
   }
   if (joints.leanRoot) {
-    joints.leanRoot.rotation.x += (lateral ? 2 : -5) * amp * D;
-    joints.leanRoot.rotation.z += (lateral ? -sideSign * 7 * amp : sideSign * 1.5 * amp) * D;
+    joints.leanRoot.rotation.x += (lateral ? 0 : -4) * amp * D;
   }
 
   if (joints.hipR) {
@@ -202,6 +213,13 @@ function applyRunMotion(pl, joints, yaw, dt) {
 
   if (joints.shoulderR) joints.shoulderR.rotation.x += (lateral ? 8 * sideSign : -14) * counter * amp * D;
   if (joints.shoulderL) joints.shoulderL.rotation.x += (lateral ? -8 * sideSign : -14) * stride * amp * D;
+}
+
+function poseNameFor3D(pl, isFront) {
+  if (pl.pose === "prep" && !isReceivingIncoming(pl)) {
+    return isFront ? "ready" : "rearReady";
+  }
+  return poseNameForPlayer(pl, isFront);
 }
 
 export function render3D() {
@@ -244,14 +262,14 @@ export function render3D() {
     const renderYaw = smoothYawFor(pl, yawForPlayer(pl), dt);
     char.group.rotation.y = renderYaw;
 
-    if (pl.pose === "swing") {
+    if (pl.pose === "swing" && state === "rally" && !ball.serving) {
       // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
       const side = pl.swingSide === "back" ? "back" : "fore";
       applySwingPhase(char.joints, side, swingPhaseOf(pl), BASE_HIP_Y, isFront);
       pinBlend(pl, side === "back" ? "backhandFollow" : (isFront ? "forehandFollow" : "rearForehandFollow"));
       // 振り抜き中は片手（左手IKは当てない）
     } else {
-      const name = poseNameForPlayer(pl, isFront);
+      const name = poseNameFor3D(pl, isFront);
       const b = updateBlend(pl, name, dt);
       applyPose(char.joints, b.a, b.b, b.t, BASE_HIP_Y);
       // 構え・ボレーのみ左手をグリップへ添える（両手構え）

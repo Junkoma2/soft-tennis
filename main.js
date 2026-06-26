@@ -1213,7 +1213,7 @@ let p3d = null, p3dLoading = false;
 function ensure3D() {
   if (p3d || p3dLoading) return;
   p3dLoading = true;
-  import("./player3d.js")
+  import("./player3d.js?v=20260626-01")
     .then((m) => m.init3D(canvas).then(() => { p3d = m; }))
     .catch((e) => { console.warn("3D初期化失敗、2Dにフォールバック:", e); setRenderMode("2d"); })
     .finally(() => { p3dLoading = false; });
