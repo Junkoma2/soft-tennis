@@ -8,9 +8,10 @@ import {
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
-  serveAimCursor, chargeBtn, serveCategoryControls,
+  serveAimCursor, chargeBtn, serveCategoryControls, debugControls, debugDraw,
   setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
+  setDebugHitboxes, setDebugTrajectory,
   handedControls, setPlayerHanded,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
@@ -239,6 +240,24 @@ if (serveCategoryControls) {
     setServeCategory(btn.dataset.serveCategory);
     setActiveButton(serveCategoryControls, btn);
   });
+}
+
+if (debugControls) {
+  function syncDebugButtons() {
+    debugControls.querySelectorAll("[data-debug]").forEach(function (b) {
+      const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes : debugDraw.trajectory;
+      b.classList.toggle("is-active", active);
+    });
+  }
+
+  debugControls.addEventListener("click", function (e) {
+    const btn = e.target.closest("[data-debug]");
+    if (!btn) return;
+    if (btn.dataset.debug === "hitboxes") setDebugHitboxes(!debugDraw.hitboxes);
+    if (btn.dataset.debug === "trajectory") setDebugTrajectory(!debugDraw.trajectory);
+    syncDebugButtons();
+  });
+  syncDebugButtons();
 }
 
 // 攻守の割合（相方AIの積極性）もスライダーで選ぶ（0=守り 〜 1=攻め）。

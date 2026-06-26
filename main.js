@@ -49,7 +49,6 @@ import {
 
 import { draw } from "./render-20260626-07.js";
 import { is3D, setRenderMode, getRenderMode } from "./render-mode.js";
-import { setupDebugControls } from "./debug-ui.js";
 
 import {
   serverTeamNow, serverIsSecondOfPair, serverIsFrontPlayer, serveFromRight,
@@ -64,7 +63,7 @@ import {
 import {
   setControlledX, setControlledY, startCharge, updateAimInputs,
   distToBall, canPlayerHit, playerHitBall,
-} from "./input.js";
+} from "./input.js?v=20260626-18";
 
 import {
   updatePartner, updateRallyControlledAI, updateCpuBack, updateCpuFront,
@@ -1249,8 +1248,6 @@ if (renderModeControls) {
   });
   syncBtns();
 }
-
-setupDebugControls(draw);
 
 function beginMatchFromStartButton(e) {
   if (e) {
