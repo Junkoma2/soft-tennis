@@ -1,28 +1,31 @@
-import { TUNING } from "./config.js";
+import { TUNING, styleFromBias } from "./config.js";
 import {
-  ball, formation, front, back, cpuFront, cpuBack,
-  pointJustServedByFront, cpuJustServedByFront,
+  ball, pointJustServedByFront, cpuJustServedByFront,
 } from "./state.js";
 import { predictLanding } from "./main.js";
-import { opponentHitterPos, ownBackPlayer } from "./aiPositioning.js";
+import {
+  opponentHitterPos, ownBackPlayer, netPlayerOf, basePlayerOf,
+} from "./aiPositioning.js";
 
 /* ===========================================================
  * AI 思考の共通コンテキスト
  *
  *   buildCtx()          : moveAutoAI が毎フレーム作る共通情報の束（ctx）。
  *                         decideTask / executeTask 等へ ctx 1つで渡し、引数を減らす。
- *   getCpuStyle()       : 役割(front/back)の個性パラメータ（formation補正込み）。
+ *   getCpuStyle()       : 選手の positionBias から連続生成した個性パラメータ。
  *   evaluateSituation() : 着地予測・球速/高さ・展開からチャンス/危険/ロブを評価。
  * ロジックの分岐は formation/役割で増やさず、これらの値で「らしさ」を表現する。
  * =========================================================== */
 
 // p（移動させる選手）と side から、フェーズ処理・タスク決定が共通で使う情報を作る。
-//   ctx = { side, myTeam, opponentTeam, homeSign, homeBackY, myFront, myBack, speed,
+//   ctx = { side, myTeam, opponentTeam, homeSign, homeBackY, netPlayer, basePlayer, speed,
 //           myJustServedByFront, situation, style, role, dash }
+// netPlayer/basePlayer は positionBias で導出した中立な前寄り/後ろ寄りの選手
+// （front/backという固定クラスに依存しない）。雁行では従来の前衛/後衛と一致する。
 // situation/style/role/dash はラリーフェーズで充填する（serve/receiveでは未使用）。
 export function buildCtx(side, p) {
-  const myFront = side === "player" ? front : cpuFront;
-  const myBack  = side === "player" ? back  : cpuBack;
+  const netPlayer = netPlayerOf(side);
+  const basePlayer = basePlayerOf(side);
   const homeSign = side === "player" ? 1 : -1;
   return {
     side,
@@ -30,8 +33,8 @@ export function buildCtx(side, p) {
     opponentTeam: side === "player" ? "cpu" : "player",
     homeSign,
     homeBackY: TUNING.pos.backY * homeSign,
-    myFront,
-    myBack,
+    netPlayer,
+    basePlayer,
     speed: TUNING.move.aiSpeed * p.stats.speed,
     myJustServedByFront: side === "player" ? pointJustServedByFront : cpuJustServedByFront,
     situation: null,
@@ -41,21 +44,10 @@ export function buildCtx(side, p) {
   };
 }
 
-// role（"front"/"back"）の個性パラメータをformation補正込みで返す。
-// 固定の前衛/後衛ではなく「いまそのポジションを担当している側」を渡す。
-export function getCpuStyle(role) {
-  const base = TUNING.cpuStyle[role];
-  const bias = (TUNING.formationBias[formation] && TUNING.formationBias[formation][role]) || {};
-  return {
-    baseDepth: base.baseDepth + (bias.baseDepthAdd || 0),
-    netBias: Math.max(0, Math.min(1, base.netBias + (bias.netBiasAdd || 0))),
-    aggression: base.aggression,
-    riskTolerance: base.riskTolerance,
-    poachBias: base.poachBias,
-    lobFear: base.lobFear,
-    recoveryBias: base.recoveryBias,
-    reaction: base.reaction,
-  };
+// 選手の個性パラメータを positionBias から連続生成して返す。
+// 固定の前衛/後衛クラスではなく、その選手自身の前後志向で「らしさ」を決める。
+export function getCpuStyle(player) {
+  return styleFromBias(player.positionBias);
 }
 
 // 状況評価: 着地予測・球の高さ/速さ・相手打点から、チャンス/危険/ロブかどうかを判定する。

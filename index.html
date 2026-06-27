@@ -87,15 +87,19 @@
           <button class="ctrl-btn is-active" data-input-mode="swipe" type="button">スワイプ</button>
           <button class="ctrl-btn" data-input-mode="mouse" type="button">マウス</button>
         </div>
-        <div class="control-group" id="render-mode-controls">
-          <span class="control-label">キャラ表示（試作）</span>
-          <button class="ctrl-btn" data-render="2d" type="button">2D</button>
-          <button class="ctrl-btn" data-render="3d" type="button">3D（試作）</button>
-        </div>
         <details class="start-panel" id="player-stats-panel">
           <summary>選手ステータスを調整</summary>
           <div class="stats-grid" id="stats-grid"><!-- playerStatsPanel.js が生成 --></div>
           <button id="stats-reset" class="stats-reset" type="button">標準値に戻す</button>
+        </details>
+        <details class="start-panel">
+          <summary>パラメータの説明</summary>
+          <div class="guide-body">
+            <p><strong>ポジション(bias)</strong> 前後の立ち位置の傾向。0=完全前衛〜100=完全後衛の連続値で、<strong>0〜49=前衛 / 50〜100=後衛</strong>として表示。陣形を選ぶと自動設定される（雁行=前衛25/後衛80、ダブル後衛=72/84、ダブル前衛=20/46）。相手チームは常に雁行で固定。値が小さいほどネットへ詰めてポーチに出やすく、大きいほど深く守って深い球を拾う。</p>
+            <p><strong>打力</strong> ストロークの球速／<strong>サーブ</strong> サーブの球速／<strong>足</strong> 走る速さ</p>
+            <p><strong>リーチ</strong> 打球が届く判定の広さ／<strong>精度</strong> 狙いの正確さ（高いほど誤差小）／<strong>ボレー</strong> 前衛の反応の良さ</p>
+            <p>試合中は<strong>デバッグの「パラメータ」</strong>をオンにすると、各選手の頭上に bias・役割・現在タスクが表示される。</p>
+          </div>
         </details>
         <details class="start-panel">
           <summary>操作ガイド</summary>
@@ -162,6 +166,8 @@
             <span class="control-label">デバッグ</span>
             <button class="ctrl-btn" data-debug="hitboxes" type="button">当たり判定</button>
             <button class="ctrl-btn" data-debug="trajectory" type="button">軌道</button>
+            <button class="ctrl-btn" data-debug="params" type="button">パラメータ</button>
+            <button class="ctrl-btn" data-debug="coverage" type="button">守備範囲</button>
           </div>
         </div>
 

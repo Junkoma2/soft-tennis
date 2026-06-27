@@ -14,9 +14,6 @@ import {
   debugDraw,
 } from "./state.js";
 
-import { drawHumanoid } from "./player-2d.js";
-import { is3D } from "./render-mode.js";
-
 import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
 } from "./serve.js";
@@ -24,6 +21,7 @@ import {
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
+import { opponentHitterPos, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
 
 /* ===========================================================
  * 描画
@@ -33,6 +31,7 @@ export function draw() {
   ctx.clearRect(0, 0, W, H);
   drawBackground();
   drawCourt();
+  drawDebugCoverage();
   drawLandingMarker();
   drawAimCursor();
   drawGroundEffects();
@@ -40,14 +39,9 @@ export function draw() {
   drawDebugHitboxes();
   drawBallShadow();
 
-  // 3D モードのときは人型を 2D で描かない（player3d.js のオーバーレイが描く）
-  const drawP = is3D() ? function () {} : drawHumanoid;
+  // キャラクターは3Dオーバーレイ（player3d.js）が描画する。ここでは場の要素のみ。
   const items = [
-    { y: cpuBack.y, fn: function () { drawP(cpuBack); } },
-    { y: cpuFront.y, fn: function () { drawP(cpuFront); } },
     { y: 0, fn: drawNet },
-    { y: front.y, fn: function () { drawP(front); } },
-    { y: back.y, fn: function () { drawP(back); } },
     { y: ball.y, fn: drawBall },
   ];
   items.sort(function (a, b) { return a.y - b.y; });
@@ -59,6 +53,94 @@ export function draw() {
   drawHud();
   drawScore();
   drawControlLegend();
+  drawDebugParams();
+}
+
+/* ===========================================================
+ * デバッグ: 守備範囲の可視化
+ *
+ * 相手の打点 O から「打てるコースの幅」（自陣シングルスコート両隅への2辺）を引き、
+ * その角の二等分線を自陣ベースラインまで引く。二等分線で自陣を2分割し、
+ * ストレート側（ネット担当=青）とクロス側（後方担当=赤）に塗り分ける。
+ * 各ゾーンの中央（その選手の深さでの左右中央）が理想ポジション＝リングで表示。
+ * 雁行の「前衛がストレートを締め、後衛がクロスを守る」を幾何的に確認できる。
+ * =========================================================== */
+function drawDebugCoverage() {
+  if (!debugDraw.coverage) return;
+  if (state === "ready") return;
+  drawCoverageForSide("player");
+  drawCoverageForSide("cpu");
+}
+
+function covNorm(x, y) { const m = Math.hypot(x, y) || 1; return { x: x / m, y: y / m }; }
+
+function covFillZone(pts, fill, stroke) {
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const s = project(p[0], p[1], 0);
+    if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function covStrokeLine(x1, y1, x2, y2, color, w) {
+  const a = project(x1, y1, 0), b = project(x2, y2, 0);
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.stroke();
+}
+
+function covMarker(x, y, color) {
+  const s = project(x, y, 0);
+  ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill();
+}
+
+function drawCoverageForSide(side) {
+  const homeSign = side === "player" ? 1 : -1;
+  const O = opponentHitterPos(side);             // 相手の打点
+  const Xw = COURT.halfW;                          // ダブルスサイドライン（実際に打てる横幅）
+  const yBase = homeSign * COURT.halfL;            // 自陣ベースライン
+  const yNet = 0;
+  if (Math.abs(yBase - O.y) < 1) return;
+  // その瞬間に打てる範囲＝最も鋭いコースはネット際のサイド隅（ベースライン隅より角度が鋭い）。
+  // 相手打点 O から自陣のネット際両隅 (±Xw, 0) への2辺が打てるコースの角度幅になる。
+  const NL = { x: -Xw, y: yNet };
+  const NR = { x:  Xw, y: yNet };
+  const uL = covNorm(NL.x - O.x, NL.y - O.y);
+  const uR = covNorm(NR.x - O.x, NR.y - O.y);
+  const d = { x: uL.x + uR.x, y: uL.y + uR.y };     // 角の二等分線方向
+  const clampX = (x) => Math.max(-Xw, Math.min(Xw, x));
+  const bisX = (y) => clampX(Math.abs(d.y) < 1e-4 ? O.x : O.x + (y - O.y) / d.y * d.x);
+
+  const xB0 = bisX(yNet), xBb = bisX(yBase);
+
+  // 自陣コート矩形（ネット〜ベースライン）を二等分線で左右に分割する。
+  const leftZone  = [ [-Xw, yNet], [xB0, yNet], [xBb, yBase], [-Xw, yBase] ];
+  const rightZone = [ [xB0, yNet], [ Xw, yNet], [ Xw, yBase], [xBb, yBase] ];
+
+  // ストレート側＝相手打点と同じx符号側。ネット担当がストレートを締める。
+  const straightSign = O.x >= 0 ? 1 : -1;
+  const frontZone = straightSign > 0 ? rightZone : leftZone;
+  const backZone  = straightSign > 0 ? leftZone  : rightZone;
+
+  covFillZone(frontZone, "rgba(37,99,235,0.20)", "rgba(37,99,235,0.55)");
+  covFillZone(backZone,  "rgba(220,38,38,0.20)", "rgba(220,38,38,0.55)");
+
+  // 打てるコースの角度幅（ネット際の鋭い隅まで）と、その二等分線（自陣ベースラインまで）。
+  covStrokeLine(O.x, O.y, NL.x, NL.y, "rgba(255,255,255,0.85)", 1.5);
+  covStrokeLine(O.x, O.y, NR.x, NR.y, "rgba(255,255,255,0.85)", 1.5);
+  covStrokeLine(O.x, O.y, xBb, yBase, "rgba(250,204,21,0.95)", 2);
+
+  // 理想ポジション（各ゾーンの左右中央）を各選手の深さで表示する。
+  const netP = netPlayerOf(side), baseP = basePlayerOf(side);
+  const frontCenter = straightSign > 0 ? (bisX(netP.y) + Xw) / 2 : (-Xw + bisX(netP.y)) / 2;
+  const backCenter  = straightSign > 0 ? (-Xw + bisX(baseP.y)) / 2 : (bisX(baseP.y) + Xw) / 2;
+  covMarker(frontCenter, netP.y, "rgba(37,99,235,0.95)");
+  covMarker(backCenter,  baseP.y, "rgba(220,38,38,0.95)");
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
@@ -473,6 +555,39 @@ function drawDebugHitboxes() {
   ctx.restore();
 }
 
+// デバッグ: 各選手の positionBias・役割・現在タスクを頭上に表示する。
+function drawDebugParams() {
+  if (!debugDraw.params) return;
+  if (state === "ready") return;
+  const players = [
+    { p: back,     self: true },
+    { p: front,    self: true },
+    { p: cpuBack,  self: false },
+    { p: cpuFront, self: false },
+  ];
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  players.forEach(({ p, self }) => {
+    const bias = p.positionBias != null ? Math.round(p.positionBias) : "?";
+    const roleLabel = (p.positionBias != null && p.positionBias < 50) ? "前衛" : "後衛";
+    const task = p.aiTaskKind || "-";
+    const sc = project(p.x, p.y, 2.9); // 頭上（3Dキャラの頭より上）
+    const lines = [`${roleLabel} bias ${bias}`, `task: ${task}`];
+    ctx.font = "700 11px sans-serif";
+    let maxW = 0;
+    lines.forEach((l) => { const w = ctx.measureText(l).width; if (w > maxW) maxW = w; });
+    const boxW = maxW + 12, boxH = lines.length * 14 + 6;
+    const bx = sc.x - boxW / 2, by = sc.y - boxH;
+    ctx.fillStyle = self ? "rgba(37,99,235,0.85)" : "rgba(220,38,38,0.85)";
+    roundRect(ctx, bx, by, boxW, boxH, 5);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    lines.forEach((l, i) => { ctx.fillText(l, sc.x, by + 14 + i * 14); });
+  });
+  ctx.restore();
+}
+
 function bouncePreviewVelocity(vx, vy, vz) {
   const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
   const flat = TUNING.spin.flat;
@@ -769,5 +884,4 @@ export function drawBall() {
   ctx.stroke();
 }
 
-/* プレイヤー描画は player-2d.js へ移動
- * import { drawHumanoid } from "./player-2d.js"; を参照 */
+/* キャラクター描画は3Dオーバーレイ（player3d.js）が担当する。 */

@@ -52,7 +52,7 @@ export function updateServePhaseAI(p, ctx, dt) {
 //   ② 前衛はレシーブ完了まで動かない。ただし自分がサーブした直後のダッシュは始めてよい。
 // 処理しきった（＝rallyへ進ませない）場合のみ true を返す。false ならラリー処理へ流す。
 export function updateReceivePhaseAI(p, ctx, dt) {
-  const { myTeam, opponentTeam, homeSign, speed, myFront, myBack, myJustServedByFront } = ctx;
+  const { myTeam, opponentTeam, homeSign, speed, netPlayer, basePlayer, myJustServedByFront } = ctx;
 
   // ① 相手サーブが飛んでいる間は、レシーブ担当だけがボールを追う。
   // 担当でない味方はその場で待機（前衛がレシーバーの逆クロスでも後衛が追ってしまうバグ防止）。
@@ -82,16 +82,16 @@ export function updateReceivePhaseAI(p, ctx, dt) {
     return true;
   }
 
-  // ② 前衛役はレシーブが完了するまでポジション移動しない。
+  // ② 前寄り(netPlayer)役はレシーブが完了するまでポジション移動しない。
   // ただし自分がサーブした直後のサービスダッシュは始めてよい。
-  if (p === myFront && !receiveDone) {
+  if (p === netPlayer && !receiveDone) {
     if (state === "rally" && myJustServedByFront) {
-      const style = getCpuStyle("front");
+      const style = getCpuStyle(netPlayer);
       const dashTargetX = formation === "double-back"
-        ? (myBack.x > 0 ? -2.2 : 2.2)
-        : myFront.homeX * (myBack.x > 0 ? -1 : 1);
-      moveToward(myFront, dashTargetX, myFront.homeY, speed * (1.0 + style.netBias * 0.4) * dt, dt);
-      myFront.x = Math.max(-4.6, Math.min(4.6, myFront.x));
+        ? (basePlayer.x > 0 ? -2.2 : 2.2)
+        : netPlayer.homeX * (basePlayer.x > 0 ? -1 : 1);
+      moveToward(netPlayer, dashTargetX, netPlayer.homeY, speed * (1.0 + style.netBias * 0.4) * dt, dt);
+      netPlayer.x = Math.max(-4.6, Math.min(4.6, netPlayer.x));
     }
     return true;
   }
@@ -101,23 +101,25 @@ export function updateReceivePhaseAI(p, ctx, dt) {
 
 // ラリーフェーズ: 状況評価 → タスク決定 → タスク実行。
 export function updateRallyPhaseAI(p, ctx, dt) {
-  const { myTeam, myFront, myBack, myJustServedByFront } = ctx;
+  const { myTeam, netPlayer, myJustServedByFront } = ctx;
+  const isNet = (p === netPlayer);
 
   // ② 状況評価（チャンス/危険/展開/ロブ等）。formation/役割で分岐せず共通で評価する。
   ctx.situation = evaluateSituation(myTeam);
-  // role: いま p が担っているポジション（前衛/後衛）。固定分岐は使わず cpuStyle 補正にのみ使う。
-  ctx.role = (p === myFront) ? "front" : "back";
-  ctx.style = getCpuStyle(ctx.role);
-  // サーブ直後のサービスダッシュ係数（前衛役のみ加速）
-  ctx.dash = (state === "rally" && myJustServedByFront && p === myFront) ? 1.4 : 1.0;
+  // role: 個性パラメータ生成用の補助ラベル（前寄り/後ろ寄り）。判断は positionBias / 位置で行う。
+  ctx.role = isNet ? "front" : "back";
+  ctx.style = getCpuStyle(p);
+  // サーブ直後のサービスダッシュ係数（前寄り選手のみ加速）
+  ctx.dash = (state === "rally" && myJustServedByFront && isNet) ? 1.4 : 1.0;
 
   // ③④ タスク決定 + ⑤ タスク実行
   const task = decideTask(p, ctx);
   executeTask(p, ctx, task, dt);
 
-  if (p === myFront) {
-    myFront.x = Math.max(-4.6, Math.min(4.6, myFront.x));
+  // 前寄りは横移動レンジを狭く、後ろ寄りは広く取る（コート端まで走るのは後衛側）。
+  if (isNet) {
+    p.x = Math.max(-4.6, Math.min(4.6, p.x));
   } else {
-    myBack.x = Math.max(-7.5, Math.min(7.5, myBack.x));
+    p.x = Math.max(-7.5, Math.min(7.5, p.x));
   }
 }

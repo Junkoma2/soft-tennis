@@ -7,7 +7,7 @@ import {
 import {
   predictLanding, predictStrokeContact, predictHighContact, insideCourt, isBackhandFor,
 } from "./main.js";
-import { moveToward, backDevX, frontDevX, frontMirrorY } from "./aiPositioning.js";
+import { moveToward, backDevX, frontDevX, recoverDepthY } from "./aiPositioning.js";
 
 /* ===========================================================
  * ③④⑤ タスク決定と実行
@@ -17,13 +17,14 @@ import { moveToward, backDevX, frontDevX, frontMirrorY } from "./aiPositioning.j
  *   x, y  : 移動目標（コート座標）
  *   speedMul : 目標速さの倍率
  * executeTask は task の実行（moveToward）だけを担当し、判断ロジックを持たない。
- * 役割分岐は role 文字列ではなく p === ctx.myFront / p === ctx.myBack で判定する
- * （getCpuStyle 用の role 文字列だけ ctx.role に保持）。
+ * 前寄り/後ろ寄りの分岐は front/back という固定クラスではなく、positionBias で
+ * 導出した p === ctx.netPlayer / p === ctx.basePlayer で判定する（中立化）。
+ * getCpuStyle 用の補助ラベルだけ ctx.role に保持する。
  * =========================================================== */
 
 // p のタスクを決める入口。来球の有無で recover / hit / support に振り分ける。
 export function decideTask(p, ctx) {
-  const { myFront, myBack, opponentTeam, situation } = ctx;
+  const { netPlayer, basePlayer, opponentTeam, situation } = ctx;
   // 自分側がラリー中に打つ番（相手が打った球が来ている）かどうか
   const receivingFromOpponent = state === "rally" && ball.lastHitter === opponentTeam && !ball.serving;
 
@@ -33,7 +34,7 @@ export function decideTask(p, ctx) {
   }
 
   // 来球がある: 誰が打つか判断する
-  const hitter = judgeWhoShouldHit(myFront, myBack, ctx.side, situation);
+  const hitter = judgeWhoShouldHit(netPlayer, basePlayer, ctx.side, situation);
   if (p === hitter) {
     return decideHitApproachTask(p, ctx);
   }
@@ -43,6 +44,7 @@ export function decideTask(p, ctx) {
 
 // ⑤ タスク実行: decideTask が決めた目標位置(x,y)へ移動する。
 export function executeTask(p, ctx, task, dt) {
+  p.aiTaskKind = task.kind; // デバッグ表示用に現在のタスク種別を保持
   moveToward(p, task.x, task.y, ctx.speed * task.speedMul * dt, dt);
 }
 
@@ -100,39 +102,40 @@ function shouldTakeBall(role, p, contactX, contactY, timeToContact, situation) {
 }
 
 // 誰が打つべきかの判断: 「誰が現実的に到達できて、打つべきか」をスコアで比較する。
-function judgeWhoShouldHit(myFront, myBack, side, situation) {
+// netPlayer(前寄り)は前衛的、basePlayer(後ろ寄り)は後衛的なスコア基準で評価する。
+function judgeWhoShouldHit(netPlayer, basePlayer, side, situation) {
   const homeSign = side === "player" ? 1 : -1;
   const contact = estimateContactPoint(homeSign);
   const cx = contact ? contact.x : ball.x;
   const cy = contact ? contact.y : ball.y;
   const t = contact ? contact.t : null;
 
-  const scoreFront = shouldTakeBall("front", myFront, cx, cy, t, situation);
-  const scoreBack  = shouldTakeBall("back",  myBack,  cx, cy, t, situation);
+  const scoreFront = shouldTakeBall("front", netPlayer, cx, cy, t, situation);
+  const scoreBack  = shouldTakeBall("back",  basePlayer, cx, cy, t, situation);
 
   if (scoreFront === -Infinity && scoreBack === -Infinity) {
     // どちらも理論上は届かない: 無理にでも近い方が追う
-    const dFront = Math.hypot(cx - myFront.x, cy - myFront.y);
-    const dBack  = Math.hypot(cx - myBack.x,  cy - myBack.y);
-    return dFront <= dBack ? myFront : myBack;
+    const dFront = Math.hypot(cx - netPlayer.x, cy - netPlayer.y);
+    const dBack  = Math.hypot(cx - basePlayer.x,  cy - basePlayer.y);
+    return dFront <= dBack ? netPlayer : basePlayer;
   }
-  return scoreFront >= scoreBack ? myFront : myBack;
+  return scoreFront >= scoreBack ? netPlayer : basePlayer;
 }
 
 // フォア回り込み判定: 後衛の移動目標x（打点予測位置）が利き手と逆側（バック）に
 // なりそうなとき、フォアで打てる位置へ積極的に回り込む。来球1球分はラッチ
 // （wrapCommitted/wrapTargetX）して立ち位置とフォア/バックを固定し、プルプルを防ぐ。
-function foreApproachX(myBack, side, ballContactX, approachSpeed, timeToContact) {
+function foreApproachX(bp, side, ballContactX, approachSpeed, timeToContact) {
   const facingDir = side === "player" ? 1 : -1;
-  const handSign = myBack.stats && myBack.stats.handed === "left" ? -1 : 1;
+  const handSign = bp.stats && bp.stats.handed === "left" ? -1 : 1;
   const foreDir = facingDir * handSign;
 
   // 来球1球分はラッチ: 立ち位置とフォア/バックを固定し、毎フレームの再評価による
   // 往復（プルプル）や表示反転（フォアなのにバック）を防ぐ。ただし予測が大きく
   // ズレたら（バウンドのブレ等）解除して立て直す。
-  if (myBack.wrapCommitted) {
-    if (Math.abs(ballContactX - myBack.wrapBallX) <= 1.2) return myBack.wrapTargetX;
-    myBack.wrapCommitted = false;
+  if (bp.wrapCommitted) {
+    if (Math.abs(ballContactX - bp.wrapBallX) <= 1.2) return bp.wrapTargetX;
+    bp.wrapCommitted = false;
   }
 
   // 「基本フォアで回り込む」: ボールをフォア側（利き手側）の適正打点で迎えられる立ち位置を第一候補にする。
@@ -141,7 +144,7 @@ function foreApproachX(myBack, side, ballContactX, approachSpeed, timeToContact)
 
   let standX, hitSide;
   if (timeToContact != null && timeToContact > 0) {
-    const timeNeeded = Math.abs(foreStandX - myBack.x) / Math.max(0.1, approachSpeed);
+    const timeNeeded = Math.abs(foreStandX - bp.x) / Math.max(0.1, approachSpeed);
     if (timeNeeded <= timeToContact * 0.9) {
       standX = foreStandX; hitSide = "fore"; // 間に合う→フォアに回り込む
     } else {
@@ -149,22 +152,22 @@ function foreApproachX(myBack, side, ballContactX, approachSpeed, timeToContact)
     }
   } else {
     // 残り時間が読めない（バウンド後など）: すでにフォア側ならフォア、そうでなければバック。
-    if (isBackhandFor(side, myBack, ballContactX)) { standX = ballContactX; hitSide = "back"; }
+    if (isBackhandFor(side, bp, ballContactX)) { standX = ballContactX; hitSide = "back"; }
     else { standX = foreStandX; hitSide = "fore"; }
   }
 
-  myBack.wrapCommitted = true;
-  myBack.wrapTargetX = standX;
-  myBack.wrapBallX = ballContactX;
-  myBack.hitSide = hitSide;
+  bp.wrapCommitted = true;
+  bp.wrapTargetX = standX;
+  bp.wrapBallX = ballContactX;
+  bp.hitSide = hitSide;
   return standX;
 }
 
 // 打ち手側の「打つための立ち位置」タスク。前衛/後衛で打点目標の作り方を分ける。
 function decideHitApproachTask(p, ctx) {
-  const { myFront, myBack, myTeam, homeSign, speed, situation } = ctx;
+  const { netPlayer, basePlayer, myTeam, homeSign, speed, situation } = ctx;
 
-  if (p === myFront) {
+  if (p === netPlayer) {
     if (ball.bounces === 0) {
       // front-volley: ネット際の自分の高さ(y)を球が横切るxへ詰める
       const t = Math.abs(ball.vy) > 0.1 ? (p.y - ball.y) / ball.vy : -1;
@@ -207,19 +210,19 @@ function decideHitApproachTask(p, ctx) {
     timeToContact = contact ? contact.t : landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
   }
 
-  // フォア回り込み判定（前衛は上で早期returnしているため、ここは常に後衛）。
-  tx = foreApproachX(myBack, myTeam, tx, speed * 1.2, timeToContact);
-  myBack.swingSide = myBack.hitSide;
-  myBack.swingSideLocked = true;
+  // フォア回り込み判定（前寄りは上で早期returnしているため、ここは常に後ろ寄り選手）。
+  tx = foreApproachX(basePlayer, myTeam, tx, speed * 1.2, timeToContact);
+  basePlayer.swingSide = basePlayer.hitSide;
+  basePlayer.swingSideLocked = true;
   return { kind: "hit", x: tx, y: ty, speedMul: 1.2 };
 }
 
 // 打ち手でない側のタスク: cover / poach / advance / hold を状況とCPU性格から選ぶ。
 function decideSupportTask(p, ctx) {
-  const { myFront, myBack, side, myTeam, situation, style, dash } = ctx;
+  const { netPlayer, basePlayer, side, myTeam, situation, style, dash } = ctx;
 
-  if (p === myFront) {
-    // ポーチ判断: チャンス大・危険小・ポーチ好きCPUほど踏み込む。
+  if (p === netPlayer) {
+    // ポーチ判断: チャンス大・危険小・ポーチ好き(bias小)ほど踏み込む。
     const myPlan = (side === "cpu") ? cpuFrontPlan : (spectatorMode ? playerFrontPlan : "base");
     const planWantsPoach = myPlan === "poach";
     const aggr = (side === "player" && !spectatorMode && p === front && rallyControlled !== front)
@@ -228,22 +231,22 @@ function decideSupportTask(p, ctx) {
       situation.chanceLevel * 0.5 - situation.dangerLevel * 0.4 - situation.isLob * style.lobFear * 0.5;
 
     let frontTargetX = Math.max(-3.0, Math.min(3.0, frontDevX(myTeam)));
-    let frontTy = frontMirrorY(myTeam, myFront.homeY);
+    let frontTy = recoverDepthY(myTeam, netPlayer);
     let frontDash = dash;
     let kind = "cover";
 
     if (poachDesire > 0.15) {
-      const t2 = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
+      const t2 = Math.abs(ball.vy) > 0.1 ? (netPlayer.homeY - ball.y) / ball.vy : -1;
       const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
-      const poachReach = TUNING.ai.poachReach * myFront.stats.reach;
-      const ownBackSign = myBack.x >= 0 ? 1 : -1;
+      const poachReach = TUNING.ai.poachReach * netPlayer.stats.reach;
+      const ownBackSign = basePlayer.x >= 0 ? 1 : -1;
       const frontSide = -ownBackSign;
       const towardMySide = predX * frontSide >= -0.4;
       const lateralPace = Math.abs(ball.vx) + Math.abs(ball.vy) * 0.3;
       const catchable = lateralPace <= TUNING.ai.poachMaxPace;
-      if (towardMySide && catchable && Math.abs(predX - myFront.x) <= poachReach * 1.5) {
+      if (towardMySide && catchable && Math.abs(predX - netPlayer.x) <= poachReach * 1.5) {
         frontTargetX = Math.max(-3.4, Math.min(3.4, predX));
-        frontTy = myFront.homeY;
+        frontTy = netPlayer.homeY;
         frontDash = catchable && lateralPace < TUNING.ai.poachMaxPace * 0.6 ? 1.35 : 1.15;
         kind = "poach";
       }
@@ -251,17 +254,17 @@ function decideSupportTask(p, ctx) {
 
     // ネット際を低く横切る球には、ポーチ判断と独立して「届く範囲だけ」踏み込む（advance）。
     {
-      const ownBackSign = myBack.x >= 0 ? 1 : -1;
+      const ownBackSign = basePlayer.x >= 0 ? 1 : -1;
       const frontSide = -ownBackSign;
-      const tNet = Math.abs(ball.vy) > 0.1 ? (myFront.homeY - ball.y) / ball.vy : -1;
+      const tNet = Math.abs(ball.vy) > 0.1 ? (netPlayer.homeY - ball.y) / ball.vy : -1;
       if (tNet > 0 && tNet < 0.9) {
         const crossX = ball.x + ball.vx * tNet;
         const crossZ = ball.z + ball.vz * tNet - 0.5 * G * tNet * tNet;
         const onMySide = (Math.sign(crossX) === frontSide);
-        const reach = TUNING.ai.frontVolleyReach * myFront.stats.reach;
-        if (onMySide && crossZ < 1.3 && Math.abs(crossX - myFront.x) <= reach * 0.9) {
+        const reach = TUNING.ai.frontVolleyReach * netPlayer.stats.reach;
+        if (onMySide && crossZ < 1.3 && Math.abs(crossX - netPlayer.x) <= reach * 0.9) {
           frontTargetX = Math.max(-3.4, Math.min(3.4, crossX));
-          frontTy = myFront.homeY;
+          frontTy = netPlayer.homeY;
           frontDash = Math.max(frontDash, 1.15);
           kind = kind === "poach" ? kind : "advance";
         }
@@ -270,46 +273,45 @@ function decideSupportTask(p, ctx) {
     return { kind, x: frontTargetX, y: frontTy, speedMul: frontDash };
   }
 
-  // 後衛: 打ち手が前衛側のときのカバー位置（コース担当に戻る/締める）。
-  const homeSign = ctx.homeSign;
+  // 後ろ寄り(basePlayer): 打ち手が前寄り選手のときのカバー位置（コース担当に戻る/締める）。
   const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.8 : dash;
   return {
     kind: "cover",
     x: Math.max(-4.4, Math.min(4.4, backDevX(myTeam))),
-    y: state === "rally" ? (homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY) : myBack.homeY,
+    y: state === "rally" ? recoverDepthY(myTeam, basePlayer) : basePlayer.homeY,
     speedMul: retSpeedMul,
   };
 }
 
 // recover: 自陣にボールがある間（自分たちが打った直後など）、定位置・コース担当へ戻るタスク。
 function decideRecoverTask(p, ctx) {
-  const { myFront, myBack, side, myTeam, homeBackY, dash, myJustServedByFront } = ctx;
+  const { netPlayer, basePlayer, side, myTeam, homeBackY, dash, myJustServedByFront } = ctx;
 
-  if (p === myFront) {
+  if (p === netPlayer) {
     if (state === "rally") {
       const tx = Math.max(-4.4, Math.min(4.4, frontDevX(myTeam)));
       const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.8 : dash;
-      return { kind: "recover", x: tx, y: frontMirrorY(myTeam, myFront.homeY), speedMul: retSpeedMul };
+      return { kind: "recover", x: tx, y: recoverDepthY(myTeam, netPlayer), speedMul: retSpeedMul };
     }
     return {
       kind: "recover",
-      x: myFront.homeX * (myBack.x > 0 ? -1 : 1),
-      y: myFront.homeY,
+      x: netPlayer.homeX * (basePlayer.x > 0 ? -1 : 1),
+      y: netPlayer.homeY,
       speedMul: dash,
     };
   }
 
-  // 後衛は来球対応を抜けたら、フォア回り込みのラッチ（立ち位置・打ち方の確定）を解除する。
-  if (myBack.wrapCommitted) {
-    myBack.wrapCommitted = false;
-    myBack.wrapTargetX = null;
-    myBack.wrapBallX = null;
-    myBack.swingSideLocked = false;
+  // 後ろ寄り選手は来球対応を抜けたら、フォア回り込みのラッチ（立ち位置・打ち方の確定）を解除する。
+  if (basePlayer.wrapCommitted) {
+    basePlayer.wrapCommitted = false;
+    basePlayer.wrapTargetX = null;
+    basePlayer.wrapBallX = null;
+    basePlayer.swingSideLocked = false;
   }
   if (state === "rally" && myJustServedByFront) {
-    const targetX = myFront.x > 0 ? -1.6 : 1.6;
+    const targetX = netPlayer.x > 0 ? -1.6 : 1.6;
     return { kind: "recover", x: targetX, y: homeBackY * 1.02, speedMul: 1.0 };
   }
   const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.55 : 1.0;
-  return { kind: "recover", x: backDevX(myTeam), y: homeBackY, speedMul: retSpeedMul };
+  return { kind: "recover", x: backDevX(myTeam), y: recoverDepthY(myTeam, basePlayer), speedMul: retSpeedMul };
 }

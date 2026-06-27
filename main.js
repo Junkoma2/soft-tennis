@@ -1,7 +1,7 @@
 import {
   TUNING, COURT, G,
   POINT_LABELS, POINTS_TO_WIN_GAME, FINAL_GAME_POINTS, GAMES_TO_WIN_MATCH,
-  FORMATIONS, PLAYER_X_LIMIT, HIT_REACH, CPU_REACH, VOLLEY_REACH,
+  FORMATIONS, FORMATION_BIAS, PLAYER_X_LIMIT, HIT_REACH, CPU_REACH, VOLLEY_REACH,
   SHOOT_FLAT_Z, CUT_SLICE_DEPTH, SHOT_FAMILY_ORDER, SHOT_FAMILY_META,
   TOSS_RISE_TIME, TOSS_HOLD_TIME, TOSS_BASE_Z, TOSS_APEX_Z,
   IDEAL_HIT_DELAY, LINE_IN_MARGIN, Y_RANGE_BACK, Y_RANGE_FRONT,
@@ -47,8 +47,7 @@ import {
   development,
 } from "./state.js";
 
-import { draw } from "./render-20260626-07.js";
-import { is3D, setRenderMode, getRenderMode } from "./render-mode.js";
+import { draw } from "./render.js";
 
 import {
   serverTeamNow, serverIsSecondOfPair, serverIsFrontPlayer, serveFromRight,
@@ -63,7 +62,7 @@ import {
 import {
   setControlledX, setControlledY, startCharge, updateAimInputs,
   distToBall, canPlayerHit, playerHitBall,
-} from "./input-20260626-21.js";
+} from "./input.js";
 
 import {
   updatePartner, updateRallyControlledAI, updateCpuBack, updateCpuFront,
@@ -182,6 +181,11 @@ export function applyFormation() {
   const f = FORMATIONS[formation] || FORMATIONS["ganko"];
   back.homeX = f.back.x;  back.homeY = f.back.y;
   front.homeX = f.front.x; front.homeY = f.front.y;
+  // 自陣2選手のpositionBiasを陣形から設定（AIの基本位置・ネット志向・ポーチ頻度を連続的に決める）。
+  // 相手チームは常に雁行で固定（cpuFront=25 / cpuBack=80。state.jsの初期値のまま）。
+  const fb = FORMATION_BIAS[formation] || FORMATION_BIAS["ganko"];
+  front.positionBias = fb.front;
+  back.positionBias = fb.back;
 }
 
 export function startMatch() {
@@ -250,13 +254,15 @@ export function resetPlayersForPoint() {
     receiver.x = rp.x; receiver.y = rp.y;
   }
 
-  // 前衛は逆サイドに寄る（雁行陣のみ）。サーブする本人はその限りでない。
+  // サーバーでない自陣の相方（前衛）はサーバーと反対サイドへ寄せ、重なりを防ぐ。
+  // 全陣形に適用する（旧コードは雁行のみで、ダブル後衛では後衛サーバーと前衛が
+  // 同サイド・同深さに居残り重なっていた）。yは各自のhome深さのまま動かさない。
   // レシーブ役の前衛にはこのサイド寄せを適用しない（レシーブ位置を上書きしてしまうため）。
   const sideSign = serveFromRight() ? 1 : -1;
   const fx = TUNING.pos.frontSideX;
   const receivingTeam = team === "player" ? "cpu" : "player";
   const recv = receiverPlayerFor(receivingTeam);
-  if (formation === "ganko" && front !== recv && !(team === "player" && frontServes)) {
+  if (front !== recv && !(team === "player" && frontServes)) {
     front.x = -fx * sideSign;
   }
   if (cpuFront !== recv && !(team === "cpu" && frontServes)) cpuFront.x = fx * sideSign;
@@ -1220,16 +1226,13 @@ function ensure3D() {
   p3dLoading = true;
   import("./player3d.js?v=20260626-01")
     .then((m) => m.init3D(canvas).then(() => { p3d = m; }))
-    .catch((e) => { console.warn("3D初期化失敗、2Dにフォールバック:", e); setRenderMode("2d"); })
+    .catch((e) => { console.warn("3D初期化失敗:", e); })
     .finally(() => { p3dLoading = false; });
 }
 function render3DIfNeeded() {
-  if (is3D()) {
-    if (p3d && p3d.isReady3D()) { p3d.setOverlayVisible(true); p3d.render3D(); }
-    else ensure3D();
-  } else if (p3d) {
-    p3d.setOverlayVisible(false);
-  }
+  // 3D固定: 常にキャラクターを3Dオーバーレイで描画する
+  if (p3d && p3d.isReady3D()) { p3d.setOverlayVisible(true); p3d.render3D(); }
+  else ensure3D();
 }
 
 export function loop(now) {
@@ -1239,20 +1242,6 @@ export function loop(now) {
   draw();
   render3DIfNeeded();
   setRafId(requestAnimationFrame(loop));
-}
-
-// 2D/3D 切り替えボタン（存在すれば配線）
-const renderModeControls = document.getElementById("render-mode-controls");
-if (renderModeControls) {
-  const syncBtns = () => {
-    renderModeControls.querySelectorAll(".ctrl-btn").forEach((b) => {
-      b.classList.toggle("is-active", b.dataset.render === getRenderMode());
-    });
-  };
-  renderModeControls.querySelectorAll(".ctrl-btn").forEach((b) => {
-    b.addEventListener("click", () => { setRenderMode(b.dataset.render); syncBtns(); });
-  });
-  syncBtns();
 }
 
 function beginMatchFromStartButton(e) {
