@@ -14,9 +14,6 @@ import {
   debugDraw,
 } from "./state.js";
 
-import { drawHumanoid } from "./player-2d.js";
-import { is3D } from "./render-mode.js";
-
 import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
 } from "./serve.js";
@@ -40,14 +37,9 @@ export function draw() {
   drawDebugHitboxes();
   drawBallShadow();
 
-  // 3D モードのときは人型を 2D で描かない（player3d.js のオーバーレイが描く）
-  const drawP = is3D() ? function () {} : drawHumanoid;
+  // キャラクターは3Dオーバーレイ（player3d.js）が描画する。ここでは場の要素のみ。
   const items = [
-    { y: cpuBack.y, fn: function () { drawP(cpuBack); } },
-    { y: cpuFront.y, fn: function () { drawP(cpuFront); } },
     { y: 0, fn: drawNet },
-    { y: front.y, fn: function () { drawP(front); } },
-    { y: back.y, fn: function () { drawP(back); } },
     { y: ball.y, fn: drawBall },
   ];
   items.sort(function (a, b) { return a.y - b.y; });
@@ -769,5 +761,4 @@ export function drawBall() {
   ctx.stroke();
 }
 
-/* プレイヤー描画は player-2d.js へ移動
- * import { drawHumanoid } from "./player-2d.js"; を参照 */
+/* キャラクター描画は3Dオーバーレイ（player3d.js）が担当する。 */
