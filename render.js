@@ -114,34 +114,37 @@ function covExit(O, dir, yBase, Xw) {
   return { x: O.x + t * dir.x, y: O.y + t * dir.y };
 }
 
-// 相手打点から現実的に振れるコースの片側角度（度）。コート形状ではなく打点を起点に
-// 放射状のコース範囲を決める。調整可。
-const COVERAGE_HALF_ANGLE_DEG = 20;
+// シュート（速い球）がインで落ちる最浅深さ（ネットからの距離 m）。これより手前に
+// 落とすのはドロップ＝遅い球なので守備対象外にする。小さいほど鋭いコースまで考える。
+const SHOOT_LAND_MIN_DEPTH = COURT.serviceY;
 
 function drawCoverageForSide(side) {
   const homeSign = side === "player" ? 1 : -1;
-  const O = opponentHitterPos(side);             // 相手の打点（これを起点に放射状に描く）
-  const Xw = COURT.halfW;                          // ダブルスサイドライン（守備対象の横幅）
+  const O = opponentHitterPos(side);             // 相手の打点（軌道の起点）
+  const Xw = COURT.halfW;                          // サイドライン
   const yBase = homeSign * COURT.halfL;            // 自陣ベースライン
   const yNet = 0;
   if (Math.abs(yBase - O.y) < 1) return;
-  const th = COVERAGE_HALF_ANGLE_DEG * Math.PI / 180;
 
-  // 中心コース＝相手打点から自陣コート中央（ベースライン中央）へ向かう方向。
-  // これを基準に ±th 振った左右端コースが「現実的に打てるコース範囲」。
-  // コートの固定の角は使わないので、打点の左右位置に応じて範囲全体が傾く。
-  const cLen = Math.hypot(0 - O.x, yBase - O.y) || 1;
-  const centerDir = { x: (0 - O.x) / cLen, y: (yBase - O.y) / cLen };
-  const eA = covRot(centerDir, th), eB = covRot(centerDir, -th);
-  const leftDir  = covXAtY(O, eA, yBase) <= covXAtY(O, eB, yBase) ? eA : eB;
-  const rightDir = leftDir === eA ? eB : eA;
+  // 「一番鋭くインになるシュート」の落点＝サイドライン×最浅シュート深さの隅。
+  // 相手打点からこの2点へ向かう直線（トップダウンの軌道）が左端/右端コース。
+  // ベースライン隅より手前なので、より鋭い角度になる。
+  const yMin = homeSign * SHOOT_LAND_MIN_DEPTH;
+  const TL = { x: -Xw, y: yMin };
+  const TR = { x:  Xw, y: yMin };
+  const dirL = { x: TL.x - O.x, y: TL.y - O.y };
+  const dirR = { x: TR.x - O.x, y: TR.y - O.y };
+  // 中心線＝2辺の単位ベクトルの和（角の二等分）。
+  const uL = covNorm(dirL.x, dirL.y), uR = covNorm(dirR.x, dirR.y);
+  const dC = { x: uL.x + uR.x, y: uL.y + uR.y };
   const clampX = (x) => Math.max(-Xw, Math.min(Xw, x));
+  const xOn = (dir, y) => clampX(covXAtY(O, dir, y));
 
-  const cN = clampX(covXAtY(O, centerDir, yNet)), cB = clampX(covXAtY(O, centerDir, yBase));
-  const lN = clampX(covXAtY(O, leftDir,  yNet)),  lB = clampX(covXAtY(O, leftDir,  yBase));
-  const rN = clampX(covXAtY(O, rightDir, yNet)),  rB = clampX(covXAtY(O, rightDir, yBase));
+  const lN = xOn(dirL, yNet), lB = xOn(dirL, yBase);
+  const rN = xOn(dirR, yNet), rB = xOn(dirR, yBase);
+  const cN = xOn(dC, yNet),   cB = xOn(dC, yBase);
 
-  // コース範囲（ウェッジ）の内側だけを塗る。中心線で左右＝二人の責任範囲に分割。
+  // 軌道の内側（インになるコース範囲）だけを塗る。中心線で左右＝二人の責任範囲に分割。
   const leftZone  = [ [lN, yNet], [cN, yNet], [cB, yBase], [lB, yBase] ];
   const rightZone = [ [cN, yNet], [rN, yNet], [rB, yBase], [cB, yBase] ];
 
@@ -152,19 +155,19 @@ function drawCoverageForSide(side) {
   covFillZone(frontZone, "rgba(37,99,235,0.22)", "rgba(37,99,235,0.6)");
   covFillZone(backZone,  "rgba(220,38,38,0.22)", "rgba(220,38,38,0.6)");
 
-  // 相手打点から放射状に、左端コース・右端コース（白）と中心線（黄）を描く。
-  const exL = covExit(O, leftDir, yBase, Xw);
-  const exR = covExit(O, rightDir, yBase, Xw);
-  const exC = covExit(O, centerDir, yBase, Xw);
+  // 左端コース・右端コース（白＝インになる最鋭角の軌道）と中心線（黄）を相手打点から引く。
+  const exL = covExit(O, dirL, yBase, Xw);
+  const exR = covExit(O, dirR, yBase, Xw);
+  const exC = covExit(O, dC, yBase, Xw);
   covStrokeLine(O.x, O.y, exL.x, exL.y, "rgba(255,255,255,0.9)", 1.5);
   covStrokeLine(O.x, O.y, exR.x, exR.y, "rgba(255,255,255,0.9)", 1.5);
   covStrokeLine(O.x, O.y, exC.x, exC.y, "rgba(250,204,21,0.95)", 2);
 
   // 理想ポジション＝各ゾーンの左右中央（その選手の深さ）。
   const netP = netPlayerOf(side), baseP = basePlayerOf(side);
-  const straightDir = straightSign < 0 ? leftDir : rightDir;
-  const crossDir    = straightSign < 0 ? rightDir : leftDir;
-  const zoneCenterX = (outerDir, y) => (clampX(covXAtY(O, outerDir, y)) + clampX(covXAtY(O, centerDir, y))) / 2;
+  const straightDir = straightSign < 0 ? dirL : dirR;
+  const crossDir    = straightSign < 0 ? dirR : dirL;
+  const zoneCenterX = (outerDir, y) => (xOn(outerDir, y) + xOn(dC, y)) / 2;
   covMarker(zoneCenterX(straightDir, netP.y), netP.y, "rgba(37,99,235,0.95)");
   covMarker(zoneCenterX(crossDir,    baseP.y), baseP.y, "rgba(220,38,38,0.95)");
 }
