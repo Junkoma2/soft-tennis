@@ -47,8 +47,7 @@ import {
   development,
 } from "./state.js";
 
-import { draw } from "./render-20260626-07.js";
-import { is3D, setRenderMode, getRenderMode } from "./render-mode.js";
+import { draw } from "./render.js";
 
 import {
   serverTeamNow, serverIsSecondOfPair, serverIsFrontPlayer, serveFromRight,
@@ -1225,16 +1224,13 @@ function ensure3D() {
   p3dLoading = true;
   import("./player3d.js?v=20260626-01")
     .then((m) => m.init3D(canvas).then(() => { p3d = m; }))
-    .catch((e) => { console.warn("3D初期化失敗、2Dにフォールバック:", e); setRenderMode("2d"); })
+    .catch((e) => { console.warn("3D初期化失敗:", e); })
     .finally(() => { p3dLoading = false; });
 }
 function render3DIfNeeded() {
-  if (is3D()) {
-    if (p3d && p3d.isReady3D()) { p3d.setOverlayVisible(true); p3d.render3D(); }
-    else ensure3D();
-  } else if (p3d) {
-    p3d.setOverlayVisible(false);
-  }
+  // 3D固定: 常にキャラクターを3Dオーバーレイで描画する
+  if (p3d && p3d.isReady3D()) { p3d.setOverlayVisible(true); p3d.render3D(); }
+  else ensure3D();
 }
 
 export function loop(now) {
@@ -1244,20 +1240,6 @@ export function loop(now) {
   draw();
   render3DIfNeeded();
   setRafId(requestAnimationFrame(loop));
-}
-
-// 2D/3D 切り替えボタン（存在すれば配線）
-const renderModeControls = document.getElementById("render-mode-controls");
-if (renderModeControls) {
-  const syncBtns = () => {
-    renderModeControls.querySelectorAll(".ctrl-btn").forEach((b) => {
-      b.classList.toggle("is-active", b.dataset.render === getRenderMode());
-    });
-  };
-  renderModeControls.querySelectorAll(".ctrl-btn").forEach((b) => {
-    b.addEventListener("click", () => { setRenderMode(b.dataset.render); syncBtns(); });
-  });
-  syncBtns();
 }
 
 function beginMatchFromStartButton(e) {
