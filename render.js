@@ -21,6 +21,7 @@ import {
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
+import { opponentHitterPos, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
 
 /* ===========================================================
  * 描画
@@ -30,6 +31,7 @@ export function draw() {
   ctx.clearRect(0, 0, W, H);
   drawBackground();
   drawCourt();
+  drawDebugCoverage();
   drawLandingMarker();
   drawAimCursor();
   drawGroundEffects();
@@ -52,6 +54,91 @@ export function draw() {
   drawScore();
   drawControlLegend();
   drawDebugParams();
+}
+
+/* ===========================================================
+ * デバッグ: 守備範囲の可視化
+ *
+ * 相手の打点 O から「打てるコースの幅」（自陣シングルスコート両隅への2辺）を引き、
+ * その角の二等分線を自陣ベースラインまで引く。二等分線で自陣を2分割し、
+ * ストレート側（ネット担当=青）とクロス側（後方担当=赤）に塗り分ける。
+ * 各ゾーンの中央（その選手の深さでの左右中央）が理想ポジション＝リングで表示。
+ * 雁行の「前衛がストレートを締め、後衛がクロスを守る」を幾何的に確認できる。
+ * =========================================================== */
+function drawDebugCoverage() {
+  if (!debugDraw.coverage) return;
+  if (state === "ready") return;
+  drawCoverageForSide("player");
+  drawCoverageForSide("cpu");
+}
+
+function covNorm(x, y) { const m = Math.hypot(x, y) || 1; return { x: x / m, y: y / m }; }
+
+function covFillZone(pts, fill, stroke) {
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const s = project(p[0], p[1], 0);
+    if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function covStrokeLine(x1, y1, x2, y2, color, w) {
+  const a = project(x1, y1, 0), b = project(x2, y2, 0);
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.stroke();
+}
+
+function covMarker(x, y, color) {
+  const s = project(x, y, 0);
+  ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill();
+}
+
+function drawCoverageForSide(side) {
+  const homeSign = side === "player" ? 1 : -1;
+  const O = opponentHitterPos(side);             // 相手の打点
+  const Xs = COURT.singlesHalfW;
+  const yBase = homeSign * COURT.halfL;           // 自陣ベースライン
+  if (Math.abs(yBase - O.y) < 1) return;
+  const PL = { x: -Xs, y: yBase };
+  const PR = { x:  Xs, y: yBase };
+  const rayX = (t, y) => O.x + (y - O.y) / (t.y - O.y) * (t.x - O.x);
+  const uL = covNorm(PL.x - O.x, PL.y - O.y);
+  const uR = covNorm(PR.x - O.x, PR.y - O.y);
+  const d = { x: uL.x + uR.x, y: uL.y + uR.y };
+  const bisX = (y) => Math.abs(d.y) < 1e-4 ? O.x : O.x + (y - O.y) / d.y * d.x;
+
+  const xL0 = rayX(PL, 0), xR0 = rayX(PR, 0), xB0 = bisX(0);
+  const xBb = bisX(yBase);
+
+  const leftZone  = [ [xL0, 0], [xB0, 0], [xBb, yBase], [-Xs, yBase] ];
+  const rightZone = [ [xB0, 0], [xR0, 0], [ Xs, yBase], [xBb, yBase] ];
+
+  // ストレート側＝相手打点と同じx符号側。ネット担当がストレートを締める。
+  const straightSign = O.x >= 0 ? 1 : -1;
+  const frontZone = straightSign > 0 ? rightZone : leftZone;
+  const backZone  = straightSign > 0 ? leftZone  : rightZone;
+
+  covFillZone(frontZone, "rgba(37,99,235,0.20)", "rgba(37,99,235,0.55)");
+  covFillZone(backZone,  "rgba(220,38,38,0.20)", "rgba(220,38,38,0.55)");
+
+  covStrokeLine(O.x, O.y, -Xs, yBase, "rgba(255,255,255,0.8)", 1.5);
+  covStrokeLine(O.x, O.y,  Xs, yBase, "rgba(255,255,255,0.8)", 1.5);
+  covStrokeLine(O.x, O.y, xBb, yBase, "rgba(250,204,21,0.95)", 2);
+
+  // 理想ポジション（各ゾーン中央）を各選手の深さで表示
+  const netP = netPlayerOf(side), baseP = basePlayerOf(side);
+  const straightTarget = straightSign > 0 ? PR : PL;
+  const crossTarget    = straightSign > 0 ? PL : PR;
+  const idealFrontX = (rayX(straightTarget, netP.y) + bisX(netP.y)) / 2;
+  const idealBackX  = (rayX(crossTarget,  baseP.y) + bisX(baseP.y)) / 2;
+  covMarker(idealFrontX, netP.y, "rgba(37,99,235,0.95)");
+  covMarker(idealBackX,  baseP.y, "rgba(220,38,38,0.95)");
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */

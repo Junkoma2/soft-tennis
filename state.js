@@ -79,10 +79,11 @@ export const cpuStats = {
 //  ready / serve-stance(トス前) / serve-toss(トス中) /
 //  rally / fault / point / gameset / matchend
 export let state = "ready";
-export const debugDraw = { hitboxes: false, trajectory: false, params: false };
+export const debugDraw = { hitboxes: false, trajectory: false, params: false, coverage: false };
 export let debugHitboxes = false;
 export let debugTrajectory = false;
 export let debugParams = false;
+export let debugCoverage = false;
 export function setDebugHitboxes(v) {
   debugDraw.hitboxes = !!v;
   debugHitboxes = debugDraw.hitboxes;
@@ -94,6 +95,10 @@ export function setDebugTrajectory(v) {
 export function setDebugParams(v) {
   debugDraw.params = !!v;
   debugParams = debugDraw.params;
+}
+export function setDebugCoverage(v) {
+  debugDraw.coverage = !!v;
+  debugCoverage = debugDraw.coverage;
 }
 export let player = { games: 0, points: 0 };
 export let cpu = { games: 0, points: 0 };
