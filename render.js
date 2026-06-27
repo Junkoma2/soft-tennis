@@ -102,22 +102,25 @@ function covMarker(x, y, color) {
 function drawCoverageForSide(side) {
   const homeSign = side === "player" ? 1 : -1;
   const O = opponentHitterPos(side);             // 相手の打点
-  const Xs = COURT.singlesHalfW;
-  const yBase = homeSign * COURT.halfL;           // 自陣ベースライン
+  const Xw = COURT.halfW;                          // ダブルスサイドライン（実際に打てる横幅）
+  const yBase = homeSign * COURT.halfL;            // 自陣ベースライン
+  const yNet = 0;
   if (Math.abs(yBase - O.y) < 1) return;
-  const PL = { x: -Xs, y: yBase };
-  const PR = { x:  Xs, y: yBase };
-  const rayX = (t, y) => O.x + (y - O.y) / (t.y - O.y) * (t.x - O.x);
-  const uL = covNorm(PL.x - O.x, PL.y - O.y);
-  const uR = covNorm(PR.x - O.x, PR.y - O.y);
-  const d = { x: uL.x + uR.x, y: uL.y + uR.y };
-  const bisX = (y) => Math.abs(d.y) < 1e-4 ? O.x : O.x + (y - O.y) / d.y * d.x;
+  // その瞬間に打てる範囲＝最も鋭いコースはネット際のサイド隅（ベースライン隅より角度が鋭い）。
+  // 相手打点 O から自陣のネット際両隅 (±Xw, 0) への2辺が打てるコースの角度幅になる。
+  const NL = { x: -Xw, y: yNet };
+  const NR = { x:  Xw, y: yNet };
+  const uL = covNorm(NL.x - O.x, NL.y - O.y);
+  const uR = covNorm(NR.x - O.x, NR.y - O.y);
+  const d = { x: uL.x + uR.x, y: uL.y + uR.y };     // 角の二等分線方向
+  const clampX = (x) => Math.max(-Xw, Math.min(Xw, x));
+  const bisX = (y) => clampX(Math.abs(d.y) < 1e-4 ? O.x : O.x + (y - O.y) / d.y * d.x);
 
-  const xL0 = rayX(PL, 0), xR0 = rayX(PR, 0), xB0 = bisX(0);
-  const xBb = bisX(yBase);
+  const xB0 = bisX(yNet), xBb = bisX(yBase);
 
-  const leftZone  = [ [xL0, 0], [xB0, 0], [xBb, yBase], [-Xs, yBase] ];
-  const rightZone = [ [xB0, 0], [xR0, 0], [ Xs, yBase], [xBb, yBase] ];
+  // 自陣コート矩形（ネット〜ベースライン）を二等分線で左右に分割する。
+  const leftZone  = [ [-Xw, yNet], [xB0, yNet], [xBb, yBase], [-Xw, yBase] ];
+  const rightZone = [ [xB0, yNet], [ Xw, yNet], [ Xw, yBase], [xBb, yBase] ];
 
   // ストレート側＝相手打点と同じx符号側。ネット担当がストレートを締める。
   const straightSign = O.x >= 0 ? 1 : -1;
@@ -127,18 +130,17 @@ function drawCoverageForSide(side) {
   covFillZone(frontZone, "rgba(37,99,235,0.20)", "rgba(37,99,235,0.55)");
   covFillZone(backZone,  "rgba(220,38,38,0.20)", "rgba(220,38,38,0.55)");
 
-  covStrokeLine(O.x, O.y, -Xs, yBase, "rgba(255,255,255,0.8)", 1.5);
-  covStrokeLine(O.x, O.y,  Xs, yBase, "rgba(255,255,255,0.8)", 1.5);
+  // 打てるコースの角度幅（ネット際の鋭い隅まで）と、その二等分線（自陣ベースラインまで）。
+  covStrokeLine(O.x, O.y, NL.x, NL.y, "rgba(255,255,255,0.85)", 1.5);
+  covStrokeLine(O.x, O.y, NR.x, NR.y, "rgba(255,255,255,0.85)", 1.5);
   covStrokeLine(O.x, O.y, xBb, yBase, "rgba(250,204,21,0.95)", 2);
 
-  // 理想ポジション（各ゾーン中央）を各選手の深さで表示
+  // 理想ポジション（各ゾーンの左右中央）を各選手の深さで表示する。
   const netP = netPlayerOf(side), baseP = basePlayerOf(side);
-  const straightTarget = straightSign > 0 ? PR : PL;
-  const crossTarget    = straightSign > 0 ? PL : PR;
-  const idealFrontX = (rayX(straightTarget, netP.y) + bisX(netP.y)) / 2;
-  const idealBackX  = (rayX(crossTarget,  baseP.y) + bisX(baseP.y)) / 2;
-  covMarker(idealFrontX, netP.y, "rgba(37,99,235,0.95)");
-  covMarker(idealBackX,  baseP.y, "rgba(220,38,38,0.95)");
+  const frontCenter = straightSign > 0 ? (bisX(netP.y) + Xw) / 2 : (-Xw + bisX(netP.y)) / 2;
+  const backCenter  = straightSign > 0 ? (-Xw + bisX(baseP.y)) / 2 : (bisX(baseP.y) + Xw) / 2;
+  covMarker(frontCenter, netP.y, "rgba(37,99,235,0.95)");
+  covMarker(backCenter,  baseP.y, "rgba(220,38,38,0.95)");
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
