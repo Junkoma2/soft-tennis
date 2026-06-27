@@ -21,7 +21,7 @@ import {
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
-import { opponentHitterPos, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
+import { netPlayerOf, basePlayerOf, coverageGeom } from "./aiPositioning.js";
 
 /* ===========================================================
  * 描画
@@ -114,62 +114,35 @@ function covExit(O, dir, yBase, Xw) {
   return { x: O.x + t * dir.x, y: O.y + t * dir.y };
 }
 
-// シュート（速い球）がインで落ちる最浅深さ（ネットからの距離 m）。これより手前に
-// 落とすのはドロップ＝遅い球なので守備対象外にする。小さいほど鋭いコースまで考える。
-const SHOOT_LAND_MIN_DEPTH = COURT.serviceY;
-
 function drawCoverageForSide(side) {
-  const homeSign = side === "player" ? 1 : -1;
-  const O = opponentHitterPos(side);             // 相手の打点（軌道の起点）
-  const Xw = COURT.halfW;                          // サイドライン
-  const yBase = homeSign * COURT.halfL;            // 自陣ベースライン
-  const yNet = 0;
-  if (Math.abs(yBase - O.y) < 1) return;
+  const g = coverageGeom(side);            // AIと共有する守備範囲の幾何
+  const yNet = 0, yBase = g.yBase, Xw = g.Xw;
+  if (Math.abs(yBase - g.O.y) < 1) return;
 
-  // 「一番鋭くインになるシュート」の落点＝サイドライン×最浅シュート深さの隅。
-  // 相手打点からこの2点へ向かう直線（トップダウンの軌道）が左端/右端コース。
-  // ベースライン隅より手前なので、より鋭い角度になる。
-  const yMin = homeSign * SHOOT_LAND_MIN_DEPTH;
-  const TL = { x: -Xw, y: yMin };
-  const TR = { x:  Xw, y: yMin };
-  const dirL = { x: TL.x - O.x, y: TL.y - O.y };
-  const dirR = { x: TR.x - O.x, y: TR.y - O.y };
-  // 中心線＝2辺の単位ベクトルの和（角の二等分）。
-  const uL = covNorm(dirL.x, dirL.y), uR = covNorm(dirR.x, dirR.y);
-  const dC = { x: uL.x + uR.x, y: uL.y + uR.y };
-  const clampX = (x) => Math.max(-Xw, Math.min(Xw, x));
-  const xOn = (dir, y) => clampX(covXAtY(O, dir, y));
-
-  const lN = xOn(dirL, yNet), lB = xOn(dirL, yBase);
-  const rN = xOn(dirR, yNet), rB = xOn(dirR, yBase);
-  const cN = xOn(dC, yNet),   cB = xOn(dC, yBase);
+  const lN = g.leftX(yNet),  lB = g.leftX(yBase);
+  const rN = g.rightX(yNet), rB = g.rightX(yBase);
+  const cN = g.centerX(yNet), cB = g.centerX(yBase);
 
   // 軌道の内側（インになるコース範囲）だけを塗る。中心線で左右＝二人の責任範囲に分割。
   const leftZone  = [ [lN, yNet], [cN, yNet], [cB, yBase], [lB, yBase] ];
   const rightZone = [ [cN, yNet], [rN, yNet], [rB, yBase], [cB, yBase] ];
-
-  // ストレート＝相手打点と同じ側。ネット担当がストレート、後方担当がクロスを持つ。
-  const straightSign = O.x >= 0 ? 1 : -1;
-  const frontZone = straightSign < 0 ? leftZone  : rightZone;
-  const backZone  = straightSign < 0 ? rightZone : leftZone;
+  const frontZone = g.straightSign < 0 ? leftZone  : rightZone;
+  const backZone  = g.straightSign < 0 ? rightZone : leftZone;
   covFillZone(frontZone, "rgba(37,99,235,0.22)", "rgba(37,99,235,0.6)");
   covFillZone(backZone,  "rgba(220,38,38,0.22)", "rgba(220,38,38,0.6)");
 
   // 左端コース・右端コース（白＝インになる最鋭角の軌道）と中心線（黄）を相手打点から引く。
-  const exL = covExit(O, dirL, yBase, Xw);
-  const exR = covExit(O, dirR, yBase, Xw);
-  const exC = covExit(O, dC, yBase, Xw);
-  covStrokeLine(O.x, O.y, exL.x, exL.y, "rgba(255,255,255,0.9)", 1.5);
-  covStrokeLine(O.x, O.y, exR.x, exR.y, "rgba(255,255,255,0.9)", 1.5);
-  covStrokeLine(O.x, O.y, exC.x, exC.y, "rgba(250,204,21,0.95)", 2);
+  const exL = covExit(g.O, g.dirL, yBase, Xw);
+  const exR = covExit(g.O, g.dirR, yBase, Xw);
+  const exC = covExit(g.O, g.dirC, yBase, Xw);
+  covStrokeLine(g.O.x, g.O.y, exL.x, exL.y, "rgba(255,255,255,0.9)", 1.5);
+  covStrokeLine(g.O.x, g.O.y, exR.x, exR.y, "rgba(255,255,255,0.9)", 1.5);
+  covStrokeLine(g.O.x, g.O.y, exC.x, exC.y, "rgba(250,204,21,0.95)", 2);
 
   // 理想ポジション＝各ゾーンの左右中央（その選手の深さ）。
   const netP = netPlayerOf(side), baseP = basePlayerOf(side);
-  const straightDir = straightSign < 0 ? dirL : dirR;
-  const crossDir    = straightSign < 0 ? dirR : dirL;
-  const zoneCenterX = (outerDir, y) => (xOn(outerDir, y) + xOn(dC, y)) / 2;
-  covMarker(zoneCenterX(straightDir, netP.y), netP.y, "rgba(37,99,235,0.95)");
-  covMarker(zoneCenterX(crossDir,    baseP.y), baseP.y, "rgba(220,38,38,0.95)");
+  covMarker(g.zoneCenterX("net", netP.y), netP.y, "rgba(37,99,235,0.95)");
+  covMarker(g.zoneCenterX("base", baseP.y), baseP.y, "rgba(220,38,38,0.95)");
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
