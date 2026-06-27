@@ -70,6 +70,9 @@ import {
   tryReturnAI, cpuTryReturn, partnerTryReturn,
 } from "./ai.js";
 
+// 開始画面の選手ステータス調整パネル（読み込み時にDOMへ生成・配線する副作用import）
+import "./playerStatsPanel.js";
+
 const STROKE_INITIAL_SPEED_MUL = 1.08;
 
 export function resolveShotKey(family, contactZ, aimY) {
