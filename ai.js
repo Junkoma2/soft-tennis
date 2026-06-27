@@ -344,34 +344,111 @@ function decideTask(p, role, side, myTeam, opponentTeam, situation, style, homeS
   return decideSupportTask(p, role, side, myTeam, opponentTeam, situation, style, dash);
 }
 
-// 誰が打つべきかの判断: 着地点までの到達時間（距離/速さ）を軸に、
-// CPU性格（reaction）・現在位置・formation補正・ロブ（後衛責任を増やす）を加味する。
-function judgeWhoShouldHit(myFront, myBack, side, situation) {
-  const landing = situation.landingPoint;
-  // 着地点が読めない・自陣に入っていない間は、レシーブと同じ基準＝近い方が打つ
-  const fx = landing ? landing.x : ball.x;
-  const fy = landing ? landing.y : ball.y;
-  const dFront = Math.hypot(fx - myFront.x, fy - myFront.y) / Math.max(0.1, myFront.stats.speed);
-  const dBack  = Math.hypot(fx - myBack.x,  fy - myBack.y)  / Math.max(0.1, myBack.stats.speed);
-  // ロブは後衛責任を大きくする（通常球は前衛50%後衛50%、ロブは前衛20%後衛80%相当）。
-  // 到達時間に補正を掛けて表現する（前衛の到達時間を割高に、後衛を割安にみせる）。
-  const lobBiasFront = situation.isLob ? 1.6 : 1.0;
-  const lobBiasBack  = situation.isLob ? 0.7 : 1.0;
-  const frontStyle = getCpuStyle("front");
-  const backStyle = getCpuStyle("back");
-  // CPU性格(reaction)が高いほど早く判断・前に出やすい＝実効到達時間を少し短く見積もる
-  const tFront = dFront * lobBiasFront / Math.max(0.5, frontStyle.reaction);
-  const tBack  = dBack  * lobBiasBack  / Math.max(0.5, backStyle.reaction);
-  return tFront <= tBack ? myFront : myBack;
+// ボールの予測打点(x,y,残り時間)を返す。バウンド前/後で予測方法を変えるが、
+// 役割（前衛/後衛）には依存しない「ボールが実際にどこへ来るか」だけの予測。
+// judgeWhoShouldHit と decideHitApproachTask の両方がこれを基準にする。
+function estimateContactPoint(homeSign) {
+  const strokeContact = predictStrokeContact();
+  if (ball.bounces >= 1) {
+    const cx = strokeContact ? strokeContact.x : ball.x + ball.vx * 0.2;
+    const cy = strokeContact ? strokeContact.y : ball.y + ball.vy * 0.2;
+    return { x: cx, y: cy, t: strokeContact ? strokeContact.t : 0.25, bounced: true };
+  }
+  const landing = predictLanding();
+  if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
+    const hc = predictHighContact();
+    const contact = strokeContact || hc;
+    const hx = contact ? contact.x : landing.x;
+    const hy = contact ? contact.y : landing.y + 0.6 * (landing.y >= 0 ? 1 : -1);
+    const t = contact ? contact.t : landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
+    return { x: hx, y: hy, t, bounced: false };
+  }
+  return null;
 }
 
-// 打ち手側の「打つための立ち位置」タスク（既存の後衛ストローク/前衛レシーブ相当の構え位置計算）。
+// 指定の打点へ、残り時間内に横移動で間に合うか（速さ・リーチを概算で考慮）。
+function canReachHitPoint(p, contactX, contactY, timeToContact, speedMul) {
+  const sp = TUNING.move.aiSpeed * (p.stats ? p.stats.speed : 1) * speedMul;
+  const dist = Math.hypot(contactX - p.x, contactY - p.y);
+  if (timeToContact == null || timeToContact <= 0) return dist <= sp * 0.35;
+  return dist <= sp * timeToContact;
+}
+
+// 前衛/後衛それぞれが「現実的にこの球を取りに行くべきか」のスコア。
+// 高いほど打ち手としてふさわしい。届かない場合は -Infinity。
+// 前衛はバウンド後の球も取れる（ストローク）が、ネット際にいるのに深追いして
+// 陣形を崩すのは避けたいので、現在のネットからの深さでペナルティを掛ける。
+function shouldTakeBall(role, p, contactX, contactY, timeToContact, situation) {
+  const speedMul = role === "front" ? 1.25 : 1.2;
+  if (!canReachHitPoint(p, contactX, contactY, timeToContact, speedMul)) return -Infinity;
+  const dist = Math.hypot(contactX - p.x, contactY - p.y);
+  let score = -dist;
+  if (role === "front") {
+    if (ball.bounces >= 1) {
+      const netDepth = Math.abs(p.y); // ネットからの距離。浅いほどネット際。
+      if (netDepth < 2.2) score -= 6.0;       // ネット際からの深追いは強く避ける
+      else if (netDepth < 4.0) score -= 2.0;  // 中間位置は中程度のペナルティ（陣形は崩れにくい）
+      // 深い位置（ダブル後衛気味/下がり気味）にいるならペナルティなし＝後衛と同等に競う
+    }
+    // ロブで頭上を抜かれた後など、前衛が下がって処理するのが自然な場面はボーナス
+    if (situation.isLob) score += 1.2;
+  } else if (ball.bounces >= 1 && Math.abs(p.y) < 3.0) {
+    // 後衛が既に大きく前へ出ているときは、深い球を取りに戻るより
+    // 前衛に譲る方が自然な場合があるため軽くペナルティ
+    score -= 1.0;
+  }
+  return score;
+}
+
+// 誰が打つべきかの判断: 「誰が構造的に打てるか」ではなく「誰が現実的に到達できて、
+// 打つべきか」をスコアで比較する。前衛もバウンド後のストロークを取れる前提。
+function judgeWhoShouldHit(myFront, myBack, side, situation) {
+  const homeSign = side === "player" ? 1 : -1;
+  const contact = estimateContactPoint(homeSign);
+  const cx = contact ? contact.x : ball.x;
+  const cy = contact ? contact.y : ball.y;
+  const t = contact ? contact.t : null;
+
+  const scoreFront = shouldTakeBall("front", myFront, cx, cy, t, situation);
+  const scoreBack  = shouldTakeBall("back",  myBack,  cx, cy, t, situation);
+
+  if (scoreFront === -Infinity && scoreBack === -Infinity) {
+    // どちらも理論上は届かない: 無理にでも近い方が追う
+    const dFront = Math.hypot(cx - myFront.x, cy - myFront.y);
+    const dBack  = Math.hypot(cx - myBack.x,  cy - myBack.y);
+    return dFront <= dBack ? myFront : myBack;
+  }
+  return scoreFront >= scoreBack ? myFront : myBack;
+}
+
+// 打ち手側の「打つための立ち位置」タスク。前衛/後衛で打点目標の作り方を分ける:
+//   front-volley: バウンド前、ネット際の自分の高さ(y)を球が横切るxへ詰める。
+//   front-stroke: バウンド後、後衛のような深い打点の強制（最低深度・狭いxCap）は掛けず、
+//                 実際の予測打点をそのまま使う（既にネットから離れた位置にいる前提）。
+//   back-stroke / back-lob-cover: 既存の後衛ロジック（深度確保・ロブ時のxCap縮小・フォア回り込み）。
 function decideHitApproachTask(p, role, side, myTeam, homeSign, speed, situation) {
   const myBack = side === "player" ? back : cpuBack;
+
+  if (role === "front") {
+    if (ball.bounces === 0) {
+      // front-volley
+      const t = Math.abs(ball.vy) > 0.1 ? (p.y - ball.y) / ball.vy : -1;
+      const predX = (t > 0 && t < 1.2) ? ball.x + ball.vx * t : ball.x;
+      const tx = Math.max(-3.4, Math.min(3.4, predX));
+      return { kind: "hit", x: tx, y: p.y, speedMul: 1.25 };
+    }
+    // front-stroke: 深い打点へ無理に押し込めず、実際の予測打点へ素直に向かう。
+    const contact = estimateContactPoint(homeSign);
+    const tx = Math.max(-COURT.halfW, Math.min(COURT.halfW, contact ? contact.x : p.x));
+    const ty = Math.max(-(COURT.halfL + 1.0), Math.min(COURT.halfL + 1.0, contact ? contact.y : p.y));
+    return { kind: "hit", x: tx, y: ty, speedMul: 1.25 };
+  }
+
+  // back-stroke / back-lob-cover
   const landing = situation.landingPoint;
   const strokeContact = predictStrokeContact();
-  let tx = role === "front" ? p.x : backDevX(myTeam);
-  let ty = role === "front" ? p.y : (homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY);
+  let tx = backDevX(myTeam);
+  let ty = homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY;
   let timeToContact = null;
 
   if (ball.bounces >= 1) {
@@ -395,13 +472,11 @@ function decideHitApproachTask(p, role, side, myTeam, homeSign, speed, situation
     timeToContact = contact ? contact.t : landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
   }
 
-  // フォア回り込み判定は打ち手が後衛役のときのみ意味を持つ（前衛のボレーは回り込み無し）。
-  if (role === "back") {
-    tx = foreApproachX(myBack, myTeam, tx, speed * 1.2, timeToContact);
-    myBack.swingSide = myBack.hitSide;
-    myBack.swingSideLocked = true;
-  }
-  return { kind: "hit", x: tx, y: ty, speedMul: role === "back" ? 1.2 : 1.25 };
+  // フォア回り込み判定（前衛は上で早期returnしているため、ここは常に後衛）。
+  tx = foreApproachX(myBack, myTeam, tx, speed * 1.2, timeToContact);
+  myBack.swingSide = myBack.hitSide;
+  myBack.swingSideLocked = true;
+  return { kind: "hit", x: tx, y: ty, speedMul: 1.2 };
 }
 
 // 打ち手でない側のタスク: cover（コース担当へ戻る）/ poach（踏み込む）/
@@ -467,6 +542,7 @@ function decideSupportTask(p, role, side, myTeam, opponentTeam, situation, style
   }
 
   // role === "back": 打ち手が前衛側のときの後衛のカバー位置（コース担当に戻る/締める）。
+  const homeSign = side === "player" ? 1 : -1;
   const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.8 : dash;
   return {
     kind: "cover",
@@ -917,8 +993,18 @@ export function tryReturnAI(side) {
   //   z < 2.3 上限で頭上すぎる打点は避ける（頂点が高い球は2.3まで落ちてから打つ）。
   // 頂点〜地面までの下降中ずっと打てるので、届く位置にいれば頂点付近で自然に捉える。
   if (ball.bounces === 1 && ball.z < 2.3 && ball.vz <= 0) {
-    const reach = ai.backReach * myBack.stats.reach;
-    if (canSwingNow(myBack) && distToBall(myBack) <= reach) {
+    // ワンバウンド返球の打ち手: 後衛が基本だが、前衛がストロークで取りに来ている
+    // （moveAutoAIのfront-strokeタスクで打点へ寄っている）場合は前衛にも打たせる。
+    // 両者とも届くなら近い方、片方しか届かなければその方が打つ。
+    const backReach = ai.backReach * myBack.stats.reach;
+    const frontReach = ai.backReach * myFront.stats.reach;
+    const backCan = canSwingNow(myBack) && distToBall(myBack) <= backReach;
+    const frontCan = canSwingNow(myFront) && distToBall(myFront) <= frontReach;
+    let hitter = null;
+    if (backCan && frontCan) hitter = distToBall(myBack) <= distToBall(myFront) ? myBack : myFront;
+    else if (backCan) hitter = myBack;
+    else if (frontCan) hitter = myFront;
+    if (hitter) {
       // セオリー: 基本はクロスのコーナー（相手後衛側＝アレー寄り）へ深く返す。
       // 相手後衛のいる側へ外めに振り、アレー方向の球を増やす。残りは散らす。
       let course;
@@ -947,7 +1033,7 @@ export function tryReturnAI(side) {
       const r = Math.random();
       const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
       hitBall({
-        hitter: myBack, side: side, shot: shot,
+        hitter: hitter, side: side, shot: shot,
         course: course,
         contactZ: ball.z,
       });
