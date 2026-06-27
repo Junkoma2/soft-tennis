@@ -1,7 +1,7 @@
 import {
   TUNING, COURT, G,
   POINT_LABELS, POINTS_TO_WIN_GAME, FINAL_GAME_POINTS, GAMES_TO_WIN_MATCH,
-  FORMATIONS, PLAYER_X_LIMIT, HIT_REACH, CPU_REACH, VOLLEY_REACH,
+  FORMATIONS, FORMATION_BIAS, PLAYER_X_LIMIT, HIT_REACH, CPU_REACH, VOLLEY_REACH,
   SHOOT_FLAT_Z, CUT_SLICE_DEPTH, SHOT_FAMILY_ORDER, SHOT_FAMILY_META,
   TOSS_RISE_TIME, TOSS_HOLD_TIME, TOSS_BASE_Z, TOSS_APEX_Z,
   IDEAL_HIT_DELAY, LINE_IN_MARGIN, Y_RANGE_BACK, Y_RANGE_FRONT,
@@ -182,6 +182,11 @@ export function applyFormation() {
   const f = FORMATIONS[formation] || FORMATIONS["ganko"];
   back.homeX = f.back.x;  back.homeY = f.back.y;
   front.homeX = f.front.x; front.homeY = f.front.y;
+  // 自陣2選手のpositionBiasを陣形から設定（AIの基本位置・ネット志向・ポーチ頻度を連続的に決める）。
+  // 相手チームは常に雁行で固定（cpuFront=25 / cpuBack=80。state.jsの初期値のまま）。
+  const fb = FORMATION_BIAS[formation] || FORMATION_BIAS["ganko"];
+  front.positionBias = fb.front;
+  back.positionBias = fb.back;
 }
 
 export function startMatch() {

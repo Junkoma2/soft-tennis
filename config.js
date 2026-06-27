@@ -278,13 +278,42 @@ export const TUNING = {
       poachBias: 0.1, lobFear: 0.6, recoveryBias: 0.7, reaction: 1.0,
     },
   },
-  // formationによる補正（baseDepth/netBias等への加算・倍率）。
-  // ロジックは変えず、パラメータだけを補正する。
-  formationBias: {
-    "ganko":        { front: { netBiasAdd: 0 },     back: { baseDepthAdd: 0 } },
-    "double-back":  { front: { netBiasAdd: -0.45, baseDepthAdd: 55 }, back: { baseDepthAdd: 0 } },
-    "double-front": { front: { netBiasAdd: 0.05 }, back: { netBiasAdd: 0.35, baseDepthAdd: -35 } },
-  },
+};
+
+/* ---------------------------------------------------------
+ * positionBias（0=完全前衛 〜 100=完全後衛）から個性パラメータを連続生成する。
+ * TUNING.cpuStyle.front/back を bias=25/80 のアンカーとして線形補間（外側は外挿）。
+ * これにより既定の雁行(front=25, back=80)では従来挙動を完全に再現しつつ、
+ * 「前衛だけど後衛もできる(45)」のような連続的な選手像を1パラメータで表現できる。
+ *   deepTolerance : 深い球を追う許容（biasが大きいほど高い。新規）
+ * --------------------------------------------------------- */
+const BIAS_FRONT_ANCHOR = 25;
+const BIAS_BACK_ANCHOR = 80;
+export function styleFromBias(bias) {
+  const f = TUNING.cpuStyle.front;
+  const b = TUNING.cpuStyle.back;
+  const t = (bias - BIAS_FRONT_ANCHOR) / (BIAS_BACK_ANCHOR - BIAS_FRONT_ANCHOR);
+  const lerp = (a, c) => a + (c - a) * t;
+  const cl = (v) => Math.max(0, Math.min(1, v));
+  return {
+    baseDepth: lerp(f.baseDepth, b.baseDepth),
+    netBias: cl(lerp(f.netBias, b.netBias)),
+    aggression: cl(lerp(f.aggression, b.aggression)),
+    riskTolerance: cl(lerp(f.riskTolerance, b.riskTolerance)),
+    poachBias: cl(lerp(f.poachBias, b.poachBias)),
+    lobFear: cl(lerp(f.lobFear, b.lobFear)),
+    recoveryBias: cl(lerp(f.recoveryBias, b.recoveryBias)),
+    reaction: lerp(f.reaction, b.reaction),
+    deepTolerance: cl(0.2 + (bias / 100) * 0.7),
+  };
+}
+
+/* 陣形ごとの自陣2選手のpositionBias（相手は常に雁行: front=25 / back=80）。
+ * ダブル系も完全な横並びにせず、わずかな前後差を持たせる（片方が少し前/後ろ）。 */
+export const FORMATION_BIAS = {
+  "ganko":        { front: 25, back: 80 },
+  "double-back":  { front: 72, back: 84 }, // 2人とも後衛。netPlayer(72)が少し前
+  "double-front": { front: 20, back: 46 }, // 2人とも前衛。basePlayer(46)が少し後ろ
 };
 
 // canvas内部解像度。画面向きに応じて applyViewport() で切り替える（live binding）。

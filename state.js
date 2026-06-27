@@ -241,6 +241,10 @@ export function makePlayer(opts) {
     wrapBallX: null,       // 確定時に基準にしたボールの予測打点x（予測が大きくズレたら再計画する判定に使う）
     hitSide: "fore",       // この来球を fore/back どちらで打つかの確定値（立ち位置と一体で決める）
     role: "back",      // back / front（その時点でのコート上の役割表示用）
+    // positionBias: 0=完全前衛 〜 100=完全後衛 の連続値。AI内部はこの値で
+    // 「前寄り/後ろ寄り」を判断する（front/backという固定クラスに依存しない）。
+    // 陣形選択時に applyFormation() が自陣2選手へ再設定する。相手は常に雁行で固定。
+    positionBias: 80,
     stats: makeStats(),
   }, opts);
 }
@@ -251,6 +255,7 @@ export const back = makePlayer({
 });
 export const front = makePlayer({
   homeX: TUNING.pos.frontSideX, homeY: TUNING.pos.frontY, color: "#A5B4FC", label: "前衛", facing: -1,
+  positionBias: 25, role: "front",
   stats: playerStats.front,
 });
 export const cpuBack = makePlayer({
@@ -259,6 +264,7 @@ export const cpuBack = makePlayer({
 });
 export const cpuFront = makePlayer({
   homeX: -TUNING.pos.frontSideX, homeY: -TUNING.pos.frontY, color: "#4338CA", label: "相手前衛", facing: 1,
+  positionBias: 25, role: "front",
   stats: cpuStats.front,
 });
 
