@@ -254,13 +254,15 @@ export function resetPlayersForPoint() {
     receiver.x = rp.x; receiver.y = rp.y;
   }
 
-  // 前衛は逆サイドに寄る（雁行陣のみ）。サーブする本人はその限りでない。
+  // サーバーでない自陣の相方（前衛）はサーバーと反対サイドへ寄せ、重なりを防ぐ。
+  // 全陣形に適用する（旧コードは雁行のみで、ダブル後衛では後衛サーバーと前衛が
+  // 同サイド・同深さに居残り重なっていた）。yは各自のhome深さのまま動かさない。
   // レシーブ役の前衛にはこのサイド寄せを適用しない（レシーブ位置を上書きしてしまうため）。
   const sideSign = serveFromRight() ? 1 : -1;
   const fx = TUNING.pos.frontSideX;
   const receivingTeam = team === "player" ? "cpu" : "player";
   const recv = receiverPlayerFor(receivingTeam);
-  if (formation === "ganko" && front !== recv && !(team === "player" && frontServes)) {
+  if (front !== recv && !(team === "player" && frontServes)) {
     front.x = -fx * sideSign;
   }
   if (cpuFront !== recv && !(team === "cpu" && frontServes)) cpuFront.x = fx * sideSign;

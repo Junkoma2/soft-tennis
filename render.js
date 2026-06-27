@@ -51,6 +51,7 @@ export function draw() {
   drawHud();
   drawScore();
   drawControlLegend();
+  drawDebugParams();
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
@@ -461,6 +462,39 @@ function drawDebugHitboxes() {
     controlled: false,
     color: "rgba(251,113,133,0.75)",
     fillColor: "rgba(251,113,133,0.07)",
+  });
+  ctx.restore();
+}
+
+// デバッグ: 各選手の positionBias・役割・現在タスクを頭上に表示する。
+function drawDebugParams() {
+  if (!debugDraw.params) return;
+  if (state === "ready") return;
+  const players = [
+    { p: back,     self: true },
+    { p: front,    self: true },
+    { p: cpuBack,  self: false },
+    { p: cpuFront, self: false },
+  ];
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  players.forEach(({ p, self }) => {
+    const bias = p.positionBias != null ? Math.round(p.positionBias) : "?";
+    const roleLabel = (p.positionBias != null && p.positionBias < 50) ? "前衛" : "後衛";
+    const task = p.aiTaskKind || "-";
+    const sc = project(p.x, p.y, 2.9); // 頭上（3Dキャラの頭より上）
+    const lines = [`${roleLabel} bias ${bias}`, `task: ${task}`];
+    ctx.font = "700 11px sans-serif";
+    let maxW = 0;
+    lines.forEach((l) => { const w = ctx.measureText(l).width; if (w > maxW) maxW = w; });
+    const boxW = maxW + 12, boxH = lines.length * 14 + 6;
+    const bx = sc.x - boxW / 2, by = sc.y - boxH;
+    ctx.fillStyle = self ? "rgba(37,99,235,0.85)" : "rgba(220,38,38,0.85)";
+    roundRect(ctx, bx, by, boxW, boxH, 5);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    lines.forEach((l, i) => { ctx.fillText(l, sc.x, by + 14 + i * 14); });
   });
   ctx.restore();
 }

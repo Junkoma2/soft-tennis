@@ -44,6 +44,7 @@ export function decideTask(p, ctx) {
 
 // ⑤ タスク実行: decideTask が決めた目標位置(x,y)へ移動する。
 export function executeTask(p, ctx, task, dt) {
+  p.aiTaskKind = task.kind; // デバッグ表示用に現在のタスク種別を保持
   moveToward(p, task.x, task.y, ctx.speed * task.speedMul * dt, dt);
 }
 

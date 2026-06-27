@@ -1,7 +1,12 @@
 import {
-  TUNING, COURT, FORMATIONS,
+  TUNING, COURT, FORMATIONS, FORMATION_BIAS,
   PLAYER_X_LIMIT, Y_RANGE_BACK, Y_RANGE_FRONT, SHOT_FAMILY_ORDER,
 } from "./config.js";
+
+// positionBias(0=完全前衛〜100=完全後衛)の表示ラベル。0〜49=前衛 / 50〜100=後衛。
+function biasRoleLabel(bias) {
+  return (bias < 50 ? "前衛" : "後衛") + " " + Math.round(bias);
+}
 
 import {
   keysWasd, setSpaceHeld, spaceHeld, state, charge, matchTime, aim,
@@ -359,6 +364,18 @@ function updatePickerPositions() {
   place(pickerPlayerFront, playerFrontX, f.front.y);
   place(pickerCpuBack, cpuBackX, -fo.back.y);
   place(pickerCpuFront, cpuFrontX, -fo.front.y);
+
+  // 役割ラベルを positionBias（陣形依存）から反映する。相手は常に雁行で固定。
+  const fb = FORMATION_BIAS[formation] || FORMATION_BIAS["ganko"];
+  const setRole = (el, bias) => {
+    if (!el) return;
+    const r = el.querySelector(".picker-role");
+    if (r) r.textContent = biasRoleLabel(bias);
+  };
+  setRole(pickerPlayerBack, fb.back);
+  setRole(pickerPlayerFront, fb.front);
+  setRole(pickerCpuBack, 80);
+  setRole(pickerCpuFront, 25);
 }
 
 function updatePickerUi() {
