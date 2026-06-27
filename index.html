@@ -25,9 +25,7 @@
     <main>
       <div id="screen-ready" class="screen">
         <p class="description">
-          ダブルスのソフトテニス対戦です。手前の自分側の選手をタップして操作キャラ（YOU）を選べます。<br />
-          両方AIにすると4人全員AIが操作し、観戦だけで試合が進みます。<br />
-          <strong>PC・横画面（ランドスケープ）推奨。</strong>キーボードで快適に操作できます。操作しない相方はAIが動かします。
+          手前の選手をタップで操作キャラ（YOU）を選択。両方AIにすれば観戦も可能。<strong>PC・横画面推奨。</strong>
         </p>
         <div class="control-group player-picker-group" id="player-picker-group">
           <span class="control-label">操作キャラ（タップでYOU/AI切替）</span>
@@ -94,16 +92,20 @@
           <button class="ctrl-btn" data-render="2d" type="button">2D</button>
           <button class="ctrl-btn" data-render="3d" type="button">3D（試作）</button>
         </div>
-        <div class="rules">
-          <p><strong>移動</strong>　<strong>WASD（左手）</strong>（スマホ：左下スティック）。打点ゾーン中も移動できます</p>
-          <p><strong>狙い</strong>　<strong>マウス（右手）</strong>。コート上でマウスを動かすと、マウスが指す地点へ着地点カーソルが追従します。ため中もサーブ時もマウスで狙います</p>
-          <p><strong>打つ</strong>　ボールが打点ゾーンに入ると自動で「ため」が始まります。<strong>左クリック=シュート（フラット/ドライブ）、右クリック=カット（スライス/ドロップ）、Spaceを押しながらクリック=ロブ</strong>でその場でスイング（未操作ならミドル深めへ自動で打つ）</p>
-          <p><strong>球種</strong>　シュートは<strong>高いとフラット・低いとドライブ</strong>、カットは<strong>深いとスライス・浅いとドロップ</strong>に変化</p>
-          <p><strong>スマッシュ</strong>　ネット前で高い球（ロブ等）を捉えると<strong>自動でスマッシュ</strong>（速く鋭く叩き込む決め球）になります</p>
-          <p><strong>サーブ</strong>　<strong>アンダー/オーバー</strong>とパワー・回転・攻守を選ぶ → <strong>マウスで対角サービスコート内の狙う場所</strong>を指す → 左クリックでトス → オーバーなら適正打点で<strong>左クリック=フラット、右クリック=スライス、Space+クリック=攻撃的カット（速くて鋭いが難しい）</strong>、アンダーなら<strong>適正打点でクリック=アンダーカット（セカンド向け安全球）</strong>。コート外狙いはフォルト。相手のサーブは種類が打つ前に表示されます</p>
-          <p><strong>攻守</strong>　相方AIの積極性。後衛を操作するとき=相方前衛のポーチ頻度と動き出しを制御。前衛を操作するとき=相方後衛のストレート/抜きコース選択を制御。値はポイント間で保持されます</p>
-          <p>カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ。細かい操作は試合中のヒントで案内します</p>
-        </div>
+        <details class="start-panel" id="player-stats-panel">
+          <summary>選手ステータスを調整</summary>
+          <div class="stats-grid" id="stats-grid"><!-- playerStatsPanel.js が生成 --></div>
+          <button id="stats-reset" class="stats-reset" type="button">標準値に戻す</button>
+        </details>
+        <details class="start-panel">
+          <summary>操作ガイド</summary>
+          <div class="guide-body">
+            <p><strong>移動</strong> WASD（スマホは左下スティック）／<strong>狙い</strong> マウス追従</p>
+            <p><strong>打つ</strong> 左=シュート・右=カット・Space+クリック=ロブ。高低/深浅で球種が変化</p>
+            <p><strong>サーブ</strong> オーバー/アンダーを選び、マウスで対角コートを狙ってクリック。コート外はフォルト</p>
+            <p><strong>攻守</strong> 相方AIの積極性。カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ</p>
+          </div>
+        </details>
         <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
         <a class="model-viewer-link" href="model-viewer.html">3Dフォーム確認ページを開く</a>
       </div>

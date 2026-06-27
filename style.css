@@ -162,6 +162,113 @@ main {
   line-height: 1.8;
 }
 
+/* ---- 開始画面の折りたたみパネル（ステータス調整・操作ガイド） ----
+ * 既定で閉じておくことで開始画面をスクロール不要に保つ。 */
+.start-panel {
+  width: 100%;
+  background: var(--color-primary-light);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--color-primary);
+}
+
+.start-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.start-panel > summary::-webkit-details-marker { display: none; }
+
+.start-panel > summary::after {
+  content: "▾";
+  font-size: 10px;
+  opacity: .7;
+}
+
+.start-panel[open] > summary::after { content: "▴"; }
+
+.guide-body {
+  padding: 0 16px 12px;
+  text-align: center;
+  line-height: 1.7;
+}
+
+.guide-body p { margin: 4px 0; }
+
+/* ---- 選手ステータスの表（4選手 × 6項目の数値入力） ---- */
+.stats-grid {
+  padding: 2px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: 48px repeat(6, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.stats-head {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .8;
+}
+
+.stats-colhead { text-align: center; }
+
+.stats-rowlabel {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stats-cell input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px 2px;
+  border: 1px solid rgba(99, 102, 241, .3);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -webkit-appearance: none;
+  appearance: textfield;
+}
+
+.stats-cell input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.stats-reset {
+  display: block;
+  margin: 0 12px 10px;
+  padding: 6px 14px;
+  border: 1px solid rgba(99, 102, 241, .35);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 開始画面は折りたたみ既定でスクロール不要に収める（縦の詰めを強める） */
+#screen-ready { gap: 10px; }
+#screen-ready .player-picker-court { max-width: 248px; }
+
 .primary-btn {
   width: 100%;
   max-width: 280px;
