@@ -1,17 +1,22 @@
 import {
-  TUNING, COURT, FORMATIONS,
+  TUNING, COURT, FORMATIONS, FORMATION_BIAS,
   PLAYER_X_LIMIT, Y_RANGE_BACK, Y_RANGE_FRONT, SHOT_FAMILY_ORDER,
 } from "./config.js";
+
+// positionBias(0=完全前衛〜100=完全後衛)の表示ラベル。0〜49=前衛 / 50〜100=後衛。
+function biasRoleLabel(bias) {
+  return (bias < 50 ? "前衛" : "後衛") + " " + Math.round(bias);
+}
 
 import {
   keysWasd, setSpaceHeld, spaceHeld, state, charge, matchTime, aim,
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
-  serveAimCursor, chargeBtn, serveCategoryControls, debugControls, debugDraw,
+  serveAimCursor, chargeBtn, serveCategoryControls, debugDraw,
   setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
-  setDebugHitboxes, setDebugTrajectory,
+  setDebugHitboxes, setDebugTrajectory, setDebugParams,
   handedControls, setPlayerHanded,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
@@ -242,21 +247,35 @@ if (serveCategoryControls) {
   });
 }
 
-if (debugControls) {
+{
+  const controls = document.getElementById("debug-controls");
   function syncDebugButtons() {
-    debugControls.querySelectorAll("[data-debug]").forEach(function (b) {
-      const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes : debugDraw.trajectory;
+    if (!controls) return;
+    controls.querySelectorAll("[data-debug]").forEach(function (b) {
+      const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes
+        : b.dataset.debug === "trajectory" ? debugDraw.trajectory
+        : debugDraw.params;
       b.classList.toggle("is-active", active);
     });
   }
 
-  debugControls.addEventListener("click", function (e) {
-    const btn = e.target.closest("[data-debug]");
+  function toggleDebugButton(btn, e) {
     if (!btn) return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (btn.dataset.debug === "hitboxes") setDebugHitboxes(!debugDraw.hitboxes);
     if (btn.dataset.debug === "trajectory") setDebugTrajectory(!debugDraw.trajectory);
+    if (btn.dataset.debug === "params") setDebugParams(!debugDraw.params);
     syncDebugButtons();
-  });
+  }
+
+  if (controls) {
+    controls.querySelectorAll("[data-debug]").forEach(function (btn) {
+      btn.onclick = function (e) { toggleDebugButton(btn, e); };
+    });
+  }
   syncDebugButtons();
 }
 
@@ -348,6 +367,18 @@ function updatePickerPositions() {
   place(pickerPlayerFront, playerFrontX, f.front.y);
   place(pickerCpuBack, cpuBackX, -fo.back.y);
   place(pickerCpuFront, cpuFrontX, -fo.front.y);
+
+  // 役割ラベルを positionBias（陣形依存）から反映する。相手は常に雁行で固定。
+  const fb = FORMATION_BIAS[formation] || FORMATION_BIAS["ganko"];
+  const setRole = (el, bias) => {
+    if (!el) return;
+    const r = el.querySelector(".picker-role");
+    if (r) r.textContent = biasRoleLabel(bias);
+  };
+  setRole(pickerPlayerBack, fb.back);
+  setRole(pickerPlayerFront, fb.front);
+  setRole(pickerCpuBack, 80);
+  setRole(pickerCpuFront, 25);
 }
 
 function updatePickerUi() {

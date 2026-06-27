@@ -62,7 +62,7 @@ import {
 import {
   setControlledX, setControlledY, startCharge, updateAimInputs,
   distToBall, canPlayerHit, playerHitBall,
-} from "./input-20260626-21.js";
+} from "./input.js";
 
 import {
   updatePartner, updateRallyControlledAI, updateCpuBack, updateCpuFront,
