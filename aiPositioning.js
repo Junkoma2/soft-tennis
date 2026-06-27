@@ -116,6 +116,42 @@ export function recoverDepthY(side, p) {
   return homeSign > 0 ? depth : -depth;
 }
 
+/* ===========================================================
+ * 守備範囲の幾何（インになるシュート軌道）
+ *
+ * 相手打点 O を起点に、サイドライン×最浅シュート深さ(サービスライン相当)の隅へ
+ * 向かう左右端コースと、その二等分(中心線)を返す。デバッグ表示(render)と AI の
+ * ポジショニング/担当判定で同じこの幾何を共有する（見た目と挙動を一致させる）。
+ *   zoneCenterX("net", y)  … ストレート側ゾーン中央x（ネット担当の理想x）
+ *   zoneCenterX("base", y) … クロス側ゾーン中央x（後方担当の理想x）
+ * =========================================================== */
+export const COVERAGE_SHOOT_MIN_DEPTH = COURT.serviceY;
+function covUnit(x, y) { const m = Math.hypot(x, y) || 1; return { x: x / m, y: y / m }; }
+export function coverageGeom(side) {
+  const homeSign = side === "cpu" ? -1 : 1;
+  const O = opponentHitterPos(side);
+  const Xw = COURT.halfW;
+  const yBase = homeSign * COURT.halfL;
+  const yMin = homeSign * COVERAGE_SHOOT_MIN_DEPTH;
+  const dirL = { x: -Xw - O.x, y: yMin - O.y };
+  const dirR = { x:  Xw - O.x, y: yMin - O.y };
+  const uL = covUnit(dirL.x, dirL.y), uR = covUnit(dirR.x, dirR.y);
+  const dirC = { x: uL.x + uR.x, y: uL.y + uR.y };
+  const cl = (x) => Math.max(-Xw, Math.min(Xw, x));
+  const xAt = (dir, y) => Math.abs(dir.y) < 1e-6 ? O.x : O.x + (y - O.y) / dir.y * dir.x;
+  const straightSign = O.x >= 0 ? 1 : -1;
+  const leftX = (y) => cl(xAt(dirL, y));
+  const rightX = (y) => cl(xAt(dirR, y));
+  const centerX = (y) => cl(xAt(dirC, y));
+  const zoneCenterX = (role, y) => {
+    const c = centerX(y);
+    const straightEdge = straightSign > 0 ? rightX(y) : leftX(y);
+    const crossEdge    = straightSign > 0 ? leftX(y)  : rightX(y);
+    return role === "net" ? (straightEdge + c) / 2 : (crossEdge + c) / 2;
+  };
+  return { O, Xw, yBase, homeSign, straightSign, dirL, dirR, dirC, leftX, rightX, centerX, zoneCenterX };
+}
+
 // その展開判定で使う「自陣後衛」「自陣前衛」「相手後衛」は、固定クラスではなく
 // positionBiasで導出した basePlayer/netPlayer を返す（中立化）。
 export function ownBackPlayer(side) { return basePlayerOf(side); }
