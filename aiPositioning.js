@@ -1,6 +1,6 @@
 import { TUNING, COURT } from "./config.js";
-import { back, front, cpuBack, cpuFront, ball, development } from "./state.js";
-import { predictLanding } from "./main.js";
+import { back, front, cpuBack, cpuFront, ball, development, coverageAnchor } from "./state.js";
+import { predictLanding, netClearance } from "./main.js";
 
 /* ===========================================================
  * AI ポジショニング基盤（最下層）
@@ -45,6 +45,31 @@ export function moveToward(p, tx, ty, maxDist, dt) {
   p.y += p.vy * dt;
 }
 
+// 打点へ「弧を描いて入る」ためのアプローチ目標点を返す。
+//   contact = 打点（ボール予測位置）, stand = 最終立ち位置。
+// 選手は打点を中心に距離・角度をできるだけ保ったまま円弧上を回り込み、正しい角度に
+// 揃ってから立ち位置へ寄せる。直線で L 字（前後→左右）に入らず、後衛らしく弧を描く。
+// 半径(理想打点距離)は徐々に詰める＝スパイラルイン。時間に余裕がないときは呼ばない側で制御。
+export function arcApproachTarget(p, contactX, contactY, standX, standY) {
+  const R = Math.hypot(standX - contactX, standY - contactY); // 打点からの理想半径
+  const pcx = p.x - contactX, pcy = p.y - contactY;
+  const dPC = Math.hypot(pcx, pcy);
+  if (R < 0.15 || dPC < Math.max(0.2, R * 0.5)) return { x: standX, y: standY };
+  const aP = Math.atan2(pcy, pcx);
+  const aS = Math.atan2(standY - contactY, standX - contactX);
+  let dA = aS - aP;
+  while (dA > Math.PI) dA -= 2 * Math.PI;
+  while (dA < -Math.PI) dA += 2 * Math.PI;
+  // ほぼ正対は直接。大きく回り込む必要がある側（打点の反対側にいる）は弧で遠回りすると
+  // 打点をぐるっと回って間に合わず空振りする（ボールが片側に来たときだけ起きる左右非対称の
+  // 原因）。その場合も直線で立ち位置へ向かう。弧は中程度の角度調整のときだけ使う。
+  if (Math.abs(dA) < 0.2 || Math.abs(dA) > 1.0) return { x: standX, y: standY };
+  const stepA = Math.sign(dA) * Math.min(Math.abs(dA), 0.7); // 1フレームの回り込み角上限(rad)
+  const aT = aP + stepA;
+  const rT = dPC + (R - dPC) * 0.4; // 半径を理想へ徐々に詰める
+  return { x: contactX + rT * Math.cos(aT), y: contactY + rT * Math.sin(aT) };
+}
+
 function approachVelocity(cur, target, dt) {
   const accel = TUNING.move.accel;
   const decel = TUNING.move.decel;
@@ -56,22 +81,73 @@ function approachVelocity(cur, target, dt) {
   return cur + Math.sign(diff) * maxStep;
 }
 
-// 相手後衛（＝こちらに打ってくる側）の打点位置を返す。
+// 相手（＝こちらに打ってくる側）の「最後の打点」位置を返す。
 //   side="cpu": 相手はプレイヤー。side="player": 相手はCPU。
-// 相手が打った球が飛来中はその打点(originX)を、こちらの打球が飛行中
-// （サーブ含む）は飛んでいる球ではなく相手後衛の現在位置を基準にする。
-// （飛行中の自球xを使うと、球がコートを横切るのに合わせて展開判定/定位置が
-//   左右に振れてしまうため）。
+// 値は coverageAnchor のラッチ（相手が打った瞬間に確定）だけを参照する。
+// ラリー中に相手や味方が動いても変わらず、次に相手が打つまで固定される。
+//   → 飛行中に展開判定/定位置が左右に振れる問題（責任入れ替わり）を断つ。
+// ラッチ未確定（ポイント開始直後など）は相手後衛の現在位置にフォールバックする。
 export function opponentHitterPos(side) {
-  if (side === "cpu") {
-    // CPUから見た相手＝プレイヤー側
-    if (ball.lastHitter === "player") return { x: ball.originX, y: ball.originY };
-    const op = basePlayerOf("player");
-    return { x: op.x, y: op.y };
-  }
-  if (ball.lastHitter === "cpu") return { x: ball.originX, y: ball.originY };
-  const op = basePlayerOf("cpu");
+  const a = coverageAnchor[side];
+  if (a && a.set) return { x: a.x, y: a.y };
+  const op = basePlayerOf(side === "cpu" ? "player" : "cpu");
   return { x: op.x, y: op.y };
+}
+
+/* ===========================================================
+ * フォーメーション決定（自分たちが返球した瞬間に1回だけ）
+ *
+ * フォーメーション = 展開 + ポジション + 責任範囲。実体は coverageAnchor の
+ *   {x,y(=相手の予測打点O), frontSide(=前衛が守る半面)}。
+ * 候補は「クロス展開」「ストレート展開」= frontSide が -1 / +1 の2通り。各候補で
+ * 前衛・後衛の目標位置を求め、両者が到達するまでの時間 completionTime =
+ * max(前衛到達時間, 後衛到達時間) を計算し、最小の展開を採用する。
+ * ＝「前衛・後衛の両方が最も早く守備位置へ入れる展開」を選ぶ（無駄な左右入替を避ける）。
+ * =========================================================== */
+
+// frontSide を仮に与えたときの、前衛/後衛それぞれの目標位置(x,y)を返す。
+// idealPosition と同じ計算（clamp 込み）を frontSide 指定で行う共通ロジック。
+function formationTargets(side, frontSide) {
+  const a = coverageAnchor[side];
+  const prev = a.frontSide;
+  a.frontSide = frontSide;               // この候補の幾何で評価
+  const net = netPlayerOf(side), base = basePlayerOf(side);
+  const g = coverageGeom(side);
+  const netY = recoverDepthY(side, net), baseY = recoverDepthY(side, base);
+  const netX = Math.max(-3.4, Math.min(3.4, g.zoneCenterX("net", netY)));
+  const baseX = Math.max(-4.4, Math.min(4.4, g.zoneCenterX("base", baseY)));
+  a.frontSide = prev;                    // 評価用の一時変更を戻す
+  return { net: { x: netX, y: netY, p: net }, base: { x: baseX, y: baseY, p: base } };
+}
+
+// 自分たちが返球した瞬間に、次のフォーメーションを決定して保存する（ラリー中唯一の更新点）。
+//   side : 返球した側。O = 自分の打球の着地予測（相手が次に打つ位置）。
+// クロス/ストレート（frontSide=-1/+1）の2候補から completionTime 最小を選ぶ。
+export function updateFormation(side) {
+  const landing = predictLanding();
+  if (!landing) return; // 着地予測なし: 前回フォーメーションを維持
+  const a = coverageAnchor[side];
+  a.x = landing.x; a.y = landing.y; a.set = true;
+
+  let bestSide = a.frontSide, bestTime = Infinity;
+  for (const fs of [-1, 1]) {
+    const t = formationTargets(side, fs);
+    const netSpeed = Math.max(0.1, TUNING.move.aiSpeed * (t.net.p.stats ? t.net.p.stats.speed : 1));
+    const baseSpeed = Math.max(0.1, TUNING.move.aiSpeed * (t.base.p.stats ? t.base.p.stats.speed : 1));
+    const tNet = Math.hypot(t.net.x - t.net.p.x, t.net.y - t.net.p.y) / netSpeed;
+    const tBase = Math.hypot(t.base.x - t.base.p.x, t.base.y - t.base.p.y) / baseSpeed;
+    const completion = Math.max(tNet, tBase); // 両方が揃った時点で完成
+    if (completion < bestTime) { bestTime = completion; bestSide = fs; }
+  }
+  a.frontSide = bestSide;
+}
+
+// 打球イベント時のフック（main.js / serve.js から、打った直後に呼ぶ）。
+//   team : 打った側。返球した team 自身のフォーメーションだけをここで更新する。
+// 受け手(相手)のフォーメーションは相手が前回返球したときに既に確定済みなので触らない
+// （相手が打つ瞬間にフォーメーションを再計算しない、というラリー設計のため）。
+export function latchCoverageOnHit(team) {
+  updateFormation(team);
 }
 
 /* ===========================================================
@@ -117,39 +193,107 @@ export function recoverDepthY(side, p) {
 }
 
 /* ===========================================================
- * 守備範囲の幾何（インになるシュート軌道）
+ * 守備範囲の幾何（左右責任の分割）
  *
- * 相手打点 O を起点に、サイドライン×最浅シュート深さ(サービスライン相当)の隅へ
- * 向かう左右端コースと、その二等分(中心線)を返す。デバッグ表示(render)と AI の
- * ポジショニング/担当判定で同じこの幾何を共有する（見た目と挙動を一致させる）。
+ * 相手打点 O（ラッチ済み）から、各サイドラインへ「ネットを越えてインに入る最も
+ * 角度のついた軌道」（端コース）を引く。隅の深さは固定ではなく、代表シュートの
+ * ネットクリアランス物理から求める（→ shallowestInboundDepth）。その2辺の二等分線
+ * ＝中心線で自陣を「ストレート側（ネット担当）」「クロス側（後方担当）」に二分する。
+ * デバッグ表示(render)と AI のポジショニング/担当判定が同じこの幾何だけを共有する。
  *   zoneCenterX("net", y)  … ストレート側ゾーン中央x（ネット担当の理想x）
  *   zoneCenterX("base", y) … クロス側ゾーン中央x（後方担当の理想x）
  * =========================================================== */
-export const COVERAGE_SHOOT_MIN_DEPTH = COURT.serviceY;
+export const COVERAGE_SHOOT_MIN_DEPTH = COURT.serviceY; // フォールバック用の最浅深さ
+const COVERAGE_CONTACT_Z = 0.9;    // 相手打点の代表高さ(m)
+const COVERAGE_NET_MARGIN = 0.10;  // ネット上端からの最小クリア余裕(m)
 function covUnit(x, y) { const m = Math.hypot(x, y) || 1; return { x: x / m, y: y / m }; }
+
+// 相手打点 O から指定サイドライン(sideX)へ向けて、ネットを越えてインに入る最も浅い着地深さ(y)。
+// = そのサイドへ角度をつけて打てる限界（端コースの隅）。homeSign は自陣方向(+1/-1)。
+// speed は相手が実際に打つ早い球の球速。浅い側から走査し、最初にネットを越える深さを返す。
+function shallowestInboundDepth(O, sideX, homeSign, speed) {
+  for (let d = 1.0; d <= COURT.halfL; d += 0.2) {
+    const ty = homeSign * d;
+    const c = netClearance(O.x, O.y, COVERAGE_CONTACT_Z, sideX, ty, speed);
+    if (c !== null && c >= COURT.netH + COVERAGE_NET_MARGIN) return ty;
+  }
+  return homeSign * COVERAGE_SHOOT_MIN_DEPTH;
+}
+
+// 守備範囲を決める「相手が実際に打つ早い球」の球速。固定の代表値は使わず、
+// 通常ラリーのシュート(drive)球速 × 相手後ろ寄り選手の power から決める（CPUごとに変わる）。
+// 遅い球（ショートクロス等）は追いつけるので、早い球の角度だけを守備範囲にする狙い。
+function opponentShootSpeed(side) {
+  const oppSide = side === "cpu" ? "player" : "cpu";
+  const hitter = basePlayerOf(oppSide);
+  const power = (hitter && hitter.stats && hitter.stats.power) || 1.0;
+  return TUNING.shots.drive.speed * power;
+}
+// 守備範囲の幾何（単一の真実）。render のデバッグ描画と AI のポジショニングが
+// この同じ結果だけを参照する（見た目＝挙動）。
+// 外側境界は「相手がインに打てる最も角度のついた軌道」: 相手打点 O から、両サイド
+// ライン×最浅シュート深さ(サービスライン相当)の隅へ向かう左右端コース。その内側＝
+// インになる球が通り得る範囲。中心線(二等分線)で左右＝二人の責任範囲に分割する。
+//   leftX(y)/rightX(y)  … 左端/右端コースの深さyでのx（責任ゾーンの外側境界）。
+//   centerX(y)          … 中心線。左右責任の境界。
+//   zoneCenterX(role,y) … その役割の責任ゾーン中央＝理想ポジションのx
+//                          （ネット担当=ストレート側、後方担当=クロス側の端〜中心線の中点）。
 export function coverageGeom(side) {
   const homeSign = side === "cpu" ? -1 : 1;
   const O = opponentHitterPos(side);
   const Xw = COURT.halfW;
   const yBase = homeSign * COURT.halfL;
-  const yMin = homeSign * COVERAGE_SHOOT_MIN_DEPTH;
-  const dirL = { x: -Xw - O.x, y: yMin - O.y };
-  const dirR = { x:  Xw - O.x, y: yMin - O.y };
+  // 左右端コースの隅＝各サイドラインへ「ネット越え＋イン」になる最も浅い着地点。
+  // O が中央から外れると左右で深さが変わる。代表球速は相手の power 依存（CPUごと）。
+  const shootSpeed = opponentShootSpeed(side);
+  const leftCornerY = shallowestInboundDepth(O, -Xw, homeSign, shootSpeed);
+  const rightCornerY = shallowestInboundDepth(O,  Xw, homeSign, shootSpeed);
+  const dirL = { x: -Xw - O.x, y: leftCornerY - O.y };
+  const dirR = { x:  Xw - O.x, y: rightCornerY - O.y };
   const uL = covUnit(dirL.x, dirL.y), uR = covUnit(dirR.x, dirR.y);
   const dirC = { x: uL.x + uR.x, y: uL.y + uR.y };
   const cl = (x) => Math.max(-Xw, Math.min(Xw, x));
   const xAt = (dir, y) => Math.abs(dir.y) < 1e-6 ? O.x : O.x + (y - O.y) / dir.y * dir.x;
+  // O が乗っているサイド（ストレート側）。展開名/デバッグ用に保持。
   const straightSign = O.x >= 0 ? 1 : -1;
+  // フォーメーションが決めた「前衛が守る半面」。未確定時はストレート側を前衛が締める
+  // 従来割り当て（前衛=O側ハーフ）にフォールバックする。
+  const anchor = coverageAnchor[side];
+  const frontSide = (anchor && anchor.set) ? anchor.frontSide : straightSign;
   const leftX = (y) => cl(xAt(dirL, y));
   const rightX = (y) => cl(xAt(dirR, y));
   const centerX = (y) => cl(xAt(dirC, y));
-  const zoneCenterX = (role, y) => {
-    const c = centerX(y);
-    const straightEdge = straightSign > 0 ? rightX(y) : leftX(y);
-    const crossEdge    = straightSign > 0 ? leftX(y)  : rightX(y);
-    return role === "net" ? (straightEdge + c) / 2 : (crossEdge + c) / 2;
+  // 各ハーフ（左=dirL〜dirC / 右=dirC〜dirR）の角度二等分線（1/4角度）。理想ポジション
+  // はこのレイ上に置く（x中点ではなく O 起点の角度二等分）。
+  const uC = covUnit(dirC.x, dirC.y);
+  const dirQuarterL = { x: covUnit(dirL.x, dirL.y).x + uC.x, y: covUnit(dirL.x, dirL.y).y + uC.y };
+  const dirQuarterR = { x: covUnit(dirR.x, dirR.y).x + uC.x, y: covUnit(dirR.x, dirR.y).y + uC.y };
+  // 前衛は frontSide のハーフ、後衛は逆ハーフを担当する。
+  const dirNet  = frontSide < 0 ? dirQuarterL : dirQuarterR;
+  const dirBase = frontSide < 0 ? dirQuarterR : dirQuarterL;
+  const zoneCenterX = (role, y) => cl(xAt(role === "net" ? dirNet : dirBase, y));
+  // 打点(x,y)がどちらのハーフ＝どちらの担当かを返す（責任範囲＝フォーメーションに従う）。
+  const responsibleRole = (x, y) => {
+    const contactSide = (x - centerX(y)) >= 0 ? 1 : -1;
+    return contactSide === frontSide ? "net" : "base";
   };
-  return { O, Xw, yBase, homeSign, straightSign, dirL, dirR, dirC, leftX, rightX, centerX, zoneCenterX };
+  return {
+    O, Xw, yBase, homeSign, straightSign, frontSide, dirL, dirR, dirC,
+    leftX, rightX, centerX, zoneCenterX, responsibleRole,
+    leftCornerY, rightCornerY, // 端コースがサイドラインに到達する深さ（折れ点）
+  };
+}
+
+// 理想ポジション（recover / cover の定位置）。render のリングと AI の移動目標が
+// 必ずこの同じ値を参照する。role: "net"（前寄り） / "base"（後ろ寄り）。
+//   y は recoverDepthY（展開ラッチ基準）で決め、x はその深さでの zoneCenterX。
+export function idealPosition(side, role) {
+  const p = role === "net" ? netPlayerOf(side) : basePlayerOf(side);
+  const ty = recoverDepthY(side, p);
+  const g = coverageGeom(side);
+  const xCap = role === "net" ? 3.4 : 4.4;
+  const tx = Math.max(-xCap, Math.min(xCap, g.zoneCenterX(role, ty)));
+  return { x: tx, y: ty };
 }
 
 // その展開判定で使う「自陣後衛」「自陣前衛」「相手後衛」は、固定クラスではなく
@@ -173,59 +317,13 @@ export function incomingSideSign(side) {
 }
 
 /* ===========================================================
- * クロス/ストレート展開の判定（陣形の動的切替）
+ * クロス/ストレート展開（ラッチ済みの状態を読むだけ）
  *
- * 判定: 自陣後衛と相手後衛のx符号（コート左右サイド）を比較する。
- *   後衛同士が逆サイド = クロス展開（対角でラリーしている）
- *   後衛同士が同サイド = ストレート展開（自後衛の側へ来ている）
- *   ヒステリシス: 両後衛ともセンター付近（|x|<devHysteresis）のとき切替保留。
- *   ボールの着地予測ではなく後衛の位置関係を軸にして判定を安定させる。
+ * 展開は latchCoverageOnHit() が「相手が打った瞬間」にだけ確定し、次に相手が
+ * 打つまで development[side] に保持される。ここでは選手位置から再判定しない
+ * （移動中に左右責任が入れ替わるのを防ぐため）。
  * =========================================================== */
-export function updateDevelopment(side) {
-  const ownBackP = ownBackPlayer(side);
-  const oppBackP = oppBackPlayer(side);
-  const ownBackSign = ownBackP.x >= 0 ? 1 : -1;
-  const oppBackSign = oppBackP.x >= 0 ? 1 : -1;
-  // 後衛同士が逆サイド=クロス展開、同サイド=ストレート展開
-  const raw = (ownBackSign !== oppBackSign) ? "cross" : "straight";
-  // ヒステリシス: 両後衛ともセンター付近では切替を保留する
-  const hysteresis = TUNING.pos.devHysteresis;
-  if (Math.abs(ownBackP.x) < hysteresis && Math.abs(oppBackP.x) < hysteresis) {
-    return development[side];
-  }
-  development[side] = raw;
-  return raw;
-}
-
-// 展開に応じた前衛のx定位置。
-//   クロス: 後衛がいない側（-ownBackSign）のネット前。|x|<=3.0 でクランプ。
-//   ストレート: 後衛と同サイドでセンターより内側（線上の内側）。
-export function frontDevX(side) {
-  const dev = updateDevelopment(side);
-  const ownBackSign = ownBackPlayer(side).x >= 0 ? 1 : -1;
-  if (dev === "straight") {
-    // 同サイドへ並ぶ。相手打点─自センター線上の内側に寄る
-    const lineX = frontTheoryX(side, ownFrontPlayer(side).homeY);
-    const inside = ownBackSign * TUNING.pos.straightFrontX;
-    // 線上の値と「同サイド内側」の中間。センターより内側を保つ
-    const x = (lineX + inside) / 2;
-    return Math.max(-3.0, Math.min(3.0, x));
-  }
-  // クロス展開: 後衛のいない側のネット前。隅へ吸い込まれない
-  return Math.max(-3.0, Math.min(3.0, -ownBackSign * TUNING.pos.crossFrontX));
-}
-
-// 展開に応じた後衛のx定位置。
-//   クロス: クロス側の残り範囲の真ん中（既存セオリー）。
-//   ストレート: ストレート側ライン担当（同サイドのライン際寄り）。
-export function backDevX(side) {
-  const dev = updateDevelopment(side);
-  if (dev === "straight") {
-    const ownBackSign = ownBackPlayer(side).x >= 0 ? 1 : -1;
-    return ownBackSign * TUNING.pos.straightBackX;
-  }
-  return backCrossX(side);
-}
+export function getDevelopment(side) { return development[side]; }
 
 // 前衛の定位置（確定セオリー）:
 //   「相手後衛の打点 ─ 自コートのセンターマーク」を結んだ線上、ただし

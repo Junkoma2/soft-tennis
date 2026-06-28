@@ -2,12 +2,12 @@ import { TUNING, COURT, G } from "./config.js";
 import {
   state, ball, front,
   spectatorMode, rallyControlled, partnerAggressiveness,
-  cpuFrontPlan, playerFrontPlan,
+  cpuFrontPlan, playerFrontPlan, aiDebug,
 } from "./state.js";
 import {
-  predictLanding, predictStrokeContact, predictHighContact, insideCourt, isBackhandFor,
+  predictLanding, predictStrokeContact, predictHighContact, isBackhandFor,
 } from "./main.js";
-import { moveToward, recoverDepthY, coverageGeom } from "./aiPositioning.js";
+import { moveToward, coverageGeom, idealPosition, arcApproachTarget } from "./aiPositioning.js";
 
 /* ===========================================================
  * ③④⑤ タスク決定と実行
@@ -29,7 +29,11 @@ export function decideTask(p, ctx) {
   const receivingFromOpponent = state === "rally" && ball.lastHitter === opponentTeam && !ball.serving;
 
   if (!receivingFromOpponent) {
-    // 自陣にボールがある間（自分たちが打った後）は展開に応じた定位置へ戻る = recover
+    // 来球判定の対象外: デバッグの担当/到達表示をクリアして定位置へ戻る = recover
+    netPlayer.dbgOwner = false; basePlayer.dbgOwner = false;
+    netPlayer.dbgReach = false; basePlayer.dbgReach = false;
+    netPlayer.dbgHitter = false; basePlayer.dbgHitter = false;
+    aiDebug[ctx.side].valid = false;
     return decideRecoverTask(p, ctx);
   }
 
@@ -58,13 +62,19 @@ function estimateContactPoint(homeSign) {
     return { x: cx, y: cy, t: strokeContact ? strokeContact.t : 0.25, bounced: true };
   }
   const landing = predictLanding();
-  if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
+  // 自陣側へ来る球なら、ワイド/深め（insideCourt外）でも予測打点を返す。
+  if (landing && landing.y * homeSign > 0) {
+    // 打点は「着地点の少し後ろ（バウンド後に降下して打てる点）」。
+    // predictHighContact（バウンド後の頂点）は速い角度球で大きく外れ（コート外）、
+    // 後衛を後方フェンスへ走らせる主因になるため、着地からの進みを上限付きで使う。
     const hc = predictHighContact();
-    const contact = strokeContact || hc;
-    const hx = contact ? contact.x : landing.x;
-    const hy = contact ? contact.y : landing.y + 0.6 * (landing.y >= 0 ? 1 : -1);
-    const t = contact ? contact.t : landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
-    return { x: hx, y: hy, t, bounced: false };
+    const ly = Math.abs(landing.y);
+    const travelY = hc ? Math.max(0.4, Math.min(2.5, Math.abs(hc.y) - ly)) : 1.2; // 着地→打点の前進(上限2.5m)
+    const driftX = hc ? Math.max(-1.5, Math.min(1.5, hc.x - landing.x)) : 0;       // 横ドリフト(上限1.5m)
+    const cyAbs = ly + travelY;
+    const cy = homeSign > 0 ? cyAbs : -cyAbs;
+    const t = landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) * 0.6 : 0.2);
+    return { x: landing.x + driftX, y: cy, t, bounced: false };
   }
   return null;
 }
@@ -101,12 +111,12 @@ function shouldTakeBall(role, p, contactX, contactY, timeToContact, situation) {
   return score;
 }
 
-// 誰が打つ（取りに動く）かの判断:
-//  ① 来球の予測打点が、守備範囲の中心線で分けたどちらのゾーンに入るか判定する。
-//     ストレート側＝ネット担当(netPlayer)、クロス側＝後方担当(basePlayer)の責任範囲。
-//  ② 責任範囲側がその打点に到達できるならその選手が取る。
-//  ③ 責任範囲側が届かない（ロブで頭を抜かれた等）場合は、もう1人が代わりに取る。
-//  ④ どちらも届かないなら近い方が追う。
+// 誰が打つ（取りに動く）かの判断（ラリーループ②③）:
+//  ① 現在のフォーメーションの責任範囲で、来球の打点がどちらの担当ハーフかを判定する
+//     （responsibleRole。ここで責任範囲を再計算しない）。
+//  ② 担当側が到達できるならその選手が取る。
+//  ③ 担当側が届かない（ロブで頭を抜かれた等）場合は、もう1人が代わりに取る。
+//  ④ どちらも届かないなら近い方が追う（到達不可＝本来は失点）。
 function judgeWhoShouldHit(netPlayer, basePlayer, side, situation) {
   const homeSign = side === "player" ? 1 : -1;
   const contact = estimateContactPoint(homeSign);
@@ -115,18 +125,47 @@ function judgeWhoShouldHit(netPlayer, basePlayer, side, situation) {
   const t = contact ? contact.t : null;
 
   const g = coverageGeom(side);
-  // 打点が中心線のストレート側にあれば netPlayer の責任範囲。
-  const onStraightSide = (cx - g.centerX(cy)) * g.straightSign >= 0;
-  const owner = onStraightSide ? netPlayer : basePlayer;
-  const other = onStraightSide ? basePlayer : netPlayer;
+  // 担当の決め方: 責任範囲は左右ハーフ（responsibleRole）だが、雁行では深さも効く。
+  //   ・ロブ / ネットから遠い深い打点 → 左右に関わらず後衛が下がって処理する。
+  //     （これをしないと、前衛のハーフに入った深いクロスを前衛が担当扱いになり、
+  //      ネット際でボレー姿勢のまま固まって、後衛がバウンドまで動かない＝報告のバグ。）
+  //   ・浅い（ネット際の）打点のみ、ハーフ担当（前衛のハーフなら前衛がボレー）。
+  const NET_BALL_DEPTH = TUNING.pos.frontY + 2.4; // ネットから約5m以内＝前衛が触れる浅い球
+  const deepBall = Math.abs(cy) > NET_BALL_DEPTH;
+  const forceBack = situation.isLob || deepBall; // 深い球/ロブは後衛しか取れない
+  const owner = forceBack
+    ? basePlayer
+    : (g.responsibleRole(cx, cy) === "net" ? netPlayer : basePlayer);
+  const other = owner === netPlayer ? basePlayer : netPlayer;
   const mul = (p) => (p === netPlayer ? 1.25 : 1.2);
 
-  if (canReachHitPoint(owner, cx, cy, t, mul(owner))) return owner; // 責任側が取れる
-  if (canReachHitPoint(other, cx, cy, t, mul(other))) return other; // 届かない→もう1人がカバー
-  // どちらも届かない: 近い方が追う
-  const dOwn = Math.hypot(cx - owner.x, cy - owner.y);
-  const dOth = Math.hypot(cx - other.x, cy - other.y);
-  return dOwn <= dOth ? owner : other;
+  const ownerReach = canReachHitPoint(owner, cx, cy, t, mul(owner));
+  const otherReach = canReachHitPoint(other, cx, cy, t, mul(other));
+  let hitter;
+  if (forceBack) {
+    // 深い球/ロブ: 後衛が必ず追う。届かなくても前衛に渡さない（前衛では深い球に届かず、
+    // 後衛が反対サイドで止まったまま＝「ワイドな深い球で動かない」の原因になる）。
+    hitter = basePlayer;
+  } else if (ownerReach) {
+    hitter = owner;                          // 担当側が取れる
+  } else if (otherReach) {
+    hitter = other;                          // 届かない→もう1人がカバー
+  } else {
+    hitter = (Math.hypot(cx - owner.x, cy - owner.y) <= Math.hypot(cx - other.x, cy - other.y))
+      ? owner : other;                       // どちらも届かない: 近い方が追う
+  }
+
+  // --- デバッグ: 責任(owner)・到達可否(reach)・打点予測を保存（render が表示） ---
+  netPlayer.dbgReach = (netPlayer === owner) ? ownerReach : otherReach;
+  basePlayer.dbgReach = (basePlayer === owner) ? ownerReach : otherReach;
+  netPlayer.dbgOwner = (owner === netPlayer);
+  basePlayer.dbgOwner = (owner === basePlayer);
+  netPlayer.dbgHitter = (hitter === netPlayer);
+  basePlayer.dbgHitter = (hitter === basePlayer);
+  const d = aiDebug[side];
+  d.cx = cx; d.cy = cy; d.valid = !!contact; d.isLob = situation.isLob; d.deep = deepBall;
+
+  return hitter;
 }
 
 // フォア回り込み判定: 後衛の移動目標x（打点予測位置）が利き手と逆側（バック）に
@@ -175,14 +214,15 @@ function decideHitApproachTask(p, ctx) {
   const { netPlayer, basePlayer, myTeam, homeSign, speed, situation } = ctx;
 
   if (p === netPlayer) {
-    if (ball.bounces === 0) {
+    if (ball.bounces === 0 && !situation.isLob) {
       // front-volley: ネット際の自分の高さ(y)を球が横切るxへ詰める
       const t = Math.abs(ball.vy) > 0.1 ? (p.y - ball.y) / ball.vy : -1;
       const predX = (t > 0 && t < 1.2) ? ball.x + ball.vx * t : ball.x;
       const tx = Math.max(-3.4, Math.min(3.4, predX));
       return { kind: "hit", x: tx, y: p.y, speedMul: 1.25 };
     }
-    // front-stroke: 深い打点へ無理に押し込めず、実際の予測打点へ素直に向かう。
+    // front-stroke / ロブ対応: ネット際で固まらず、予測打点（バウンド前でも着地/降下点）へ
+    // 打たれた瞬間から向かう。深い打点へ無理に押し込めず素直に向かう。
     const contact = estimateContactPoint(homeSign);
     const tx = Math.max(-COURT.halfW, Math.min(COURT.halfW, contact ? contact.x : p.x));
     const ty = Math.max(-(COURT.halfL + 1.0), Math.min(COURT.halfL + 1.0, contact ? contact.y : p.y));
@@ -190,7 +230,6 @@ function decideHitApproachTask(p, ctx) {
   }
 
   // back-stroke / back-lob-cover
-  const landing = situation.landingPoint;
   const strokeContact = predictStrokeContact();
   let ty = homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY;
   let tx = coverageGeom(myTeam).zoneCenterX("base", ty); // 予測が無いときの定位置フォールバック
@@ -201,27 +240,43 @@ function decideHitApproachTask(p, ctx) {
     const cy = strokeContact ? strokeContact.y : ball.y + ball.vy * 0.2;
     tx = cx;
     ty = homeSign > 0
-      ? Math.min(COURT.halfL + 5.0, Math.max(4.5, cy))
-      : Math.max(-(COURT.halfL + 5.0), Math.min(-4.5, cy));
+      ? Math.min(COURT.halfL + 3.0, Math.max(4.5, cy))
+      : Math.max(-(COURT.halfL + 3.0), Math.min(-4.5, cy));
     timeToContact = strokeContact ? strokeContact.t : 0.25;
-  } else if (landing && landing.y * homeSign > 0 && insideCourt(landing.x, landing.y)) {
-    const isLob = situation.isLob && Math.abs(landing.y) > COURT.serviceY;
-    const hc = predictHighContact();
-    const contact = strokeContact || hc;
-    let depth = contact ? Math.abs(contact.y) : Math.abs(landing.y) + 0.6;
-    depth = Math.min(COURT.halfL + 5.0, Math.max(Math.abs(landing.y), depth));
-    const hx = contact ? contact.x : landing.x;
-    const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
-    tx = Math.max(-xCap, Math.min(xCap, hx));
-    ty = homeSign > 0 ? depth : -depth;
-    timeToContact = contact ? contact.t : landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : 0.15);
+  } else {
+    // 来球（バウンド前）: 上限付きの予測打点（estimateContactPoint）へ打たれた瞬間から入る。
+    // estimateContactPoint は「着地点＋上限付きのバウンド進み」で打点を出すので、速い角度球で
+    // 頂点予測が破綻してコート外（後方フェンス）へ走る不具合が起きない。
+    const contact = estimateContactPoint(homeSign);
+    if (contact) {
+      const isLob = situation.isLob && Math.abs(contact.y) > COURT.serviceY;
+      const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
+      const depthCap = COURT.halfL + (isLob ? 2.5 : 2.0);
+      tx = Math.max(-xCap, Math.min(xCap, contact.x));
+      ty = homeSign > 0
+        ? Math.min(depthCap, Math.max(COURT.serviceY, contact.y))
+        : Math.max(-depthCap, Math.min(-COURT.serviceY, contact.y));
+      timeToContact = contact.t;
+    }
   }
 
   // フォア回り込み判定（前寄りは上で早期returnしているため、ここは常に後ろ寄り選手）。
-  tx = foreApproachX(basePlayer, myTeam, tx, speed * 1.2, timeToContact);
+  const contactX = tx; // foreApproachX 前＝ボールの打点x（弧アプローチの中心）
+  const contactY = ty;
+  const standX = foreApproachX(basePlayer, myTeam, tx, speed * 1.2, timeToContact);
   basePlayer.swingSide = basePlayer.hitSide;
   basePlayer.swingSideLocked = true;
-  return { kind: "hit", x: tx, y: ty, speedMul: 1.2 };
+  // 打点へは直線(L字)でなく弧を描いて入る。ただし時間に十分余裕があるときだけ
+  // （>0.6s）。余裕が無いのに弧で回り込むと打点に間に合わず空振りするため、間に合わない
+  // ／大きく回り込む側は arcApproachTarget 内で直線にフォールバックする。
+  let target = { x: standX, y: ty };
+  if (timeToContact != null && timeToContact > 0.6) {
+    target = arcApproachTarget(basePlayer, contactX, contactY, standX, ty);
+  }
+  // サイドライン外へ走り込みすぎない上限（フォア回り込み+弧で外へ膨らむのを抑える）。
+  const xLimit = COURT.halfW + 0.9;
+  target.x = Math.max(-xLimit, Math.min(xLimit, target.x));
+  return { kind: "hit", x: target.x, y: target.y, speedMul: 1.2 };
 }
 
 // 打ち手でない側のタスク: cover / poach / advance / hold を状況とCPU性格から選ぶ。
@@ -237,9 +292,10 @@ function decideSupportTask(p, ctx) {
     const poachDesire = (planWantsPoach ? 0.4 : 0) + aggr * style.aggression +
       situation.chanceLevel * 0.5 - situation.dangerLevel * 0.4 - situation.isLob * style.lobFear * 0.5;
 
-    let frontTy = recoverDepthY(myTeam, netPlayer);
-    // 定位置xはネット担当ゾーン（ストレート側）の左右中央＝守備範囲の理想ポジション。
-    let frontTargetX = Math.max(-3.0, Math.min(3.0, coverageGeom(myTeam).zoneCenterX("net", frontTy)));
+    // 定位置はネット担当ゾーン（ストレート側）の理想ポジション。デバッグのリングと同一。
+    const frontHome = idealPosition(myTeam, "net");
+    let frontTy = frontHome.y;
+    let frontTargetX = frontHome.x;
     let frontDash = dash;
     let kind = "cover";
 
@@ -282,13 +338,16 @@ function decideSupportTask(p, ctx) {
   }
 
   // 後ろ寄り(basePlayer): 打ち手が前寄り選手のときのカバー位置。
-  // 定位置xは後方担当ゾーン（クロス側）の左右中央。
+  // 定位置は後方担当ゾーン（クロス側）の理想ポジション。デバッグのリングと同一。
   const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.8 : dash;
-  const backTy = state === "rally" ? recoverDepthY(myTeam, basePlayer) : basePlayer.homeY;
+  if (state === "rally") {
+    const home = idealPosition(myTeam, "base");
+    return { kind: "cover", x: home.x, y: home.y, speedMul: retSpeedMul };
+  }
   return {
     kind: "cover",
-    x: Math.max(-4.4, Math.min(4.4, coverageGeom(myTeam).zoneCenterX("base", backTy))),
-    y: backTy,
+    x: Math.max(-4.4, Math.min(4.4, coverageGeom(myTeam).zoneCenterX("base", basePlayer.homeY))),
+    y: basePlayer.homeY,
     speedMul: retSpeedMul,
   };
 }
@@ -299,10 +358,9 @@ function decideRecoverTask(p, ctx) {
 
   if (p === netPlayer) {
     if (state === "rally") {
-      const ty = recoverDepthY(myTeam, netPlayer);
-      const tx = Math.max(-4.4, Math.min(4.4, coverageGeom(myTeam).zoneCenterX("net", ty)));
+      const home = idealPosition(myTeam, "net");
       const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.8 : dash;
-      return { kind: "recover", x: tx, y: ty, speedMul: retSpeedMul };
+      return { kind: "recover", x: home.x, y: home.y, speedMul: retSpeedMul };
     }
     return {
       kind: "recover",
@@ -324,7 +382,6 @@ function decideRecoverTask(p, ctx) {
     return { kind: "recover", x: targetX, y: homeBackY * 1.02, speedMul: 1.0 };
   }
   const retSpeedMul = (side === "cpu" && !spectatorMode) ? 0.55 : 1.0;
-  const baseTy = recoverDepthY(myTeam, basePlayer);
-  const baseTx = Math.max(-4.4, Math.min(4.4, coverageGeom(myTeam).zoneCenterX("base", baseTy)));
-  return { kind: "recover", x: baseTx, y: baseTy, speedMul: retSpeedMul };
+  const home = idealPosition(myTeam, "base");
+  return { kind: "recover", x: home.x, y: home.y, speedMul: retSpeedMul };
 }

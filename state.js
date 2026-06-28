@@ -353,5 +353,32 @@ export function setPendingPower(v) { pendingPower = v; }
 export function setPendingAimX(v) { pendingAimX = v; }
 export function setPendingAimY(v) { pendingAimY = v; }
 
-// 展開状態（チームごと）。"cross" / "straight"。ヒステリシス付きで更新する。
+// 展開状態（チームごと）。"cross" / "straight"。
+// 相手が打った瞬間にだけ更新し、次に相手が打つまで保持する（毎フレーム再判定しない）。
 export const development = { player: "cross", cpu: "cross" };
+
+// 守備ラッチ（チームごと）。相手が打った瞬間の相手打点(x,y)を記録し、次に相手が
+// 打つまで保持する。coverageGeom（守備範囲の幾何）・展開・左右責任はこの値だけを
+// 基準にする。ラリー中に味方や相手が動いても責任範囲が揺れないようにするため。
+//   set=false の間（ポイント開始直後など）は相手後衛の現在位置にフォールバックする。
+// フォーメーション状態（ペアごと、ラリー中の唯一の状態）。
+//   x,y       : 相手の(予測)打点 O。コーン幾何の起点。
+//   frontSide : 前衛が守る半面（-1=左 / +1=右）。後衛は逆半面。=左右責任の割り当て。
+//   set       : 確定済みか。
+// 自分たちが返球した瞬間に updateFormation() で1回だけ更新し、次に返球するまで固定。
+// 展開・前衛/後衛の目標位置・責任範囲はすべてこの {x,y,frontSide} から導出する。
+export const coverageAnchor = {
+  player: { x: 0, y: -TUNING.pos.backY, set: false, frontSide: 1 },
+  cpu:    { x: 0, y:  TUNING.pos.backY, set: false, frontSide: -1 },
+};
+export function resetCoverageAnchors() {
+  coverageAnchor.player.set = false;
+  coverageAnchor.cpu.set = false;
+}
+
+// 守備デバッグ表示用。来球の打点予測と、その球の性質をチームごとに保持する。
+// 担当(owner)・到達可否(reach)は各選手オブジェクトの dbgOwner / dbgReach に持つ。
+export const aiDebug = {
+  player: { cx: 0, cy: 0, valid: false, isLob: false, deep: false },
+  cpu:    { cx: 0, cy: 0, valid: false, isLob: false, deep: false },
+};

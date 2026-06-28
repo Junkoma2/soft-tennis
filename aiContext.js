@@ -1,10 +1,10 @@
 import { TUNING, styleFromBias } from "./config.js";
 import {
-  ball, pointJustServedByFront, cpuJustServedByFront,
+  ball, pointJustServedByFront, cpuJustServedByFront, development,
 } from "./state.js";
 import { predictLanding } from "./main.js";
 import {
-  opponentHitterPos, ownBackPlayer, netPlayerOf, basePlayerOf,
+  opponentHitterPos, netPlayerOf, basePlayerOf,
 } from "./aiPositioning.js";
 
 /* ===========================================================
@@ -74,14 +74,9 @@ export function evaluateSituation(side) {
     const fast = Math.max(0, Math.min(1, (ballSpeed - 18.0) / 14.0));
     dangerLevel = Math.max(0, Math.min(1, deep * 0.5 + fast * 0.5));
   }
-  // rallyLane: 自陣後衛と相手後衛の位置関係から cross/straight/middle を判定
-  const ownBackP = ownBackPlayer(side);
-  let rallyLane = "middle";
-  if (Math.abs(ownBackP.x) > TUNING.pos.devHysteresis || Math.abs(op.x) > TUNING.pos.devHysteresis) {
-    const ownSign = ownBackP.x >= 0 ? 1 : -1;
-    const opSign = op.x >= 0 ? 1 : -1;
-    rallyLane = ownSign !== opSign ? "cross" : "straight";
-  }
+  // rallyLane: 展開ラッチ（相手の一打で確定）をそのまま読む＝AI全体で単一の真実。
+  // 選手位置からの再判定はしない（移動中に左右責任が揺れるのを防ぐ）。
+  const rallyLane = development[side];
   return {
     chanceLevel, dangerLevel, isLob, rallyLane,
     landingPoint: landing,
