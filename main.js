@@ -44,10 +44,12 @@ import {
   ballHittableSince, setBallHittableSince,
   pendingShot, pendingPower, pendingAimX, pendingAimY,
   setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
-  development,
+  development, resetCoverageAnchors,
 } from "./state.js";
 
 import { draw } from "./render.js";
+
+import { latchCoverageOnHit } from "./aiPositioning.js";
 
 import {
   serverTeamNow, serverIsSecondOfPair, serverIsFrontPlayer, serveFromRight,
@@ -291,6 +293,7 @@ export function resetPlayersForPoint() {
   charge.active = false;
   charge.source = null;
   serveAimCursor.set = false; // サーブ狙いカーソルは初回参照時にサービスコート中央へ
+  resetCoverageAnchors();     // 守備ラッチをクリア（次の一打＝サーブで確定し直す）
   setCpuFrontPlan("base");
   setReceiveDone(false);
   serveReady.timer = 0;
@@ -514,12 +517,12 @@ export function hitBall(opts) {
     sigma = ev.sigma / Math.min(Math.max(stats.control, 0.5), 1.3);
   } else {
     // AI: コース(-1..1)からそのまま目標を決める
-    // ※ 3.5 だとシングルスサイドライン(4.115)の内側で頭打ちになり、ダブルスの
-    //   アレー(4.115〜5.485)へ打つ球がほぼ無くなってしまうため、コース最大(±1)で
-    //   アレー内に収まる係数(4.6)へ広げる。
+    // ※ 係数はコース最大(±1)で「ダブルスサイドライン(±5.485)際」に届く値にする。
+    //   4.6 だとアレー手前で頭打ちになり、サイドラインへ角度をつけた球や
+    //   時々サイドラインを割る球（散らばりで外へ）を一切打てなくなる。
     const course = Math.max(-1, Math.min(1, opts.course || 0));
     const accuracy = (backhand ? 0.7 : 1.0) * Math.min(stats.control, 1.3);
-    tx = course * 4.6;
+    tx = course * COURT.singlesHalfW * 1.28; // ≒5.27。±1でサイドライン際、散らばりで時々割る
     sigma = 0.45 + 1.0 * Math.max(0, 1.1 - accuracy);
     speed = def.speed * STROKE_INITIAL_SPEED_MUL * stats.power * (backhand ? 0.9 : 1.0)
       * (1 + TUNING.charge.speedBonus * chargeK);
@@ -571,6 +574,9 @@ export function hitBall(opts) {
   ball.cpuFrontChecked = (side === "player") ? false : true;
   setReceiveDone(true); // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
   launchBall(hitter.x, hitter.y, fromZ, tx, ty, speed);
+  // 相手が打った瞬間 = ここ。打たれた側の守備（展開・左右責任）をこの一打で確定し
+  // 次に相手が打つまで固定する（飛行中に責任が入れ替わらないように）。
+  latchCoverageOnHit(side);
 
   // 打球を受ける側チームの前衛に作戦を抽選する（両チーム対称）。
   // player が打つ→相手(cpu)前衛、cpu が打つ→味方(player)前衛。

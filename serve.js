@@ -23,6 +23,8 @@ import {
   awardPoint, startSwing, launchBall, netClearance,
 } from "./main.js";
 
+import { latchCoverageOnHit } from "./aiPositioning.js";
+
 // サーブのパワー/回転は UI ではなく打つ選手の能力(stats)から内部で決める。
 // serve（球速）が高い選手は強いサーブ、control（精度）が高い選手はよく回転をかける、
 // というイメージ。3段階モデル(weak/mid/strong)へ写像する。
@@ -569,6 +571,8 @@ export function launchServeBall(team, server, stats, cfg) {
   ball.cpuFrontChecked = true;
   setReceiveDone(false);          // レシーブが返るまで前衛はポジション移動しない
   launchBall(server.x, server.y, fromZ, tx, ty, speed);
+  // サーブも「相手が打った」一打。レシーブ側の守備をこのサーブで確定する。
+  latchCoverageOnHit(team);
 }
 /* ===========================================================
  * サーブのフォルト処理（2本制）

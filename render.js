@@ -11,7 +11,7 @@ import {
   state, spectatorMode, cpuServePlan, serveReady,
   back, front, cpuBack, cpuFront, matchTime, serveCategory,
   player, cpu,
-  debugDraw,
+  debugDraw, aiDebug,
 } from "./state.js";
 
 import {
@@ -21,7 +21,7 @@ import {
 import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
-import { netPlayerOf, basePlayerOf, coverageGeom } from "./aiPositioning.js";
+import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
 
 /* ===========================================================
  * 描画
@@ -70,9 +70,45 @@ function drawDebugCoverage() {
   if (state === "ready") return;
   drawCoverageForSide("player");
   drawCoverageForSide("cpu");
+  drawHitJudge("player");
+  drawHitJudge("cpu");
 }
 
-function covNorm(x, y) { const m = Math.hypot(x, y) || 1; return { x: x / m, y: y / m }; }
+// 来球の打点予測と、各選手の「責任(owner)・到達可否(reach)」を可視化する。
+//   黄リング = その球の責任担当 / 灰リング = 非担当
+//   緑ドット = 届く / 赤ドット = 届かない
+//   白× = 打点予測位置（LOB/DEEP/NET の別をラベル表示）
+function drawHitJudge(side) {
+  drawPlayerJudge(netPlayerOf(side));
+  drawPlayerJudge(basePlayerOf(side));
+  const d = aiDebug[side];
+  if (!d || !d.valid) return;
+  const s = project(d.cx, d.cy, 0);
+  ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(s.x - 7, s.y - 7); ctx.lineTo(s.x + 7, s.y + 7);
+  ctx.moveTo(s.x + 7, s.y - 7); ctx.lineTo(s.x - 7, s.y + 7);
+  ctx.stroke();
+  const tag = d.isLob ? "LOB" : (d.deep ? "DEEP" : "NET");
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(tag, s.x, s.y - 11);
+  ctx.textAlign = "start";
+}
+
+function drawPlayerJudge(p) {
+  if (!p) return;
+  const s = project(p.x, p.y, 0);
+  const cyPos = s.y - 52; // 選手の頭上に浮かせる
+  // 外リング: 責任担当=黄(太) / 非担当=灰
+  ctx.beginPath(); ctx.arc(s.x, cyPos, 13, 0, Math.PI * 2);
+  ctx.strokeStyle = p.dbgOwner ? "rgba(250,204,21,1)" : "rgba(150,150,150,0.8)";
+  ctx.lineWidth = p.dbgOwner ? 4 : 2; ctx.stroke();
+  // 内ドット: 到達可=緑 / 到達不可=赤
+  ctx.beginPath(); ctx.arc(s.x, cyPos, 7, 0, Math.PI * 2);
+  ctx.fillStyle = p.dbgReach ? "rgba(34,197,94,1)" : "rgba(239,68,68,1)";
+  ctx.fill();
+}
 
 function covFillZone(pts, fill, stroke) {
   ctx.beginPath();
@@ -99,50 +135,43 @@ function covMarker(x, y, color) {
   ctx.fillStyle = color; ctx.fill();
 }
 
-// 相手打点 O から方向 dir のレイ上、深さ y での x。
-function covXAtY(O, dir, y) { return O.x + (y - O.y) / dir.y * dir.x; }
-// ベクトル v を角 a 回転。
-function covRot(v, a) { const c = Math.cos(a), s = Math.sin(a); return { x: v.x * c - v.y * s, y: v.x * s + v.y * c }; }
-// O から dir 方向に進み、自陣コート矩形（|x|<=Xw, net〜yBase）を出る点。
-function covExit(O, dir, yBase, Xw) {
-  let t = (yBase - O.y) / dir.y;
-  if (Math.abs(dir.x) > 1e-6) {
-    const sx = dir.x > 0 ? Xw : -Xw;
-    const ts = (sx - O.x) / dir.x;
-    if (ts > 0 && ts < t) t = ts;
-  }
-  return { x: O.x + t * dir.x, y: O.y + t * dir.y };
-}
-
 function drawCoverageForSide(side) {
-  const g = coverageGeom(side);            // AIと共有する守備範囲の幾何
+  const g = coverageGeom(side);            // AIと共有する守備範囲の幾何（単一の真実）
   const yNet = 0, yBase = g.yBase, Xw = g.Xw;
   if (Math.abs(yBase - g.O.y) < 1) return;
 
-  const lN = g.leftX(yNet),  lB = g.leftX(yBase);
-  const rN = g.rightX(yNet), rB = g.rightX(yBase);
+  // 外側境界＝インになる左右端コース。端コースはサイドラインに到達した後（折れ点
+  // leftCornerY/rightCornerY より深い側）はサイドライン際を深部までハグする。
+  // 中心線で左右＝二人の責任範囲に分割する。
+  const lN = g.leftX(yNet), rN = g.rightX(yNet);
   const cN = g.centerX(yNet), cB = g.centerX(yBase);
+  const lCY = g.leftCornerY, rCY = g.rightCornerY;
 
-  // 軌道の内側（インになるコース範囲）だけを塗る。中心線で左右＝二人の責任範囲に分割。
-  const leftZone  = [ [lN, yNet], [cN, yNet], [cB, yBase], [lB, yBase] ];
-  const rightZone = [ [cN, yNet], [rN, yNet], [rB, yBase], [cB, yBase] ];
-  const frontZone = g.straightSign < 0 ? leftZone  : rightZone;
-  const backZone  = g.straightSign < 0 ? rightZone : leftZone;
+  // 左ゾーン: ネット入口→中心線→ベースライン→左サイドライン(深部)→折れ点→端コース。
+  const leftZone = [
+    [lN, yNet], [cN, yNet], [cB, yBase], [-Xw, yBase], [-Xw, lCY],
+  ];
+  // 右ゾーン: 中心線→ネット入口(右)→折れ点→右サイドライン(深部)→ベースライン。
+  const rightZone = [
+    [cN, yNet], [rN, yNet], [Xw, rCY], [Xw, yBase], [cB, yBase],
+  ];
+  // 前衛は frontSide のハーフ(青)、後衛は逆ハーフ(赤)。フォーメーションに従う。
+  const frontZone = g.frontSide < 0 ? leftZone  : rightZone;
+  const backZone  = g.frontSide < 0 ? rightZone : leftZone;
   covFillZone(frontZone, "rgba(37,99,235,0.22)", "rgba(37,99,235,0.6)");
   covFillZone(backZone,  "rgba(220,38,38,0.22)", "rgba(220,38,38,0.6)");
 
-  // 左端コース・右端コース（白＝インになる最鋭角の軌道）と中心線（黄）を相手打点から引く。
-  const exL = covExit(g.O, g.dirL, yBase, Xw);
-  const exR = covExit(g.O, g.dirR, yBase, Xw);
-  const exC = covExit(g.O, g.dirC, yBase, Xw);
-  covStrokeLine(g.O.x, g.O.y, exL.x, exL.y, "rgba(255,255,255,0.9)", 1.5);
-  covStrokeLine(g.O.x, g.O.y, exR.x, exR.y, "rgba(255,255,255,0.9)", 1.5);
-  covStrokeLine(g.O.x, g.O.y, exC.x, exC.y, "rgba(250,204,21,0.95)", 2);
+  // 左端・右端コース（白＝インになる最も角度のついた軌道）。ネット入口から
+  // サイドライン到達点（折れ点）まで引く＝コート隅へは伸ばさない。中心線は黄。
+  covStrokeLine(lN, yNet, -Xw, lCY, "rgba(255,255,255,0.9)", 1.5);
+  covStrokeLine(rN, yNet,  Xw, rCY, "rgba(255,255,255,0.9)", 1.5);
+  covStrokeLine(cN, yNet, cB, yBase, "rgba(250,204,21,0.95)", 2);
 
-  // 理想ポジション＝各ゾーンの左右中央（その選手の深さ）。
-  const netP = netPlayerOf(side), baseP = basePlayerOf(side);
-  covMarker(g.zoneCenterX("net", netP.y), netP.y, "rgba(37,99,235,0.95)");
-  covMarker(g.zoneCenterX("base", baseP.y), baseP.y, "rgba(220,38,38,0.95)");
+  // 理想ポジション＝各責任ゾーンの左右中央。AIの移動目標 idealPosition と完全に同一の値。
+  const netHome = idealPosition(side, "net");
+  const baseHome = idealPosition(side, "base");
+  covMarker(netHome.x, netHome.y, "rgba(37,99,235,0.95)");
+  covMarker(baseHome.x, baseHome.y, "rgba(220,38,38,0.95)");
 }
 
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
