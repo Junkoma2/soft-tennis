@@ -1,6 +1,6 @@
 import { TUNING, COURT } from "./config.js";
 import { back, front, cpuBack, cpuFront, ball, development, coverageAnchor } from "./state.js";
-import { predictLanding, netClearance } from "./main.js";
+import { predictLanding, netClearance } from "./matchLoop.js";
 
 /* ===========================================================
  * AI ポジショニング基盤（最下層）

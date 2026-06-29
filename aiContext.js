@@ -2,7 +2,7 @@ import { TUNING, styleFromBias } from "./config.js";
 import {
   ball, pointJustServedByFront, cpuJustServedByFront, development,
 } from "./state.js";
-import { predictLanding } from "./main.js";
+import { predictLanding } from "./matchLoop.js";
 import {
   opponentHitterPos, netPlayerOf, basePlayerOf,
 } from "./aiPositioning.js";

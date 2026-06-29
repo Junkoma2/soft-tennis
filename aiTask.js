@@ -6,7 +6,7 @@ import {
 } from "./state.js";
 import {
   predictLanding, predictStrokeContact, predictHighContact, isBackhandFor,
-} from "./main.js";
+} from "./matchLoop.js";
 import { moveToward, coverageGeom, idealPosition, arcApproachTarget } from "./aiPositioning.js";
 
 /* ===========================================================
@@ -64,16 +64,18 @@ function estimateContactPoint(homeSign) {
   const landing = predictLanding();
   // 自陣側へ来る球なら、ワイド/深め（insideCourt外）でも予測打点を返す。
   if (landing && landing.y * homeSign > 0) {
-    // 打点は「着地点の少し後ろ（バウンド後に降下して打てる点）」。
-    // predictHighContact（バウンド後の頂点）は速い角度球で大きく外れ（コート外）、
-    // 後衛を後方フェンスへ走らせる主因になるため、着地からの進みを上限付きで使う。
-    const hc = predictHighContact();
+    // 打点は「バウンド後に打てる高さ(z≒1.15m)まで降下した点」(predictStrokeContact)を基準にする。
+    // 頂点(predictHighContact)で位置取りすると浅すぎて、後衛が毎回下がりながら打つことになる
+    // （ボールは頂点より深い降下点で打てるため）。ただし速い球では降下点がフェンス裏を指すことが
+    // あるので、前進距離・最終深さとも上限を付けて後方フェンス走りを防ぐ。
+    const sc = predictStrokeContact();
     const ly = Math.abs(landing.y);
-    const travelY = hc ? Math.max(0.4, Math.min(2.5, Math.abs(hc.y) - ly)) : 1.2; // 着地→打点の前進(上限2.5m)
-    const driftX = hc ? Math.max(-1.5, Math.min(1.5, hc.x - landing.x)) : 0;       // 横ドリフト(上限1.5m)
-    const cyAbs = ly + travelY;
+    const rawTravel = sc ? Math.abs(sc.y) - ly : 1.2;
+    const travelY = Math.max(0.4, Math.min(3.5, rawTravel));                  // 着地→打点の前進(上限3.5m)
+    const driftX = sc ? Math.max(-1.5, Math.min(1.5, sc.x - landing.x)) : 0;  // 横ドリフト(上限1.5m)
+    const cyAbs = Math.min(COURT.halfL + 0.8, ly + travelY);                  // ベースライン+0.8m以内に制限
     const cy = homeSign > 0 ? cyAbs : -cyAbs;
-    const t = landing.t + (hc ? Math.sqrt(2 * Math.max(0, hc.apexZ) / G) * 0.6 : 0.2);
+    const t = sc ? sc.t : landing.t + 0.2;
     return { x: landing.x + driftX, y: cy, t, bounced: false };
   }
   return null;
@@ -142,7 +144,20 @@ function judgeWhoShouldHit(netPlayer, basePlayer, side, situation) {
   const ownerReach = canReachHitPoint(owner, cx, cy, t, mul(owner));
   const otherReach = canReachHitPoint(other, cx, cy, t, mul(other));
   let hitter;
-  if (forceBack) {
+  // 優先: サービスラインより前に構えている選手は、責任範囲・深さ（forceBack）に
+  // 関わらず、打たれてから動いて届く球を取る。両者とも前で両者届くなら先に触れる方
+  // （到達が早い方）。前で届かない球は下の従来ロジックへフォールバックする。
+  const arrival = (p) => Math.hypot(cx - p.x, cy - p.y) /
+    Math.max(0.1, TUNING.move.aiSpeed * (p.stats ? p.stats.speed : 1) * mul(p));
+  const netUp = Math.abs(netPlayer.y) < COURT.serviceY && canReachHitPoint(netPlayer, cx, cy, t, mul(netPlayer));
+  const baseUp = Math.abs(basePlayer.y) < COURT.serviceY && canReachHitPoint(basePlayer, cx, cy, t, mul(basePlayer));
+  if (netUp && baseUp) {
+    hitter = arrival(netPlayer) <= arrival(basePlayer) ? netPlayer : basePlayer;
+  } else if (netUp) {
+    hitter = netPlayer;
+  } else if (baseUp) {
+    hitter = basePlayer;
+  } else if (forceBack) {
     // 深い球/ロブ: 後衛が必ず追う。届かなくても前衛に渡さない（前衛では深い球に届かず、
     // 後衛が反対サイドで止まったまま＝「ワイドな深い球で動かない」の原因になる）。
     hitter = basePlayer;
@@ -209,6 +224,37 @@ function foreApproachX(bp, side, ballContactX, approachSpeed, timeToContact) {
   return standX;
 }
 
+// 後衛の打点候補（相手の打球後）。homeSign は自陣方向(+1/-1)。
+//   air     … バウンド前に打点高さへ降りてくる点（ノーバウンドで捕える）
+//   rise    … バウンド後ライジングの最高打点（頂点）
+//   descend … 頂点から降下して打てる高さに来た点
+// 物理的に自陣側へ来るものだけを返す。呼び出し側が最短移動で届く候補を選ぶ。
+function backHitCandidates(homeSign) {
+  const out = [];
+  const HIT_Z = 1.15; // 快適な打点高さ(m)
+  if (ball.bounces === 0) {
+    const landing = predictLanding();
+    const disc = ball.vz * ball.vz - 2 * G * (HIT_Z - ball.z);
+    if (disc >= 0) {
+      const tAir = (ball.vz + Math.sqrt(disc)) / G; // 降下してHIT_Zに達する時刻
+      if (tAir > 0.05 && (!landing || tAir < landing.t)) {
+        const x = ball.x + ball.vx * tAir, y = ball.y + ball.vy * tAir;
+        if (y * homeSign > 0) out.push({ x, y, t: tAir, kind: "air" });
+      }
+    }
+  }
+  const hc = predictHighContact();
+  if (hc && hc.y * homeSign > 0) {
+    const tRise = hc.landing ? hc.landing.t + Math.sqrt(2 * Math.max(0, hc.apexZ) / G) : null;
+    out.push({ x: hc.x, y: hc.y, t: tRise, kind: "rise" });
+  }
+  const sc = predictStrokeContact();
+  if (sc && sc.y * homeSign > 0) {
+    out.push({ x: sc.x, y: sc.y, t: sc.t, kind: "descend" });
+  }
+  return out;
+}
+
 // 打ち手側の「打つための立ち位置」タスク。前衛/後衛で打点目標の作り方を分ける。
 function decideHitApproachTask(p, ctx) {
   const { netPlayer, basePlayer, myTeam, homeSign, speed, situation } = ctx;
@@ -230,34 +276,26 @@ function decideHitApproachTask(p, ctx) {
   }
 
   // back-stroke / back-lob-cover
-  const strokeContact = predictStrokeContact();
-  let ty = homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY;
-  let tx = coverageGeom(myTeam).zoneCenterX("base", ty); // 予測が無いときの定位置フォールバック
-  let timeToContact = null;
-
-  if (ball.bounces >= 1) {
-    const cx = strokeContact ? strokeContact.x : ball.x + ball.vx * 0.2;
-    const cy = strokeContact ? strokeContact.y : ball.y + ball.vy * 0.2;
-    tx = cx;
-    ty = homeSign > 0
-      ? Math.min(COURT.halfL + 3.0, Math.max(4.5, cy))
-      : Math.max(-(COURT.halfL + 3.0), Math.min(-4.5, cy));
-    timeToContact = strokeContact ? strokeContact.t : 0.25;
-  } else {
-    // 来球（バウンド前）: 上限付きの予測打点（estimateContactPoint）へ打たれた瞬間から入る。
-    // estimateContactPoint は「着地点＋上限付きのバウンド進み」で打点を出すので、速い角度球で
-    // 頂点予測が破綻してコート外（後方フェンス）へ走る不具合が起きない。
-    const contact = estimateContactPoint(homeSign);
-    if (contact) {
-      const isLob = situation.isLob && Math.abs(contact.y) > COURT.serviceY;
-      const xCap = isLob ? COURT.singlesHalfW + 0.3 : COURT.halfW;
-      const depthCap = COURT.halfL + (isLob ? 2.5 : 2.0);
-      tx = Math.max(-xCap, Math.min(xCap, contact.x));
-      ty = homeSign > 0
-        ? Math.min(depthCap, Math.max(COURT.serviceY, contact.y))
-        : Math.max(-depthCap, Math.min(-COURT.serviceY, contact.y));
-      timeToContact = contact.t;
+  // 後衛は「ベースラインより1〜2歩後ろ」を基準に構え（backY）、相手の打球後の3つの打点候補
+  //   ① ノーバウンド ② バウンド後ライジングの最高打点 ③ 頂点から降下した打点
+  // のうち、現在地から最短移動で届く点を選んで打つ。深く構えるので前へ詰めて打つ形になり、
+  // 「下がりながら打つ」のを抑える。後方フェンス走りは depthCap で防ぐ。
+  let ty, tx, timeToContact = null;
+  const cands = backHitCandidates(homeSign);
+  if (cands.length) {
+    let best = cands[0], bestD = Infinity;
+    for (const c of cands) {
+      const d = Math.hypot(c.x - basePlayer.x, c.y - basePlayer.y);
+      if (d < bestD) { bestD = d; best = c; }
     }
+    const depthCap = COURT.halfL + 2.5;
+    tx = best.x;
+    ty = Math.max(-depthCap, Math.min(depthCap, best.y));
+    timeToContact = best.t;
+  } else {
+    // 候補なし: ベースライン後方の定位置で待つ
+    ty = homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY;
+    tx = coverageGeom(myTeam).zoneCenterX("base", ty);
   }
 
   // フォア回り込み判定（前寄りは上で早期returnしているため、ここは常に後ろ寄り選手）。

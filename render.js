@@ -18,7 +18,8 @@ import {
   playerIsServer, serverTeamNow, currentServer, serviceBox,
 } from "./serve.js";
 
-import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, pointLabel } from "./main.js";
+import { pointLabel } from "./main.js";
+import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount } from "./matchLoop.js";
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
 import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
