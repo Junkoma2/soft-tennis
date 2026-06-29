@@ -11,9 +11,8 @@ import {
   serverTeamNow, currentServer, receiverPlayerFor,
 } from "./serve.js";
 
-import {
-  predictLanding, hitBall, showMessage, hideMessage, canSwingNow,
-} from "./main.js";
+import { showMessage, hideMessage } from "./main.js";
+import { predictLanding, hitBall, canSwingNow } from "./matchLoop.js";
 
 import { distToBall, canPlayerHit } from "./input.js";
 

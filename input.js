@@ -24,9 +24,8 @@ import {
   inputMode, setInputMode, inputModeControls,
 } from "./state.js";
 
-import {
-  chargeAmount, hitBall, updateMouseAimFromEvent, canSwingNow,
-} from "./main.js";
+import { updateMouseAimFromEvent } from "./main.js";
+import { chargeAmount, hitBall, canSwingNow } from "./matchLoop.js";
 
 import {
   playerServeAction, clampServeAimCursor, resetServeAimCursor, playerIsServer,

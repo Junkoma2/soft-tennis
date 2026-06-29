@@ -6,7 +6,7 @@ import {
 } from "./state.js";
 import {
   predictLanding, predictStrokeContact, predictHighContact, isBackhandFor,
-} from "./main.js";
+} from "./matchLoop.js";
 import { moveToward, coverageGeom, idealPosition, arcApproachTarget } from "./aiPositioning.js";
 
 /* ===========================================================

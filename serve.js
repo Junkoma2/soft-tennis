@@ -19,9 +19,10 @@ import {
 } from "./state.js";
 
 import {
-  isFinalGame, showMessage, hideMessage, setControlMode, resetPlayersForPoint,
-  awardPoint, startSwing, launchBall, netClearance,
+  isFinalGame, showMessage, hideMessage, setControlMode, awardPoint,
 } from "./main.js";
+import { resetPlayersForPoint } from "./reset.js";
+import { startSwing, launchBall, netClearance } from "./matchLoop.js";
 
 import { latchCoverageOnHit } from "./aiPositioning.js";
 

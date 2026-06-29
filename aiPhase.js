@@ -5,7 +5,7 @@ import {
 } from "./serve.js";
 import {
   predictLanding, predictHighContact, predictStrokeContact, insideCourt,
-} from "./main.js";
+} from "./matchLoop.js";
 import { moveToward } from "./aiPositioning.js";
 import { getCpuStyle, evaluateSituation } from "./aiContext.js";
 import { decideTask, executeTask } from "./aiTask.js";
