@@ -410,7 +410,7 @@ export function applyViewport(availW, availH) {
   W = Math.max(320, Math.round(availW));
   H = Math.max(320, Math.round(availH));
   const fovByHeight = 1.95 * H; // 高さ基準（横長で支配的）
-  const fovByWidth  = 1.80 * W; // 横幅基準（縦長で支配的）
+  const fovByWidth  = 1.55 * W; // 横幅基準（縦長・横に狭い画面で支配的）。鋭いワイド球で自陣後方の選手が見切れないよう左右に余白を確保
   CAM.fov = Math.min(fovByHeight, fovByWidth);
   // 奥の選手の頭上を画面上端の少し下（スコアの下＝0.14H付近）に置く。
   // fovに依らず安定して同じ高さへ来るよう逆算する。これで横長はコートが縦いっぱい、
