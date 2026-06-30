@@ -378,7 +378,12 @@ export function resetCoverageAnchors() {
 
 // 守備デバッグ表示用。来球の打点予測と、その球の性質をチームごとに保持する。
 // 担当(owner)・到達可否(reach)は各選手オブジェクトの dbgOwner / dbgReach に持つ。
+// 相手の打球時に一度だけ投影してラッチする打点情報（以降ぶらさない）。
+//   air/rise/descend … 打点候補（ノーバウンド/バウンド後ライジング頂点/降下点）{x,y,t}|null
+//   sel               … 選択打点（打ち手の現在地から最短移動の候補）
+//   hitterRole        … "net" | "base"（どちらが打つか）
+//   hitTime           … ラッチした打球時刻（ball.lastHitTime。同じ球では再計算しない）
 export const aiDebug = {
-  player: { cx: 0, cy: 0, valid: false, isLob: false, deep: false },
-  cpu:    { cx: 0, cy: 0, valid: false, isLob: false, deep: false },
+  player: { valid: false, hitTime: null, hitterRole: null, air: null, rise: null, descend: null, sel: null, isLob: false },
+  cpu:    { valid: false, hitTime: null, hitterRole: null, air: null, rise: null, descend: null, sel: null, isLob: false },
 };

@@ -75,25 +75,37 @@ function drawDebugCoverage() {
   drawHitJudge("cpu");
 }
 
-// 来球の打点予測と、各選手の「責任(owner)・到達可否(reach)」を可視化する。
-//   黄リング = その球の責任担当 / 灰リング = 非担当
-//   緑ドット = 届く / 赤ドット = 届かない
-//   白× = 打点予測位置（LOB/DEEP/NET の別をラベル表示）
+// 来球の打点予測と、各選手の「責任(owner)・到達可否(reach)・打ち手(hitter)」を可視化する。
+// 打点候補は相手の打球時に一度だけラッチした3種を色分け×で表示する:
+//   水色× = ノーバウンド / 橙× = バウンド後ライジング頂点 / 白× = 通常(降下)
+//   選択された打点は黄リング＋★で強調 / 打ち手の選手頭上に「打」
 function drawHitJudge(side) {
   drawPlayerJudge(netPlayerOf(side));
   drawPlayerJudge(basePlayerOf(side));
   const d = aiDebug[side];
   if (!d || !d.valid) return;
-  const s = project(d.cx, d.cy, 0);
-  ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.lineWidth = 2;
+  drawContactCandidate(d.air, "rgba(56,189,248,0.95)", "ノーバン", d.sel);
+  drawContactCandidate(d.rise, "rgba(251,146,60,0.95)", "ライジング", d.sel);
+  drawContactCandidate(d.descend, "rgba(255,255,255,0.95)", "通常", d.sel);
+}
+
+// 打点候補を×で描く。選択された打点（sel と一致）は黄リング＋★で強調する。
+function drawContactCandidate(c, color, label, sel) {
+  if (!c) return;
+  const s = project(c.x, c.y, 0);
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(s.x - 7, s.y - 7); ctx.lineTo(s.x + 7, s.y + 7);
   ctx.moveTo(s.x + 7, s.y - 7); ctx.lineTo(s.x - 7, s.y + 7);
   ctx.stroke();
-  const tag = d.isLob ? "LOB" : (d.deep ? "DEEP" : "NET");
-  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  const isSel = sel && Math.abs(sel.x - c.x) < 0.01 && Math.abs(sel.y - c.y) < 0.01;
+  if (isSel) {
+    ctx.beginPath(); ctx.arc(s.x, s.y, 12, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(250,204,21,1)"; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+  ctx.fillStyle = color;
   ctx.font = "11px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText(tag, s.x, s.y - 11);
+  ctx.fillText(label + (isSel ? "★" : ""), s.x, s.y - 11);
   ctx.textAlign = "start";
 }
 
@@ -109,6 +121,13 @@ function drawPlayerJudge(p) {
   ctx.beginPath(); ctx.arc(s.x, cyPos, 7, 0, Math.PI * 2);
   ctx.fillStyle = p.dbgReach ? "rgba(34,197,94,1)" : "rgba(239,68,68,1)";
   ctx.fill();
+  // 打ち手は頭上に「打」
+  if (p.dbgHitter) {
+    ctx.fillStyle = "rgba(250,204,21,1)";
+    ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("打", s.x, cyPos - 17);
+    ctx.textAlign = "start";
+  }
 }
 
 function covFillZone(pts, fill, stroke) {

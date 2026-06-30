@@ -23,22 +23,86 @@ import { moveToward, coverageGeom, idealPosition, arcApproachTarget } from "./ai
  * =========================================================== */
 
 // p のタスクを決める入口。来球の有無で recover / hit / support に振り分ける。
+// 来球を「相手が打った瞬間に一度だけ」投影して、打点候補・打ち手・選択打点をラッチする。
+// 以降の毎フレームはこのラッチを使う＝予測がぶれない（後衛が下がりながら打つのを防ぐ）。
+// 同じ球（ball.lastHitTime 不変）の間は再計算しない。
+function updateContactLatch(side, netPlayer, basePlayer, situation) {
+  const d = aiDebug[side];
+  const opp = side === "cpu" ? "player" : "cpu";
+  const incoming = state === "rally" && ball.lastHitter === opp && !ball.serving;
+  if (!incoming) {
+    d.valid = false; d.hitTime = null;
+    netPlayer.dbgOwner = netPlayer.dbgReach = netPlayer.dbgHitter = false;
+    basePlayer.dbgOwner = basePlayer.dbgReach = basePlayer.dbgHitter = false;
+    return;
+  }
+  if (d.valid && d.hitTime === ball.lastHitTime) return; // この球で既にラッチ済み
+
+  const homeSign = side === "player" ? 1 : -1;
+  const cands = backHitCandidates(homeSign);
+  d.air = cands.find((c) => c.kind === "air") || null;
+  d.rise = cands.find((c) => c.kind === "rise") || null;
+  d.descend = cands.find((c) => c.kind === "descend") || null;
+
+  // 打ち手判定の基準打点: 通常(降下)→ライジング→ノーバウンドの順で代表点を採る。
+  const ref = d.descend || d.rise || d.air;
+  const cx = ref ? ref.x : ball.x;
+  const cy = ref ? ref.y : ball.y;
+  const t = ref ? ref.t : null;
+
+  const g = coverageGeom(side);
+  const NET_BALL_DEPTH = TUNING.pos.frontY + 2.4;
+  const deepBall = Math.abs(cy) > NET_BALL_DEPTH;
+  const forceBack = situation.isLob || deepBall;
+  const mul = (pp) => (pp === netPlayer ? 1.25 : 1.2);
+  const owner = forceBack ? basePlayer : (g.responsibleRole(cx, cy) === "net" ? netPlayer : basePlayer);
+  const other = owner === netPlayer ? basePlayer : netPlayer;
+  const ownerReach = canReachHitPoint(owner, cx, cy, t, mul(owner));
+  const otherReach = canReachHitPoint(other, cx, cy, t, mul(other));
+  const arrival = (pp) => Math.hypot(cx - pp.x, cy - pp.y) /
+    Math.max(0.1, TUNING.move.aiSpeed * (pp.stats ? pp.stats.speed : 1) * mul(pp));
+  // ① サービスラインより前の選手は責任範囲・深さに関わらず届く球を取る。両者前なら先に触れる方。
+  const netUp = Math.abs(netPlayer.y) < COURT.serviceY && canReachHitPoint(netPlayer, cx, cy, t, mul(netPlayer));
+  const baseUp = Math.abs(basePlayer.y) < COURT.serviceY && canReachHitPoint(basePlayer, cx, cy, t, mul(basePlayer));
+  let hitter;
+  if (netUp && baseUp) hitter = arrival(netPlayer) <= arrival(basePlayer) ? netPlayer : basePlayer;
+  else if (netUp) hitter = netPlayer;
+  else if (baseUp) hitter = basePlayer;
+  else if (forceBack) hitter = basePlayer;
+  else if (ownerReach) hitter = owner;
+  else if (otherReach) hitter = other;
+  else hitter = (Math.hypot(cx - owner.x, cy - owner.y) <= Math.hypot(cx - other.x, cy - other.y)) ? owner : other;
+
+  // 選択打点: 打ち手の現在地から最短移動で届く候補（ノーバウンド/ライジング/降下）。
+  let sel = null, selD = Infinity;
+  for (const c of [d.air, d.rise, d.descend]) {
+    if (!c) continue;
+    const dd = Math.hypot(c.x - hitter.x, c.y - hitter.y);
+    if (dd < selD) { selD = dd; sel = c; }
+  }
+  d.sel = sel ? { x: sel.x, y: sel.y, t: sel.t, kind: sel.kind }
+             : (ref ? { x: ref.x, y: ref.y, t: ref.t, kind: ref.kind } : null);
+  d.hitterRole = (hitter === netPlayer) ? "net" : "base";
+  d.isLob = situation.isLob;
+  d.hitTime = ball.lastHitTime;
+  d.valid = true;
+
+  netPlayer.dbgOwner = (owner === netPlayer); basePlayer.dbgOwner = (owner === basePlayer);
+  netPlayer.dbgReach = (netPlayer === owner) ? ownerReach : otherReach;
+  basePlayer.dbgReach = (basePlayer === owner) ? ownerReach : otherReach;
+  netPlayer.dbgHitter = (hitter === netPlayer); basePlayer.dbgHitter = (hitter === basePlayer);
+}
+
 export function decideTask(p, ctx) {
   const { netPlayer, basePlayer, opponentTeam, situation } = ctx;
+  updateContactLatch(ctx.side, netPlayer, basePlayer, situation);
   // 自分側がラリー中に打つ番（相手が打った球が来ている）かどうか
   const receivingFromOpponent = state === "rally" && ball.lastHitter === opponentTeam && !ball.serving;
-
   if (!receivingFromOpponent) {
-    // 来球判定の対象外: デバッグの担当/到達表示をクリアして定位置へ戻る = recover
-    netPlayer.dbgOwner = false; basePlayer.dbgOwner = false;
-    netPlayer.dbgReach = false; basePlayer.dbgReach = false;
-    netPlayer.dbgHitter = false; basePlayer.dbgHitter = false;
-    aiDebug[ctx.side].valid = false;
     return decideRecoverTask(p, ctx);
   }
-
-  // 来球がある: 誰が打つか判断する
-  const hitter = judgeWhoShouldHit(netPlayer, basePlayer, ctx.side, situation);
+  // ラッチした打ち手を読む（毎フレーム再判定しない）。
+  const hitter = aiDebug[ctx.side].hitterRole === "net" ? netPlayer : basePlayer;
   if (p === hitter) {
     return decideHitApproachTask(p, ctx);
   }
@@ -87,100 +151,6 @@ function canReachHitPoint(p, contactX, contactY, timeToContact, speedMul) {
   const dist = Math.hypot(contactX - p.x, contactY - p.y);
   if (timeToContact == null || timeToContact <= 0) return dist <= sp * 0.35;
   return dist <= sp * timeToContact;
-}
-
-// 前衛/後衛それぞれが「現実的にこの球を取りに行くべきか」のスコア。
-// 高いほど打ち手としてふさわしい。届かない場合は -Infinity。
-function shouldTakeBall(role, p, contactX, contactY, timeToContact, situation) {
-  const speedMul = role === "front" ? 1.25 : 1.2;
-  if (!canReachHitPoint(p, contactX, contactY, timeToContact, speedMul)) return -Infinity;
-  const dist = Math.hypot(contactX - p.x, contactY - p.y);
-  let score = -dist;
-  if (role === "front") {
-    if (ball.bounces >= 1) {
-      const netDepth = Math.abs(p.y); // ネットからの距離。浅いほどネット際。
-      if (netDepth < 2.2) score -= 6.0;       // ネット際からの深追いは強く避ける
-      else if (netDepth < 4.0) score -= 2.0;  // 中間位置は中程度のペナルティ（陣形は崩れにくい）
-      // 深い位置（ダブル後衛気味/下がり気味）にいるならペナルティなし＝後衛と同等に競う
-    }
-    // ロブで頭上を抜かれた後など、前衛が下がって処理するのが自然な場面はボーナス
-    if (situation.isLob) score += 1.2;
-  } else if (ball.bounces >= 1 && Math.abs(p.y) < 3.0) {
-    // 後衛が既に大きく前へ出ているときは、深い球を取りに戻るより
-    // 前衛に譲る方が自然な場合があるため軽くペナルティ
-    score -= 1.0;
-  }
-  return score;
-}
-
-// 誰が打つ（取りに動く）かの判断（ラリーループ②③）:
-//  ① 現在のフォーメーションの責任範囲で、来球の打点がどちらの担当ハーフかを判定する
-//     （responsibleRole。ここで責任範囲を再計算しない）。
-//  ② 担当側が到達できるならその選手が取る。
-//  ③ 担当側が届かない（ロブで頭を抜かれた等）場合は、もう1人が代わりに取る。
-//  ④ どちらも届かないなら近い方が追う（到達不可＝本来は失点）。
-function judgeWhoShouldHit(netPlayer, basePlayer, side, situation) {
-  const homeSign = side === "player" ? 1 : -1;
-  const contact = estimateContactPoint(homeSign);
-  const cx = contact ? contact.x : ball.x;
-  const cy = contact ? contact.y : ball.y;
-  const t = contact ? contact.t : null;
-
-  const g = coverageGeom(side);
-  // 担当の決め方: 責任範囲は左右ハーフ（responsibleRole）だが、雁行では深さも効く。
-  //   ・ロブ / ネットから遠い深い打点 → 左右に関わらず後衛が下がって処理する。
-  //     （これをしないと、前衛のハーフに入った深いクロスを前衛が担当扱いになり、
-  //      ネット際でボレー姿勢のまま固まって、後衛がバウンドまで動かない＝報告のバグ。）
-  //   ・浅い（ネット際の）打点のみ、ハーフ担当（前衛のハーフなら前衛がボレー）。
-  const NET_BALL_DEPTH = TUNING.pos.frontY + 2.4; // ネットから約5m以内＝前衛が触れる浅い球
-  const deepBall = Math.abs(cy) > NET_BALL_DEPTH;
-  const forceBack = situation.isLob || deepBall; // 深い球/ロブは後衛しか取れない
-  const owner = forceBack
-    ? basePlayer
-    : (g.responsibleRole(cx, cy) === "net" ? netPlayer : basePlayer);
-  const other = owner === netPlayer ? basePlayer : netPlayer;
-  const mul = (p) => (p === netPlayer ? 1.25 : 1.2);
-
-  const ownerReach = canReachHitPoint(owner, cx, cy, t, mul(owner));
-  const otherReach = canReachHitPoint(other, cx, cy, t, mul(other));
-  let hitter;
-  // 優先: サービスラインより前に構えている選手は、責任範囲・深さ（forceBack）に
-  // 関わらず、打たれてから動いて届く球を取る。両者とも前で両者届くなら先に触れる方
-  // （到達が早い方）。前で届かない球は下の従来ロジックへフォールバックする。
-  const arrival = (p) => Math.hypot(cx - p.x, cy - p.y) /
-    Math.max(0.1, TUNING.move.aiSpeed * (p.stats ? p.stats.speed : 1) * mul(p));
-  const netUp = Math.abs(netPlayer.y) < COURT.serviceY && canReachHitPoint(netPlayer, cx, cy, t, mul(netPlayer));
-  const baseUp = Math.abs(basePlayer.y) < COURT.serviceY && canReachHitPoint(basePlayer, cx, cy, t, mul(basePlayer));
-  if (netUp && baseUp) {
-    hitter = arrival(netPlayer) <= arrival(basePlayer) ? netPlayer : basePlayer;
-  } else if (netUp) {
-    hitter = netPlayer;
-  } else if (baseUp) {
-    hitter = basePlayer;
-  } else if (forceBack) {
-    // 深い球/ロブ: 後衛が必ず追う。届かなくても前衛に渡さない（前衛では深い球に届かず、
-    // 後衛が反対サイドで止まったまま＝「ワイドな深い球で動かない」の原因になる）。
-    hitter = basePlayer;
-  } else if (ownerReach) {
-    hitter = owner;                          // 担当側が取れる
-  } else if (otherReach) {
-    hitter = other;                          // 届かない→もう1人がカバー
-  } else {
-    hitter = (Math.hypot(cx - owner.x, cy - owner.y) <= Math.hypot(cx - other.x, cy - other.y))
-      ? owner : other;                       // どちらも届かない: 近い方が追う
-  }
-
-  // --- デバッグ: 責任(owner)・到達可否(reach)・打点予測を保存（render が表示） ---
-  netPlayer.dbgReach = (netPlayer === owner) ? ownerReach : otherReach;
-  basePlayer.dbgReach = (basePlayer === owner) ? ownerReach : otherReach;
-  netPlayer.dbgOwner = (owner === netPlayer);
-  basePlayer.dbgOwner = (owner === basePlayer);
-  netPlayer.dbgHitter = (hitter === netPlayer);
-  basePlayer.dbgHitter = (hitter === basePlayer);
-  const d = aiDebug[side];
-  d.cx = cx; d.cy = cy; d.valid = !!contact; d.isLob = situation.isLob; d.deep = deepBall;
-
-  return hitter;
 }
 
 // フォア回り込み判定: 後衛の移動目標x（打点予測位置）が利き手と逆側（バック）に
@@ -280,20 +250,16 @@ function decideHitApproachTask(p, ctx) {
   //   ① ノーバウンド ② バウンド後ライジングの最高打点 ③ 頂点から降下した打点
   // のうち、現在地から最短移動で届く点を選んで打つ。深く構えるので前へ詰めて打つ形になり、
   // 「下がりながら打つ」のを抑える。後方フェンス走りは depthCap で防ぐ。
+  // ※ 打点候補と選択は相手の打球時に updateContactLatch で一度だけ確定済み（ぶらさない）。
   let ty, tx, timeToContact = null;
-  const cands = backHitCandidates(homeSign);
-  if (cands.length) {
-    let best = cands[0], bestD = Infinity;
-    for (const c of cands) {
-      const d = Math.hypot(c.x - basePlayer.x, c.y - basePlayer.y);
-      if (d < bestD) { bestD = d; best = c; }
-    }
+  const sel = aiDebug[myTeam].sel;
+  if (sel) {
     const depthCap = COURT.halfL + 2.5;
-    tx = best.x;
-    ty = Math.max(-depthCap, Math.min(depthCap, best.y));
-    timeToContact = best.t;
+    tx = sel.x;
+    ty = Math.max(-depthCap, Math.min(depthCap, sel.y));
+    timeToContact = sel.t;
   } else {
-    // 候補なし: ベースライン後方の定位置で待つ
+    // ラッチ無し: ベースライン後方の定位置で待つ
     ty = homeSign > 0 ? TUNING.pos.backY : -TUNING.pos.backY;
     tx = coverageGeom(myTeam).zoneCenterX("base", ty);
   }
