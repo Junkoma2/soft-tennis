@@ -23,6 +23,18 @@ import { moveToward, coverageGeom, idealPosition, arcApproachTarget } from "./ai
  * =========================================================== */
 
 // p のタスクを決める入口。来球の有無で recover / hit / support に振り分ける。
+// 選択打点を「得意な打点」へ寄せる重み（移動距離mに対する得意度ボーナスの換算係数）。
+// 大きいほどスキル差で選択が変わりやすい。0で純粋な最短移動。
+const SEL_SKILL_BONUS = 2.5;
+
+// 候補の打点種別に対応する選手の「うまさ」（air=ボレー / rise=ライジング / descend=通常）。
+function hitSkillForCand(p, kind) {
+  const s = p.stats || {};
+  if (kind === "air") return s.volley != null ? s.volley : 1;
+  if (kind === "rise") return s.rising != null ? s.rising : 1;
+  return s.stroke != null ? s.stroke : 1;
+}
+
 // 来球を「相手が打った瞬間に一度だけ」投影して、打点候補・打ち手・選択打点をラッチする。
 // 以降の毎フレームはこのラッチを使う＝予測がぶれない（後衛が下がりながら打つのを防ぐ）。
 // 同じ球（ball.lastHitTime 不変）の間は再計算しない。
@@ -73,12 +85,15 @@ function updateContactLatch(side, netPlayer, basePlayer, situation) {
   else if (otherReach) hitter = other;
   else hitter = (Math.hypot(cx - owner.x, cy - owner.y) <= Math.hypot(cx - other.x, cy - other.y)) ? owner : other;
 
-  // 選択打点: 打ち手の現在地から最短移動で届く候補（ノーバウンド/ライジング/降下）。
-  let sel = null, selD = Infinity;
+  // 選択打点: 距離（最短移動）に加えて、打ち手が「得意な打点ほど選ばれやすい」よう重み付ける。
+  //   cost = 移動距離 − SEL_SKILL_BONUS×(得意度−1)。得意ほどコストが下がり選ばれやすい。
+  let sel = null, bestCost = Infinity;
   for (const c of [d.air, d.rise, d.descend]) {
     if (!c) continue;
+    const sk = hitSkillForCand(hitter, c.kind);
     const dd = Math.hypot(c.x - hitter.x, c.y - hitter.y);
-    if (dd < selD) { selD = dd; sel = c; }
+    const cost = dd - SEL_SKILL_BONUS * (sk - 1);
+    if (cost < bestCost) { bestCost = cost; sel = c; }
   }
   d.sel = sel ? { x: sel.x, y: sel.y, t: sel.t, kind: sel.kind }
              : (ref ? { x: ref.x, y: ref.y, t: ref.t, kind: ref.kind } : null);

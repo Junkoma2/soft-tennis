@@ -238,6 +238,12 @@ export function hitBall(opts) {
   const side = opts.side;
   const hitter = opts.hitter;
   const stats = hitter.stats;
+  // 打点種別ごとの「うまさ」（精度＝ブレの小ささ）。ノーバウンド=ボレー / バウンド後の上昇=ライジング /
+  // 降下=通常。選手ごとに得意・不得意を設定でき、ここがブレ(sigma)に効く。
+  const hitKind = ball.bounces === 0 ? "volley" : (ball.vz > 0 ? "rising" : "stroke");
+  const hitSkill = hitKind === "volley" ? (stats.volley != null ? stats.volley : 1)
+    : hitKind === "rising" ? (stats.rising != null ? stats.rising : 1)
+      : (stats.stroke != null ? stats.stroke : 1);
   const chargeK = Math.max(0, Math.min(1, opts.charge || 0));
   const contactZ = opts.contactZ != null ? opts.contactZ : ball.z;
   // 系統（shoot/cut/lob）が来たら打点高さ・狙いの深さで内部の5種へ振り分ける。
@@ -279,14 +285,14 @@ export function hitBall(opts) {
       : depthDir * (def.depthMin + Math.random() * def.depthRange);
     speed = def.speed * STROKE_INITIAL_SPEED_MUL * stats.power * ev.speedMul
       * (1 + TUNING.charge.speedBonus * chargeK);
-    sigma = ev.sigma / Math.min(Math.max(stats.control, 0.5), 1.3);
+    sigma = ev.sigma / Math.min(Math.max(hitSkill, 0.5), 1.3);
   } else {
     // AI: コース(-1..1)からそのまま目標を決める
     // ※ 係数はコース最大(±1)で「ダブルスサイドライン(±5.485)際」に届く値にする。
     //   4.6 だとアレー手前で頭打ちになり、サイドラインへ角度をつけた球や
     //   時々サイドラインを割る球（散らばりで外へ）を一切打てなくなる。
     const course = Math.max(-1, Math.min(1, opts.course || 0));
-    const accuracy = (backhand ? 0.7 : 1.0) * Math.min(stats.control, 1.3);
+    const accuracy = (backhand ? 0.7 : 1.0) * Math.min(hitSkill, 1.3);
     tx = course * COURT.singlesHalfW * 1.28; // ≒5.27。±1でサイドライン際、散らばりで時々割る
     sigma = 0.45 + 1.0 * Math.max(0, 1.1 - accuracy);
     speed = def.speed * STROKE_INITIAL_SPEED_MUL * stats.power * (backhand ? 0.9 : 1.0)

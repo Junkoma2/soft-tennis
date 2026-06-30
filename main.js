@@ -9,7 +9,7 @@ import {
   screens, startBtn, retryBtn, canvas, messageOverlay, messageText,
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
   chargeBtn, serveCategoryControls, aggressionControls, shotSelectControls,
-  moveStick, controlsPanel, mouseAim, makeStats,
+  moveStick, controlsPanel, mouseAim, makeStats, cpuStats,
   state, player, cpu, rafId,
   setState, setServeFaults, setRafId, setLastTime, setMatchTime,
   playerPosition, formation, spectatorMode,
@@ -122,9 +122,10 @@ export function startMatch() {
     cpuBack.stats = makeStats();
     cpuFront.stats = makeStats();
   } else {
-    // 通常モード: CPU は意図的にやや弱く（プレイヤーが勝ちやすい）
-    cpuBack.stats = makeStats({ power: 0.95, control: 0.90 });
-    cpuFront.stats = makeStats({ volley: 0.7 });
+    // 通常モード: CPU は cpuStats（state.js の既定値＋ステータス調整パネルでの編集）を使う。
+    // ※ makeStats でその場生成すると、パネルで設定した CPU の能力・新スキルが無視されるため参照を渡す。
+    cpuBack.stats = cpuStats.back;
+    cpuFront.stats = cpuStats.front;
     back.label = (playerPosition === "back") ? "あなた" : "相方";
     front.label = (playerPosition === "front") ? "あなた" : "相方";
   }
