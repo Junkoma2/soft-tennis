@@ -59,8 +59,11 @@ export function makeStats(overrides) {
     serve: 1.0,
     speed: 1.0,
     reach: 1.0,
-    control: 1.0,
-    volley: 1.0,
+    control: 1.0,  // サーブ回転の精度（serve.js）。ストローク/ボレーのブレは下記3種で扱う。
+    // 打点種別ごとの「うまさ」（精度＝ブレの小ささ。高いほど正確）:
+    volley: 1.0,   // ノーバウンド（ボレー）
+    rising: 1.0,   // バウンド後ライジング（速い球を頂点付近で打つ。難度高め）
+    stroke: 1.0,   // 通常（落としてから打つ）
     handed: "right",
   }, overrides || {});
 }
@@ -70,8 +73,9 @@ export const playerStats = {
   front: makeStats(),
 };
 export const cpuStats = {
-  back:  makeStats({ power: 0.95, control: 0.90 }), // 足の制限は TUNING.ai / move.cpuBackSpeed 側で行う
-  front: makeStats({ volley: 0.7 }),
+  // CPU はやや弱め（プレイヤーが勝ちやすい）。ライジングは特に苦手にする。
+  back:  makeStats({ power: 0.95, control: 0.90, stroke: 0.90, rising: 0.82, volley: 0.85 }),
+  front: makeStats({ volley: 0.7, stroke: 0.85, rising: 0.78 }),
 };
 
 /* ---- 試合状態 ---- */
@@ -378,7 +382,12 @@ export function resetCoverageAnchors() {
 
 // 守備デバッグ表示用。来球の打点予測と、その球の性質をチームごとに保持する。
 // 担当(owner)・到達可否(reach)は各選手オブジェクトの dbgOwner / dbgReach に持つ。
+// 相手の打球時に一度だけ投影してラッチする打点情報（以降ぶらさない）。
+//   air/rise/descend … 打点候補（ノーバウンド/バウンド後ライジング頂点/降下点）{x,y,t}|null
+//   sel               … 選択打点（打ち手の現在地から最短移動の候補）
+//   hitterRole        … "net" | "base"（どちらが打つか）
+//   hitTime           … ラッチした打球時刻（ball.lastHitTime。同じ球では再計算しない）
 export const aiDebug = {
-  player: { cx: 0, cy: 0, valid: false, isLob: false, deep: false },
-  cpu:    { cx: 0, cy: 0, valid: false, isLob: false, deep: false },
+  player: { valid: false, hitTime: null, hitterRole: null, air: null, rise: null, descend: null, sel: null, isLob: false },
+  cpu:    { valid: false, hitTime: null, hitterRole: null, air: null, rise: null, descend: null, sel: null, isLob: false },
 };

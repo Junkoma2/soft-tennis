@@ -212,15 +212,16 @@ main {
 
 .stats-row {
   display: grid;
-  grid-template-columns: 48px repeat(6, 1fr);
-  gap: 4px;
+  grid-template-columns: 42px repeat(8, 1fr);
+  gap: 3px;
   align-items: center;
 }
 
 .stats-head {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   opacity: .8;
+  line-height: 1.1;
 }
 
 .stats-colhead { text-align: center; }
@@ -235,7 +236,7 @@ main {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 4px 2px;
+  padding: 4px 1px;
   border: 1px solid rgba(99, 102, 241, .3);
   border-radius: 6px;
   background: #fff;

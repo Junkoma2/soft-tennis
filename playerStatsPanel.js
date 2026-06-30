@@ -3,10 +3,10 @@ import { playerStats, cpuStats } from "./state.js";
 /* ===========================================================
  * 開始画面の選手ステータス調整パネル
  *
- * 各選手の stats（power/serve/speed/reach/control/volley）を画面で確認し、
- * 数値入力で調整できるようにする。stats オブジェクトは選手(back/front等)の
- * .stats と同一参照なので、ここで書き換えると試合中の挙動へ即反映される。
- * handed（利き腕）は別UI（利き腕ボタン）で扱うためここには含めない。
+ * 各選手の stats を画面で確認し、数値入力で調整できるようにする。stats オブジェクトは
+ * 選手(back/front等)の .stats と同一参照なので、ここで書き換えると試合中の挙動へ即反映される。
+ * 精度（ブレ）は打点種別ごとに3分割: 通常(stroke) / ライジング(rising) / ボレー(volley)。
+ * control はサーブ回転の精度に使う。handed（利き腕）は別UI（利き腕ボタン）で扱う。
  * =========================================================== */
 
 const STAT_DEFS = [
@@ -14,7 +14,9 @@ const STAT_DEFS = [
   { key: "serve",   label: "サーブ" },
   { key: "speed",   label: "足" },
   { key: "reach",   label: "リーチ" },
-  { key: "control", label: "精度" },
+  { key: "control", label: "サーブ精度" },
+  { key: "stroke",  label: "通常" },
+  { key: "rising",  label: "ライジング" },
   { key: "volley",  label: "ボレー" },
 ];
 
