@@ -229,15 +229,6 @@ export function isBackhandFor(side, hitter, ballX) {
   return diff <= 0.1;
 }
 
-// 狙い（ワールドx）とヒッターの立ち位置から表示用の呼び名を決める
-export function courseLabelFor(hitterX, targetX) {
-  const dx = targetX - hitterX;
-  if (Math.abs(dx) < 1.2) return "まっすぐ";
-  if (Math.abs(hitterX) < 0.6) return dx < 0 ? "左へ！" : "右へ！";
-  const isCross = (hitterX > 0) === (dx < 0); // 立ち位置と逆へ打つ=クロス
-  return isCross ? "クロス！" : "ストレート！";
-}
-
 /* ---- 打点の評価: 横距離・前後・高さ → 角度幅/球速/精度の係数 ---- */
 export function evaluateContact(side, hitter, contactZ) {
   const c = TUNING.contact;
@@ -482,44 +473,6 @@ export function hitBall(opts) {
     tx: tx, ty: ty, speed: speed, byPlayer: !!opts.byPlayer,
     contact: ev,
   });
-
-  // 打球時のフィードバック表示（コース + 打点品質）
-  if (opts.byPlayer && side === "player" && hitter === rallyControlled) {
-    effects.push({
-      type: "text",
-      x: hitter.x, y: hitter.y, t: 0, ttl: 0.7,
-      text: courseLabelFor(hitter.x, tx),
-      color: "#10B981",
-    });
-    let qualityText = null;
-    let qualityColor = "#F59E0B";
-    if (ev.cramp < 0.35) { qualityText = "近い！詰まった"; }
-    else if (ev.overReach > 0.5) { qualityText = "遠い！泳いだ"; }
-    else if (ev.overall > 0.85) { qualityText = "ジャスト！"; qualityColor = "#22C55E"; }
-    else if (ev.backhand) { qualityText = "バック"; qualityColor = "#F59E0B"; }
-    if (qualityText) {
-      effects.push({
-        type: "text",
-        x: hitter.x, y: hitter.y - 0.9, t: 0, ttl: 0.8,
-        text: qualityText,
-        color: qualityColor,
-      });
-    }
-    // 打点の前後タイミング（早い=ネット寄りで捉えた／遅い=体の後ろに引き込みすぎた）。
-    // ev.front: 正=前すぎ(早打ち気味) / 負=後ろすぎ(遅れ気味)。品質ラベルと重複しないよう
-    // 近い/遠いほど極端でなければ別行で表示する。
-    let timingText = null;
-    if (ev.front > 0.45) timingText = "早い！";
-    else if (ev.front < -0.45) timingText = "遅い…";
-    if (timingText) {
-      effects.push({
-        type: "text",
-        x: hitter.x, y: hitter.y - 1.3, t: 0, ttl: 0.8,
-        text: timingText,
-        color: "#38BDF8",
-      });
-    }
-  }
 }
 
 // このプレイヤーが今すぐ次の打球（スイング/ボレー含む）を打てるかどうか。

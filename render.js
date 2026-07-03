@@ -20,7 +20,7 @@ import {
 } from "./serve.js";
 
 import { pointLabel } from "./main.js";
-import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount } from "./matchLoop.js";
+import { insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount } from "./matchLoop.js";
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
 import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
@@ -938,16 +938,6 @@ export function drawTimingGauge() {
     ctx.beginPath();
     ctx.arc(p.x, p.y - Math.max(16, 0.38 * p.s), Math.max(5, 0.08 * p.s) + 8 * k, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.font = "800 14px sans-serif";
-    ctx.textAlign = "center";
-    const courseName = courseLabelFor(rallyControlled.x, aim.x).replace("\u2192", "");
-    const text = "\u305f\u3081 " + courseName + (k >= 1 ? " MAX" : "");
-    ctx.strokeStyle = "rgba(15,23,42,0.82)";
-    ctx.lineWidth = 4;
-    ctx.fillStyle = "#FFFFFF";
-    ctx.strokeText(text, p.x, p.y - Math.max(24, 0.52 * p.s));
-    ctx.fillText(text, p.x, p.y - Math.max(24, 0.52 * p.s));
   }
 }
 
