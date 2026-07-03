@@ -1,19 +1,34 @@
 import { TUNING, G } from "./config.js";
 import { ball } from "./state.js";
+import { contactYawFor, toLocal } from "./geometry.js";
 
 function foreDirFor(p) {
   const handSign = p.stats && p.stats.handed === "left" ? -1 : 1;
   return -(p.facing || -1) * handSign;
 }
 
-function hitWindowFor(p, contactX) {
+// 体の正対yaw基準のローカル座標で、打点までの横距離(lateral)を求める。
+// yaw=baseYaw（ネット正対）のときは従来通りワールドx距離と一致する。
+function lateralDistanceFor(p, contactX, contactY) {
+  const yaw = contactYawFor(p);
+  const dx = contactX - p.x;
+  const dy = (contactY != null ? contactY : p.y) - p.y;
+  const { lateral } = toLocal(p, dx, dy, yaw);
+  return lateral;
+}
+
+function hitWindowFor(p, contactX, contactY) {
   const foreDir = foreDirFor(p);
-  const side = (contactX - p.x) * foreDir >= 0 ? "fore" : "back";
+  const lateral = lateralDistanceFor(p, contactX, contactY);
+  const side = lateral * foreDir >= 0 ? "fore" : "back";
   const roleScale = p.role === "front" ? 0.86 : 1;
   const reachScale = Math.max(0.82, Math.min(1.18, p.stats?.reach || 1));
-  const foreWidth = 0.96 * roleScale * reachScale;
+  // フォア側は懐を広げ、より遠い打点まで適正に届く扱いにする（バックは従来幅を維持）。
+  // config.js の idealLateralFore(1.3) + reachSlack(0.75) 付近まで「届く」判定にしないと、
+  // evaluateContactでは泳ぎ扱いにならない打点なのにそもそも当たらない、という矛盾が起きるため合わせて広げる。
+  const foreWidth = 1.5 * roleScale * reachScale;
   const backWidth = 0.58 * roleScale * reachScale;
-  return { side, foreDir, foreWidth, backWidth, width: side === "fore" ? foreWidth : backWidth };
+  return { side, foreDir, foreWidth, backWidth, width: side === "fore" ? foreWidth : backWidth, lateral };
 }
 
 export function predictLineContactAtY(targetY) {
@@ -84,8 +99,8 @@ export function hitLineInfo(p) {
   }
   const highPenalty = Math.max(0, contact.z - 2.05) * 0.42;
   const lowPenalty = Math.max(0, 0.28 - contact.z) * 0.7;
-  const window = hitWindowFor(p, contact.x);
-  const distanceX = Math.abs(contact.x - p.x) + highPenalty + lowPenalty;
+  const window = hitWindowFor(p, contact.x, contact.y);
+  const distanceX = Math.abs(window.lateral) + highPenalty + lowPenalty;
   return {
     contact,
     active: distanceX <= window.width && contact.z <= 2.4,

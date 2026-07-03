@@ -20,6 +20,7 @@ import {
   applyPose, poseNameForPlayer, applyLeftHandGrip,
   swingPhaseOf, applySwingPhase,
 } from "./animation3d.js";
+import { baseYawFor, ballFacingYaw } from "./geometry.js";
 
 let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
@@ -125,33 +126,19 @@ function pinBlend(pl, name) {
   b.a = b.b = name; b.t = 1;
 }
 
-function baseYawFor(pl) {
-  return (pl.facing < 0) ? Math.PI : 0;
-}
+// baseYawFor/ballFacingYaw は geometry.js（判定ロジック側）を単一の真実として
+// import する。描画（見た目のボール正対）と当たり判定・打点評価が同じ向きを
+// 参照するようにするため、ここでは再定義しない。
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
 // このプレイヤー側に向かって（バウンド前後を問わず）ボールが来ているかどうか。
-// 「相手が打った瞬間の受け」に限らず、ラリー中いつでも自分側へ向かう球があれば
-// 正対の対象にする（サーブレシーブ限定だった従来のisReceivingIncomingを一般化）。
+// poseNameFor3D の分岐でのみ使う見た目判定なので、geometry.jsのballFacingYawが
+// baseYawと異なる=ボールが来ている、とみなして代用する（ロジックの重複を避ける）。
 function ballComingToSide(pl) {
-  if (state !== "rally" || ball.serving || Math.hypot(ball.vx, ball.vy) < 0.2) return false;
-  const mySide = (pl === back || pl === front) ? "player" : "cpu";
-  const towardPlayer = ball.lastHitter === "cpu" && ball.vy > 0;
-  const towardCpu = ball.lastHitter === "player" && ball.vy < 0;
-  return (mySide === "player" && towardPlayer) || (mySide === "cpu" && towardCpu);
-}
-
-// 体の正対先: 通常はネット向き(baseYaw)。自分側へ球が来ている間は、懐（打てる角度）が
-// 変わるよう球の来る向きへ少し体を開く。打った瞬間のスイング向きは別途ロックされるため、
-// ここでは「構え〜追走」の見た目だけを扱う（打点判定・当たり判定には影響しない）。
-function ballFacingYaw(pl) {
-  const base = baseYawFor(pl);
-  if (!ballComingToSide(pl)) return base;
-  const courseYaw = Math.atan2(-ball.vx, -ball.vy);
-  return base + clamp(angleDelta(base, courseYaw), -0.6, 0.6);
+  return ballFacingYaw(pl) !== baseYawFor(pl);
 }
 
 function angleDelta(from, to) {
