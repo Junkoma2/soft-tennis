@@ -314,6 +314,9 @@ export const ball = {
   serving: false,     // サーブのボール（1バウンド目でイン判定）
   spin: "flat",       // flat / slice / drive（バウンド後の挙動が変わる）
   spinMag: 1,         // 回転の強さ（バウンドの変化量を強調）
+  flightSink: null,   // 飛行中の回転沈み込み(マグヌス+失速)設定。非nullの間だけ効く。
+                       // { accel, startFrac, rampSec, T, elapsed } / launchBallでのみセットし、飛行中に消費する。
+
   trailColor: "#DFFF4F", // 球種ごとの軌道色（視認性）
   originX: 0, originY: 12, // 打った位置（前衛AIのコース読みに使う）
   lastHitTime: 0,     // 打たれた時刻（AI後衛の反応遅延に使う）
