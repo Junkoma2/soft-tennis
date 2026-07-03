@@ -490,7 +490,7 @@ export function handleBounce() {
   //   spinMagが大きいほど flat からの差が強調される
   const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
   const flat = TUNING.spin.flat;
-  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
+  const k = Math.min(TUNING.spin.magCap, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
   const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
   const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
   ball.vz = -ball.vz * restitution;
@@ -536,7 +536,7 @@ export function predictHighContact() {
   const vzLand = Math.abs(ball.vz - G * L.t); // 着地時の落下速度の大きさ
   const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
   const flat = TUNING.spin.flat;
-  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
+  const k = Math.min(TUNING.spin.magCap, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
   const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
   const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
   const vzOut = vzLand * restitution;       // バウンド後の上向き初速
@@ -561,7 +561,7 @@ export function predictStrokeContact(contactZ) {
   const targetZ = Math.max(0.35, contactZ == null ? 1.15 : contactZ);
   const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
   const flat = TUNING.spin.flat;
-  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
+  const k = Math.min(TUNING.spin.magCap, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
   const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
   const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
 
