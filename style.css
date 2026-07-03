@@ -111,6 +111,8 @@ main {
   flex-direction: column;
 }
 
+#screen-game[hidden] { display: none; }
+
 #screen-game .court-col {
   flex: 1 1 auto;
   min-height: 0;
