@@ -337,11 +337,15 @@ export function hitBall(opts) {
   // 系統（shoot/cut/lob）が来たら打点高さ・狙いの深さで内部の5種へ振り分ける。
   // カットは着地カーソルの深さで slice/drop が連続的に決まる（ため分岐は廃止）。
   // AIや旧来の直接指定（flat/drive/...）はそのまま使う。
+  // AIはノーバウンド（ボレー）でロブを打たない（ボレーで浮かせて逃がす動きは不自然）。
+  // プレイヤーの意図的なロブ選択は対象外。
+  const shotReq = (!opts.byPlayer && hitKind === "volley" && opts.shot === "lob")
+    ? "drive" : opts.shot;
   let shotKey;
-  if (SHOT_FAMILY_ORDER.indexOf(opts.shot) >= 0) {
-    shotKey = resolveShotKey(opts.shot, contactZ, opts.aimY);
+  if (SHOT_FAMILY_ORDER.indexOf(shotReq) >= 0) {
+    shotKey = resolveShotKey(shotReq, contactZ, opts.aimY);
   } else {
-    shotKey = TUNING.shots[opts.shot] ? opts.shot : "drive";
+    shotKey = TUNING.shots[shotReq] ? shotReq : "drive";
   }
   // スマッシュ自動判定: ネット前で高い球を捉えたら球種選択に関わらずスマッシュへ。
   // ロブ選択は意図的な高弾道なので対象外（前衛が高い球をロブで逃がせる）。
@@ -388,6 +392,9 @@ export function hitBall(opts) {
     // cpuSpeedScale は廃止（両チーム共通パラメータで対称化済み）
     ty = depthDir * (def.depthMin + Math.random() * def.depthRange);
   }
+
+  // ボレー（ノーバウンド）は体勢を作れないぶん球威を落とす。スマッシュは決め球なので対象外。
+  if (hitKind === "volley" && shotKey !== "smash") speed *= TUNING.volley.speedMul;
 
   // ドロップは横へ散らさずネット際を狙う（プレイヤーはカーソルを尊重）
   if (shotKey === "drop") {
@@ -520,6 +527,11 @@ export function hitBall(opts) {
 // プレイヤー操作・AI（味方/相方/CPU）の両方からの打球判定で共通して使う。
 export function canSwingNow(p) {
   if (!p) return true;
+  // 打たれた瞬間からのロックアウト: 反応時間としてあり得ない即返球（特にネット前
+  // 同士のボレー連鎖）を防ぐ。ロックアウト明けには通常どおり打てる。
+  // サーブ飛行中(ball.serving)は対象外（レシーブはワンバウンド後なのでもともと影響しないが明示）。
+  if (state === "rally" && !ball.serving &&
+      matchTime - ball.lastHitTime < TUNING.volley.returnLockout) return false;
   return p.pose !== "swing" && !(p.recoverT > 0);
 }
 

@@ -1,5 +1,5 @@
 import { TUNING, COURT } from "./config.js";
-import { back, front, cpuBack, cpuFront, ball, development, coverageAnchor } from "./state.js";
+import { back, front, cpuBack, cpuFront, ball, development, coverageAnchor, formation } from "./state.js";
 import { predictLanding, netClearance } from "./matchLoop.js";
 
 /* ===========================================================
@@ -292,8 +292,30 @@ export function idealPosition(side, role) {
   const ty = recoverDepthY(side, p);
   const g = coverageGeom(side);
   const xCap = role === "net" ? 3.4 : 4.4;
-  const tx = Math.max(-xCap, Math.min(xCap, g.zoneCenterX(role, ty)));
+  let tx = g.zoneCenterX(role, ty);
+  // ネット前選手（bias<45＝frontMirrorと同じ閾値）は、相手が打つ瞬間センター側へ寄って
+  // 立つ。守備範囲（境界・担当）は不変で、範囲内の立ち位置だけ中心線へ補間する。
+  if (role === "net" && p.positionBias < 45) {
+    const hug = centerHugAmount(side, tx, ty);
+    if (hug > 0) tx += (g.centerX(ty) - tx) * hug;
+  }
+  tx = Math.max(-xCap, Math.min(xCap, tx));
   return { x: tx, y: ty };
+}
+
+// ネット前選手のセンター寄せ量(0〜frontCenterHug)を返す。
+//   ・ダブル前衛は0（2人ともネット前でセンターへ寄ると外側が空きすぎるため）。
+//     formation は自チーム(player)専用のUI設定。CPUは常に雁行なので判定不要。
+//   ・相手打点が近いほど線形に0へ減衰（寄せたぶん自ゾーン側へ戻る反応が間に合わないため）。
+//     ON/OFF閾値ではなく減衰にすることで、境界で立ち位置が飛ばない。
+function centerHugAmount(side, tx, ty) {
+  if (side === "player" && formation === "double-front") return 0;
+  const op = opponentHitterPos(side);
+  const d = Math.hypot(op.x - tx, op.y - ty);
+  const near = TUNING.pos.frontHugNearDist;
+  const far = TUNING.pos.frontHugFarDist;
+  const t = Math.max(0, Math.min(1, (d - near) / Math.max(0.1, far - near)));
+  return TUNING.pos.frontCenterHug * t;
 }
 
 // その展開判定で使う「自陣後衛」「自陣前衛」「相手後衛」は、固定クラスではなく
