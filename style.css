@@ -100,48 +100,36 @@ main {
 
 .screen[hidden] { display: none; }
 
-/* 試合画面はコートを主役にして余白を詰める */
+/* 試合画面はコートを主役にして余白を詰める。
+ * 操作パネルはコート上に重ねず、下部の専用帯に配置する（縦横画面共通の基本形）。
+ * コート(court-col)がflex:1 1 autoで残り高さを引き受け、パネルはflex:0 0 autoで
+ * 内容分の高さだけ確保するため、合計がビューポートを超えずスクロールが発生しない。 */
 #screen-game {
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
-  /* 操作ボタンをコート上に重ねるための基準。 */
-  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 操作ボタンをコート（キャンバス）上に重ねて表示する。別パネルの帯を作らず、
- * コートを広く見せる。コンテナ自体はクリックを透過し、ボタン群だけ受け取る。 */
+#screen-game .court-col {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 #screen-game .controls {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  left: auto;
-  bottom: auto;
-  transform: none;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-wrap: nowrap;
-  width: auto;
-  max-width: 48%;
+  position: static;
+  flex: 0 0 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  width: 100%;
+  max-width: none;
   gap: 6px;
-  z-index: 6;
-  pointer-events: none;
 }
 #screen-game .controls .control-group {
-  pointer-events: auto;
   background: rgba(255, 255, 255, .86);
   backdrop-filter: blur(2px);
   box-shadow: 0 2px 8px rgba(30, 27, 75, .18);
-}
-#screen-game .debug-controls-row {
-  top: auto;
-  bottom: 64px;
-}
-#screen-game .debug-controls-row .control-group {
-  background: rgba(15, 23, 42, .76);
-  border-color: rgba(148, 163, 184, .36);
-}
-#screen-game .debug-controls-row .control-label {
-  color: rgba(248, 250, 252, .82);
 }
 
 .description {
@@ -344,10 +332,16 @@ main {
 .games-sep { color: var(--color-border); }
 
 /* ---- コート列ラッパー ----
- * 横画面レイアウト専用のコンテナ。それ以外（縦画面・PC）では display:contents で
- * フローに影響を与えず、既存の #screen-game 直下フレックス構成をそのまま保つ。 */
+ * 試合画面ではコートと操作パネルを縦積み(column)にするための実体コンテナ。
+ * #screen-game側でflex:1 1 auto（残り高さを引き受ける）を指定し、
+ * 操作パネル(.controls)はflex:0 0 auto（内容分のみ）にすることで、
+ * 縦横画面どちらでも合計高さがビューポートを超えずスクロールが発生しない。 */
 .court-col {
-  display: contents;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: center;
 }
 
 /* ---- コート（PC・横画面primary: 16:9のワイド中継ビュー） ----
@@ -727,8 +721,8 @@ footer a:hover { color: var(--color-text); }
  * 「試合映像を見やすくする」ことを最優先に、UI（スコア・操作）を左右端に置かず
  * 上下に集約し、コートを横幅いっぱいに広げる。コートは横長ビュー（config.jsの
  * applyViewportでcanvasを横長解像度に切替）で、左右に地面の余白を見せる。
- * 操作パネルはコートに重ねず、右側の専用サイドカラムに配置する（コートと
- * ボタン群が被って選手が隠れる・誤タップを防ぐため）。 */
+ * 操作パネルはコートに重ねず、画面下部の専用帯に配置する（縦画面と同じ構造に
+ * 揃えることで、向きに関わらずビューポート内にスクロールなしで収める）。 */
 @media (orientation: landscape) {
   body:has(#screen-game:not([hidden])) header,
   body:has(#screen-game:not([hidden])) footer {
@@ -751,12 +745,12 @@ footer a:hover { color: var(--color-text); }
     min-height: 0;
   }
 
-  /* 横並び: スコア＋コート(左・可変で最大化) → 操作パネル(右・専用カラム) */
+  /* 縦並び: スコア＋コート(上・可変で最大化) → 操作パネル(下・専用帯) */
   #screen-game {
-    flex-direction: row;
+    flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 6px;
+    gap: 4px;
     width: 100%;
     height: 100%;
     min-height: 0;
@@ -778,15 +772,15 @@ footer a:hover { color: var(--color-text); }
     pointer-events: none;
   }
 
-  /* コート＋スコアの列。残りの横幅いっぱいを使う */
+  /* コート＋スコアの列。残りの縦幅いっぱいを使い、操作パネル分だけ縮む */
   #screen-game .court-col {
     position: relative;
     order: 1;
     flex: 1 1 auto;
     min-width: 0;
-    height: 100%;
+    min-height: 0;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
   }
 
@@ -801,38 +795,37 @@ footer a:hover { color: var(--color-text); }
     justify-content: center;
   }
 
-  /* 操作パネルはコートの右側に専用カラムとして配置する（重ねない）。
-   * 縦画面用の絶対配置(position:absolute)を解除し、通常フローの
-   * サイドカラムとして縦積みにする。 */
+  /* 操作パネルはコート下部の専用帯として配置する（重ねない）。
+   * 高さは内容分のみ確保し（flex-shrink:0）、コート側(court-col)が
+   * flex:1 1 autoで残り高さを引き受けるため、合計がビューポートを超えない。 */
   #screen-game .controls {
     position: static;
     order: 2;
     flex: 0 0 auto;
-    flex-direction: column;
+    flex-direction: row;
     flex-wrap: nowrap;
     align-items: stretch;
     justify-content: center;
-    width: 168px;
-    max-width: 38vw;
-    height: 100%;
-    overflow-y: auto;
-    gap: 6px;
+    width: 100%;
+    max-width: none;
+    gap: 4px;
     pointer-events: auto;
   }
 
   #screen-game .controls .control-group {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-width: 0;
-    padding: 3px 8px;
+    padding: 3px 6px;
   }
 
-  #screen-game #shot-select-controls { flex: 0 1 auto; }
-  #screen-game #shot-controls { flex: 0 1 auto; }
+  #screen-game #shot-select-controls { flex: 2 1 auto; }
+  #screen-game #shot-controls { flex: 1 1 auto; }
 
   #screen-game .hint { display: none; }
 }
 
-/* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作系は縦積み。 */
+/* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作パネルはコート下の
+ * 専用帯（ベースルールと同じ構造）に画面幅いっぱいで並べる。 */
 @media (orientation: portrait) {
   #app { max-width: 560px; }
   .court-wrap {
@@ -844,20 +837,10 @@ footer a:hover { color: var(--color-text); }
   #shot-select-controls,
   #shot-controls { flex: 1 1 auto; min-width: 0; }
 
-  /* プレイ中（試合画面）はコート右上への絶対配置（横画面向けの重ね配置）をやめ、
-   * コート下に画面幅いっぱいの帯として中央寄せで配置する。絶対配置のままだと
-   * サーブ/攻守/打球/デバッグのボタン群が縦に重なり合い、コート（前衛選手や
-   * ネット付近）に覆いかぶさって説明文ごと見切れる／読めなくなるため。 */
   #screen-game .controls {
-    position: static;
-    width: 100%;
-    max-width: none;
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: stretch;
     justify-content: center;
-    margin: 0 auto;
-    padding: 0;
   }
 
   #screen-game .controls .control-group {
@@ -866,11 +849,6 @@ footer a:hover { color: var(--color-text); }
 
   #screen-game #shot-select-controls { flex: 2 1 240px; }
   #screen-game #shot-controls { flex: 1 1 120px; }
-
-  #screen-game .debug-controls-row {
-    top: auto;
-    bottom: auto;
-  }
 }
 
 /* ---- バーチャルスティック（スマホの移動操作） ---- */
