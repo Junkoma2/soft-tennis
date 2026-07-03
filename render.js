@@ -858,10 +858,6 @@ export function drawTimingGauge() {
     ctx.beginPath();
     ctx.arc(p.x, p.y, Math.max(8, 0.35 * p.s), 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.font = "700 10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("\u30de\u30a6\u30b9\u3067\u72d9\u3046", W / 2, H - 10);
     return;
   }
 
