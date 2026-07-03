@@ -77,8 +77,63 @@ export function chargeAmount() {
   if (!charge.active) return 0;
   return Math.max(0, Math.min(1, (matchTime - charge.start) / TUNING.charge.maxTime));
 }
+// 飛行中の沈み込み(sinkOpts)ありで、着地点(tx,ty)にできるだけ近い位置へ
+// 落とすための初速vy/vzを見積もる。sinkOptsは「飛行時間の一定割合を過ぎたら
+// 追加の下向き加速度をランプさせる」設定（config.jsのserve.underCut.sink参照）。
+// 沈み込みを入れると無回転前提の初速計算(T = dist/speed)通りには飛ばず
+// 手前に短く落ちるため、狙った深さに着地するよう少数回のシミュレーションで
+// 目標到達距離を反復補正する（呼び出しは打球発生の1回のみなのでコストは無視できる）。
+function estimateSinkLaunch(startX, startY, startZ, tx, ty, speed, sinkOpts) {
+  const dist0 = Math.max(1.0, Math.hypot(tx - startX, ty - startY));
+  const dirX = (tx - startX) / dist0;
+  const dirY = (ty - startY) / dist0;
+  const dt = 1 / 240;
+  const accel = sinkOpts.accel || 0;
+  const rampSec = sinkOpts.rampSec || 0.05;
+
+  // dist(狙いの水平距離)を与えたときの実際の着地距離を求める簡易シム
+  function landingDistFor(dist) {
+    const T = dist / speed;
+    let vx = dirX * speed, vy = dirY * speed;
+    let vz = (0.5 * G * T * T - startZ) / T;
+    let x = 0, y = 0, z = startZ, t = 0;
+    const sinkStartT = T * (sinkOpts.startFrac != null ? sinkOpts.startFrac : 0.7);
+    for (let i = 0; i < 4000; i++) {
+      x += vx * dt; y += vy * dt; z += vz * dt;
+      vz -= G * dt;
+      if (t > sinkStartT) {
+        const ramp = Math.min(1, (t - sinkStartT) / rampSec);
+        vz -= accel * ramp * dt;
+      }
+      const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
+      vx *= drag; vy *= drag;
+      t += dt;
+      if (z <= 0 && vz < 0) break;
+    }
+    return { landDist: Math.hypot(x, y), T, vz0: (0.5 * G * T * T - startZ) / T };
+  }
+
+  // 狙いの水平距離distを、実着地がdist0に近づくよう反復補正する
+  let dist = dist0;
+  for (let iter = 0; iter < 5; iter++) {
+    const r = landingDistFor(dist);
+    const err = dist0 - r.landDist;
+    if (Math.abs(err) < 0.02) break;
+    dist += err; // 不足分をそのまま狙い距離に上乗せ（収束が速いシンプルな補正）
+    dist = Math.max(1.0, dist);
+  }
+  const T = dist / speed;
+  const vz = (0.5 * G * T * T - startZ) / T;
+  return {
+    vx: dirX * speed,
+    vy: dirY * speed,
+    vz,
+    sink: { accel, startFrac: sinkOpts.startFrac != null ? sinkOpts.startFrac : 0.7, rampSec, T, elapsed: 0 },
+  };
+}
+
 /* ---- 物理: ターゲットに1バウンド目が落ちる初速を球速から逆算 ---- */
-export function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
+export function launchBall(fromX, fromY, fromZ, tx, ty, speed, sinkOpts) {
   // ワープ防止: 打者位置(fromX/fromY)へボールを瞬間移動させず、ボールの
   // 「実際の現在位置」から発射する。打球判定はリーチ(HIT_REACH)内で成立する
   // ため、ボールが打者から離れた位置にあるまま代入すると横に飛ぶ＝ワープして
@@ -88,12 +143,24 @@ export function launchBall(fromX, fromY, fromZ, tx, ty, speed) {
   const startX = ballLive ? ball.x : fromX;
   const startY = ballLive ? ball.y : fromY;
   const startZ = ballLive ? Math.max(0.3, ball.z) : fromZ;
-  const dist = Math.max(1.0, Math.hypot(tx - startX, ty - startY));
-  const T = dist / speed;
   ball.x = startX; ball.y = startY; ball.z = startZ;
-  ball.vx = (tx - startX) / T;
-  ball.vy = (ty - startY) / T;
-  ball.vz = (0.5 * G * T * T - startZ) / T;
+
+  if (sinkOpts) {
+    // アンダーカットサーブ専用: 回転による沈み込み(マグヌス+失速)込みで初速を算出。
+    // 飛行中はball.flightSinkを見て毎フレーム沈み込みを適用する（下のゲームループ参照）。
+    const est = estimateSinkLaunch(startX, startY, startZ, tx, ty, speed, sinkOpts);
+    ball.vx = est.vx;
+    ball.vy = est.vy;
+    ball.vz = est.vz;
+    ball.flightSink = est.sink;
+  } else {
+    const dist = Math.max(1.0, Math.hypot(tx - startX, ty - startY));
+    const T = dist / speed;
+    ball.vx = (tx - startX) / T;
+    ball.vy = (ty - startY) / T;
+    ball.vz = (0.5 * G * T * T - startZ) / T;
+    ball.flightSink = null;
+  }
   // 球の高さにわずかなランダムブレを加えて自然にする
   ball.vz += (Math.random() - 0.5) * TUNING.jitter.z;
   ball.bounces = 0;
@@ -462,6 +529,7 @@ export function handleBounce() {
   ball.z = 0;
   ball.bounces++;
   ball.flashT = 0.22;
+  ball.flightSink = null; // 沈み込みは1バウンド目まで（バウンド後は通常のspin/restitutionモデルに委ねる）
   effects.push({ type: "ripple", x: ball.x, y: ball.y, t: 0, ttl: 0.45 });
 
   const hitterIsPlayer = ball.lastHitter === "player";
@@ -797,6 +865,20 @@ export function update(dt) {
   ball.y += ball.vy * dt;
   ball.z += ball.vz * dt;
   ball.vz -= G * dt;
+  // 回転による飛行中の沈み込み（アンダーカットサーブ専用、ball.flightSink参照）。
+  // launchBall()が沈み込み込みの初速を計算した上で、飛行後半（startFrac以降）
+  // にのみ下向きの追加加速度をランプさせる。マグヌス揚力で前半は平たく飛び、
+  // 空気抵抗による失速とともに後半で沈む下回転(カット)の体感を再現する。
+  // 他の球種・ラリー打球ではflightSinkがnullのため一切影響しない。
+  if (ball.flightSink) {
+    const fs = ball.flightSink;
+    fs.elapsed += dt;
+    const sinkStartT = fs.T * fs.startFrac;
+    if (fs.elapsed > sinkStartT) {
+      const ramp = Math.min(1, (fs.elapsed - sinkStartT) / fs.rampSec);
+      ball.vz -= fs.accel * ramp * dt;
+    }
+  }
   // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
   // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
   const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);

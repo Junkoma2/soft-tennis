@@ -571,7 +571,9 @@ export function launchServeBall(team, server, stats, cfg) {
   ball.frontChecked = true;     // サーブには前衛は触らない
   ball.cpuFrontChecked = true;
   setReceiveDone(false);          // レシーブが返るまで前衛はポジション移動しない
-  launchBall(server.x, server.y, fromZ, tx, ty, speed);
+  // アンダーカットのみ、回転による飛行中の沈み込み(tcfg.sink)をlaunchBallに渡す。
+  // 他のサーブ種別・ラリー打球はsink未指定のため従来どおりの純放物線のまま。
+  launchBall(server.x, server.y, fromZ, tx, ty, speed, tcfg.sink || null);
   // サーブも「相手が打った」一打。レシーブ側の守備をこのサーブで確定する。
   latchCoverageOnHit(team);
 }
