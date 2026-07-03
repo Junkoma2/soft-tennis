@@ -87,6 +87,11 @@
           <button class="ctrl-btn is-active" data-input-mode="swipe" type="button">スワイプ</button>
           <button class="ctrl-btn" data-input-mode="mouse" type="button">マウス</button>
         </div>
+        <label class="control-group toggle-group" id="debug-visible-toggle-group" for="debug-visible-toggle">
+          <span class="control-label">デバッグ表示</span>
+          <input type="checkbox" id="debug-visible-toggle" class="toggle-checkbox" />
+          <span class="toggle-note">試合中に当たり判定・軌道等のボタンを表示</span>
+        </label>
         <details class="start-panel" id="player-stats-panel">
           <summary>選手ステータスを調整</summary>
           <div class="stats-grid" id="stats-grid"><!-- playerStatsPanel.js が生成 --></div>
@@ -106,6 +111,7 @@
           <div class="guide-body">
             <p><strong>移動</strong> WASD（スマホは左下スティック）／<strong>狙い</strong> マウス追従</p>
             <p><strong>打つ</strong> 左=シュート・右=カット・Space+クリック=ロブ。高低/深浅で球種が変化</p>
+            <p><strong>スマホ（スワイプ操作）</strong> コート上のスワイプ方向でも球種を選べる（上=ロブ／下=シュート／左右=カット）。下部の球種ボタンでも選択可能</p>
             <p><strong>サーブ</strong> オーバー/アンダーを選び、マウスで対角コートを狙ってクリック。コート外はフォルト</p>
             <p><strong>攻守</strong> 相方AIの積極性。カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ</p>
           </div>
@@ -131,13 +137,15 @@
           </div>
         </div>
 
-        <div class="court-wrap">
-          <canvas id="court" width="720" height="1080"></canvas>
-          <div id="message-overlay" class="message-overlay" hidden>
-            <p id="message-text"></p>
-          </div>
-          <div id="move-stick" class="move-stick">
-            <div id="move-stick-knob" class="move-stick-knob"></div>
+        <div class="court-col" id="court-col">
+          <div class="court-wrap">
+            <canvas id="court" width="720" height="1080"></canvas>
+            <div id="message-overlay" class="message-overlay" hidden>
+              <p id="message-text"></p>
+            </div>
+            <div id="move-stick" class="move-stick">
+              <div id="move-stick-knob" class="move-stick-knob"></div>
+            </div>
           </div>
         </div>
 

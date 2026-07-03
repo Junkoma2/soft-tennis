@@ -13,7 +13,7 @@ import {
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
-  serveAimCursor, chargeBtn, serveCategoryControls, debugDraw,
+  serveAimCursor, chargeBtn, serveCategoryControls, debugDraw, debugControls,
   setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
   setDebugHitboxes, setDebugTrajectory, setDebugParams, setDebugCoverage,
@@ -22,6 +22,7 @@ import {
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
+  debugVisibleToggle, debugControlsVisible, setDebugControlsVisible,
 } from "./state.js";
 
 import { updateMouseAimFromEvent } from "./main.js";
@@ -280,6 +281,22 @@ if (serveCategoryControls) {
   syncDebugButtons();
 }
 
+/* ---- デバッグボタン群の表示可否（開始画面トグル） ----
+ * 通常プレイではコート下の操作パネルにデバッグボタンを出さない。
+ * 開始画面の「デバッグ表示」トグルをONにした場合のみ、試合中に表示する。
+ * 選択は localStorage に保存し（state.js側）、次回起動時も引き継ぐ。 */
+function applyDebugControlsVisibility() {
+  if (debugControls) debugControls.hidden = !debugControlsVisible;
+}
+if (debugVisibleToggle) {
+  debugVisibleToggle.checked = debugControlsVisible;
+  debugVisibleToggle.addEventListener("change", function () {
+    setDebugControlsVisible(debugVisibleToggle.checked);
+    applyDebugControlsVisibility();
+  });
+}
+applyDebugControlsVisibility();
+
 // 攻守の割合（相方AIの積極性）もスライダーで選ぶ（0=守り 〜 1=攻め）。
 (function bindAggressionSlider() {
   const range = document.getElementById("aggression-range");
@@ -518,12 +535,36 @@ canvas.addEventListener("pointerdown", function (e) {
   e.preventDefault();
 });
 
+// スワイプ方向で球種（selectedShot）を選ぶしきい値(クライアントpx)。
+// SWIPE_THRESHOLD_PX（タップ/スワイプ判定）より少し大きくして、狙いを
+// 微調整するだけの小さな指ブレでは球種が切り替わらないようにする。
+const SWIPE_SHOT_THRESHOLD_PX = 22;
+
+// スワイプの向きから球種を判定する。
+//   縦方向が優勢＆上スワイプ（dy<0）  → ロブ（高く上げる）
+//   縦方向が優勢＆下スワイプ（dy>0）  → シュート（叩き込む）
+//   横方向が優勢（左右）              → カット
+// コース（aim.x/aim.y）はこの判定とは独立に、常にdx/dyの実測値から連続的に決める
+// （球種判定はコース計算に影響しない＝両者は衝突しない）。
+function shotFamilyFromSwipeVector(dx, dy) {
+  if (Math.hypot(dx, dy) < SWIPE_SHOT_THRESHOLD_PX) return null; // 小さすぎる動きは判定しない
+  if (Math.abs(dy) > Math.abs(dx)) return dy < 0 ? "lob" : "shoot";
+  return "cut";
+}
+
 canvas.addEventListener("pointermove", function (e) {
   if (!swipe.active || e.pointerId !== swipe.pointerId) return;
   e.preventDefault();
   const dx = e.clientX - swipe.startX;
   const dy = e.clientY - swipe.startY;
   if (Math.hypot(dx, dy) > SWIPE_THRESHOLD_PX) swipe.moved = true;
+
+  // スワイプ操作モードのみ: スワイプ方向から球種（selectedShot）をリアルタイムに更新する。
+  // PC（マウス）は左右クリック+Spaceで球種が決まるため対象外。
+  if (inputMode === "swipe") {
+    const shot = shotFamilyFromSwipeVector(dx, dy);
+    if (shot) selectShot(shot);
+  }
 
   // スワイプ量(クライアントpx)→ワールド座標の差分に変換し、開始時の狙いに加算する。
   // 横dx→aim.x（左右の配球）、縦dy→aim.y（上方向スワイプ=相手コート深く=aim.yがより負）。
