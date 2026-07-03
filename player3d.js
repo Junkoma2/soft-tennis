@@ -13,6 +13,7 @@
 
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
+import { TUNING } from "./config.js";
 import { back, front, cpuBack, cpuFront, ball, state } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import {
@@ -132,20 +133,23 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-function isReceivingIncoming(pl) {
-  if (state !== "rally" || ball.serving || ball.bounces < 1 || Math.hypot(ball.vx, ball.vy) < 0.2) {
-    return false;
-  }
-  const receivingSide = (pl === back || pl === front) ? "player" : "cpu";
-  const incomingPlayerSide = ball.lastHitter === "cpu" && ball.vy > 0;
-  const incomingCpuSide = ball.lastHitter === "player" && ball.vy < 0;
-  return (receivingSide === "player" && incomingPlayerSide) ||
-    (receivingSide === "cpu" && incomingCpuSide);
+// このプレイヤー側に向かって（バウンド前後を問わず）ボールが来ているかどうか。
+// 「相手が打った瞬間の受け」に限らず、ラリー中いつでも自分側へ向かう球があれば
+// 正対の対象にする（サーブレシーブ限定だった従来のisReceivingIncomingを一般化）。
+function ballComingToSide(pl) {
+  if (state !== "rally" || ball.serving || Math.hypot(ball.vx, ball.vy) < 0.2) return false;
+  const mySide = (pl === back || pl === front) ? "player" : "cpu";
+  const towardPlayer = ball.lastHitter === "cpu" && ball.vy > 0;
+  const towardCpu = ball.lastHitter === "player" && ball.vy < 0;
+  return (mySide === "player" && towardPlayer) || (mySide === "cpu" && towardCpu);
 }
 
-function yawForPlayer(pl) {
+// 体の正対先: 通常はネット向き(baseYaw)。自分側へ球が来ている間は、懐（打てる角度）が
+// 変わるよう球の来る向きへ少し体を開く。打った瞬間のスイング向きは別途ロックされるため、
+// ここでは「構え〜追走」の見た目だけを扱う（打点判定・当たり判定には影響しない）。
+function ballFacingYaw(pl) {
   const base = baseYawFor(pl);
-  if (!isReceivingIncoming(pl)) return base;
+  if (!ballComingToSide(pl)) return base;
   const courseYaw = Math.atan2(-ball.vx, -ball.vy);
   return base + clamp(angleDelta(base, courseYaw), -0.6, 0.6);
 }
@@ -154,7 +158,12 @@ function angleDelta(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
 
-function smoothYawFor(pl, targetYaw, dt) {
+// 進行方向（移動速度ベクトル）を向く角度。遠距離を体を横向きにして走るときに使う。
+function travelYaw(vx, vy) {
+  return Math.atan2(vx, vy);
+}
+
+function smoothYawFor(pl, targetYaw, dt, turnRate) {
   const m = getMotion(pl);
   if (!Number.isFinite(targetYaw)) targetYaw = baseYawFor(pl);
   if (pl.pose === "swing" && Number.isFinite(m.yaw)) return m.yaw;
@@ -162,11 +171,17 @@ function smoothYawFor(pl, targetYaw, dt) {
     m.yaw = targetYaw;
     return targetYaw;
   }
-  const alpha = 1 - Math.exp(-dt * 9);
+  const rate = turnRate != null ? turnRate : 9;
+  const alpha = 1 - Math.exp(-dt * rate);
   m.yaw += angleDelta(m.yaw, targetYaw) * alpha;
   return m.yaw;
 }
 
+// 移動表現を2種に分ける:
+//   近距離（低速の横移動）＝サイドステップ … 体の正対(ballFacingYaw)を保ったまま足だけ横に運ぶ
+//   遠距離（速い/大きい移動）＝体を横向きにして走る … 進行方向へ体ごとターンして走る
+// どちらもmoveToward由来の実速度(pl.vx/vy)で判定するため、実際に足が動いているときだけ発動する
+// （静止中に残った速度でアニメだけ動くバグを防ぐ仕組みとは別軸の話）。
 function applyRunMotion(pl, joints, yaw, dt) {
   if (!joints || pl.pose === "swing") return;
   if (!Number.isFinite(yaw) || !Number.isFinite(pl.vx) || !Number.isFinite(pl.vy)) return;
@@ -174,13 +189,6 @@ function applyRunMotion(pl, joints, yaw, dt) {
   const vy = pl.vy || 0;
   const speed = Math.hypot(vx, vy);
   if (speed < 0.18) return;
-
-  const m = getMotion(pl);
-  m.runPhase += dt * (8 + Math.min(5, speed * 0.9));
-  const phase = m.runPhase;
-  const amp = Math.min(1, speed / 4.5);
-  const stride = Math.sin(phase);
-  const counter = Math.sin(phase + Math.PI);
 
   const forwardX = Math.sin(yaw);
   const forwardY = Math.cos(yaw);
@@ -191,32 +199,42 @@ function applyRunMotion(pl, joints, yaw, dt) {
   const lateral = Math.abs(side) > Math.abs(forward) * 0.75;
   const sideSign = side >= 0 ? 1 : -1;
 
+  // サイドステップか、体を横向きにして走るかを実速度で切り替える（見た目専用）。
+  const isRunTurn = lateral && speed > TUNING.move.sidestepMaxSpeed;
+
+  const m = getMotion(pl);
+  m.runPhase += dt * (8 + Math.min(5, speed * 0.9));
+  const phase = m.runPhase;
+  const amp = Math.min(1, speed / 4.5);
+  const stride = Math.sin(phase);
+  const counter = Math.sin(phase + Math.PI);
+
   if (joints.pelvis) {
     joints.pelvis.position.y += Math.abs(stride) * 0.025 * amp;
   }
   if (joints.leanRoot) {
-    joints.leanRoot.rotation.x += (lateral ? 0 : -4) * amp * D;
+    joints.leanRoot.rotation.x += (lateral && !isRunTurn ? 0 : -4) * amp * D;
   }
 
   if (joints.hipR) {
-    joints.hipR.rotation.x += (lateral ? 8 : 22) * stride * amp * D;
-    joints.hipR.rotation.z += (lateral ? sideSign * 16 * Math.abs(stride) : 0) * amp * D;
+    joints.hipR.rotation.x += (lateral && !isRunTurn ? 8 : 22) * stride * amp * D;
+    joints.hipR.rotation.z += (lateral && !isRunTurn ? sideSign * 16 * Math.abs(stride) : 0) * amp * D;
   }
   if (joints.hipL) {
-    joints.hipL.rotation.x += (lateral ? 8 : 22) * counter * amp * D;
-    joints.hipL.rotation.z += (lateral ? sideSign * -16 * Math.abs(counter) : 0) * amp * D;
+    joints.hipL.rotation.x += (lateral && !isRunTurn ? 8 : 22) * counter * amp * D;
+    joints.hipL.rotation.z += (lateral && !isRunTurn ? sideSign * -16 * Math.abs(counter) : 0) * amp * D;
   }
   if (joints.kneeR) joints.kneeR.rotation.x += -18 * Math.max(0, -stride) * amp * D;
   if (joints.kneeL) joints.kneeL.rotation.x += -18 * Math.max(0, -counter) * amp * D;
   if (joints.footR) joints.footR.rotation.x += 12 * Math.max(0, stride) * amp * D;
   if (joints.footL) joints.footL.rotation.x += 12 * Math.max(0, counter) * amp * D;
 
-  if (joints.shoulderR) joints.shoulderR.rotation.x += (lateral ? 8 * sideSign : -14) * counter * amp * D;
-  if (joints.shoulderL) joints.shoulderL.rotation.x += (lateral ? -8 * sideSign : -14) * stride * amp * D;
+  if (joints.shoulderR) joints.shoulderR.rotation.x += (lateral && !isRunTurn ? 8 * sideSign : -14) * counter * amp * D;
+  if (joints.shoulderL) joints.shoulderL.rotation.x += (lateral && !isRunTurn ? -8 * sideSign : -14) * stride * amp * D;
 }
 
 function poseNameFor3D(pl, isFront) {
-  if (pl.pose === "prep" && !isReceivingIncoming(pl)) {
+  if (pl.pose === "prep" && !ballComingToSide(pl)) {
     return isFront ? "ready" : "rearReady";
   }
   return poseNameForPlayer(pl, isFront);
@@ -258,8 +276,26 @@ export function render3D() {
     // +x は解剖学的な左側。右利きを正しく「右手持ち」にするには X 反転が要る。
     // （左利きは反転なしで +x=左手のまま）
     char.group.scale.x = (pl.stats && pl.stats.handed === "left") ? 1 : -1;
-    // カメラ正対：手前側(facing>0)はそのまま、奥側(facing<0)は後ろ向きに
-    const renderYaw = smoothYawFor(pl, yawForPlayer(pl), dt);
+    // 正対先の決定: 通常はボールへ正対（懐/打てる角度が変わるよう常に真正面固定にしない）。
+    // ただし遠距離移動で「体を横向きにして走る」ときは、走っている間だけ進行方向を向く
+    // （サイドステップ中はボール正対を保ったまま足だけ運ぶ）。
+    const vx = pl.vx || 0, vy = pl.vy || 0;
+    const moveSpeed = Math.hypot(vx, vy);
+    let targetYaw = ballFacingYaw(pl);
+    let turnRate = 9;
+    if (pl.pose !== "swing" && moveSpeed > TUNING.move.sidestepMaxSpeed) {
+      const yawBase = baseYawFor(pl);
+      const bf = ballFacingYaw(pl);
+      const forward = vx * Math.sin(yawBase) + vy * Math.cos(yawBase);
+      const lateralV = vx * Math.cos(yawBase) - vy * Math.sin(yawBase);
+      if (Math.abs(lateralV) > Math.abs(forward) * 0.75) {
+        targetYaw = travelYaw(vx, vy);
+        turnRate = TUNING.move.runTurnSpeed;
+      } else {
+        targetYaw = bf;
+      }
+    }
+    const renderYaw = smoothYawFor(pl, targetYaw, dt, turnRate);
     char.group.rotation.y = renderYaw;
 
     if (pl.pose === "swing" && state === "rally" && !ball.serving) {

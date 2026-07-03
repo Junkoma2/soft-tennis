@@ -95,5 +95,9 @@ export function resetPlayersForPoint() {
     p.pose = "idle"; p.swingT = 0; p.recoverT = 0;
     p.swingSideLocked = false; p.wrapCommitted = false; p.wrapTargetX = null;
     p.approachTargetX = null;
+    // 前のポイントで走っていた勢い(vx/vy)が残ったままだと、サーブ前の静止中に
+    // applyRunMotion（3D足アニメ）が速度を拾って足が動いて見えるバグになる。
+    // 定位置へ直接スナップしたこのタイミングで速度も明示的に0へ戻す。
+    p.vx = 0; p.vy = 0;
   });
 }

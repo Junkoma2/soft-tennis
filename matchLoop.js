@@ -476,8 +476,8 @@ export function hitBall(opts) {
     });
     let qualityText = null;
     let qualityColor = "#F59E0B";
-    if (ev.cramp < 0.35) { qualityText = "詰まった！"; }
-    else if (ev.overReach > 0.5) { qualityText = "泳いだ！"; }
+    if (ev.cramp < 0.35) { qualityText = "近い！詰まった"; }
+    else if (ev.overReach > 0.5) { qualityText = "遠い！泳いだ"; }
     else if (ev.overall > 0.85) { qualityText = "ジャスト！"; qualityColor = "#22C55E"; }
     else if (ev.backhand) { qualityText = "バック"; qualityColor = "#F59E0B"; }
     if (qualityText) {
@@ -486,6 +486,20 @@ export function hitBall(opts) {
         x: hitter.x, y: hitter.y - 0.9, t: 0, ttl: 0.8,
         text: qualityText,
         color: qualityColor,
+      });
+    }
+    // 打点の前後タイミング（早い=ネット寄りで捉えた／遅い=体の後ろに引き込みすぎた）。
+    // ev.front: 正=前すぎ(早打ち気味) / 負=後ろすぎ(遅れ気味)。品質ラベルと重複しないよう
+    // 近い/遠いほど極端でなければ別行で表示する。
+    let timingText = null;
+    if (ev.front > 0.45) timingText = "早い！";
+    else if (ev.front < -0.45) timingText = "遅い…";
+    if (timingText) {
+      effects.push({
+        type: "text",
+        x: hitter.x, y: hitter.y - 1.3, t: 0, ttl: 0.8,
+        text: timingText,
+        color: "#38BDF8",
       });
     }
   }
