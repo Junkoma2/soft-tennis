@@ -8,7 +8,7 @@ import { unproject, clientToCanvas } from "./math.js";
 import {
   screens, startBtn, retryBtn, canvas, messageOverlay, messageText,
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
-  chargeBtn, serveCategoryControls, aggressionControls, shotSelectControls,
+  chargeBtn, serveCategoryControls, aggressionControls,
   moveStick, controlsPanel, mouseAim, makeStats, cpuStats,
   state, player, cpu, rafId,
   setState, setServeFaults, setRafId, setLastTime, setMatchTime,
@@ -50,13 +50,15 @@ export function showMessage(text) {
   messageOverlay.hidden = false;
 }
 
-// 操作パネルの表示切替: serve=サーブ設定（オーバー/アンダーのみ） / rally=球種選択
+// 操作パネルの表示切替: serve=サーブ設定（オーバー/アンダー＋球種） / rally=球種選択
+// 球種ボタン（シュート/カット/ロブ）はサーブ時点から常時表示する。サーブの種類選択
+// (over/under)には影響しないが、ラリーに入ってすぐ打ち返す球種を事前に選んでおける
+// ようにするための表示。押しやすい下部配置はそのまま変えない。
 export function setControlMode(mode) {
   const serveMode = mode === "serve";
   if (serveCategoryControls) serveCategoryControls.hidden = !serveMode;
   // 攻守は観戦モードOFF かつ 得点間（サーブ前）にのみ調整可として表示する
   if (aggressionControls) aggressionControls.hidden = !serveMode || spectatorMode;
-  shotSelectControls.hidden = serveMode;
   if (chargeBtn) {
     chargeBtn.textContent = serveMode ? "トス / 打つ" : "打つ";
   }
