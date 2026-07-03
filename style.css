@@ -377,9 +377,17 @@ main {
 /* プレイ中は描画を端末画面いっぱいに広げる（向きを問わず全面）。 */
 body:has(#screen-game:not([hidden])) header,
 body:has(#screen-game:not([hidden])) footer { display: none; }
-body:has(#screen-game:not([hidden])) #app { padding: 0; max-width: none; }
+/* #appは基準がmin-height(下限)のみなので、操作パネル分だけ子要素が
+ * ビューポートより高く育つと、body(align-items:center)の中央寄せで
+ * 上下が均等にはみ出し、overflow:hiddenで上端・下端（操作説明など）が
+ * 見切れる。試合中はheightを明示してビューポート内に収める。 */
+body:has(#screen-game:not([hidden])) #app { padding: 0; max-width: none; height: 100dvh; min-height: 0; }
 body:has(#screen-game:not([hidden])) main {
-  flex: 1 1 auto; min-height: 0; width: 100%; display: flex;
+  /* 既定のalign-items:centerのままだと#screen-gameが内容分の高さ(コート+操作
+   * パネル)まで伸びて中央寄せされ、はみ出した分（操作パネル等）が見切れる。
+   * stretchでmainの高さいっぱいに広げ、#screen-game側のmin-height:0で
+   * 子要素（コート）を縮めて収める。 */
+  flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: stretch;
 }
 body:has(#screen-game:not([hidden])) #screen-game {
   flex: 1 1 auto; min-height: 0; width: 100%; gap: 0;
@@ -803,6 +811,34 @@ footer a:hover { color: var(--color-text); }
   .controls .control-group,
   #shot-select-controls,
   #shot-controls { flex: 1 1 auto; min-width: 0; }
+
+  /* プレイ中（試合画面）はコート右上への絶対配置（横画面向けの重ね配置）をやめ、
+   * コート下に画面幅いっぱいの帯として中央寄せで配置する。絶対配置のままだと
+   * サーブ/攻守/打球/デバッグのボタン群が縦に重なり合い、コート（前衛選手や
+   * ネット付近）に覆いかぶさって説明文ごと見切れる／読めなくなるため。 */
+  #screen-game .controls {
+    position: static;
+    width: 100%;
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  #screen-game .controls .control-group {
+    flex: 1 1 140px;
+  }
+
+  #screen-game #shot-select-controls { flex: 2 1 240px; }
+  #screen-game #shot-controls { flex: 1 1 120px; }
+
+  #screen-game .debug-controls-row {
+    top: auto;
+    bottom: auto;
+  }
 }
 
 /* ---- バーチャルスティック（スマホの移動操作） ---- */
