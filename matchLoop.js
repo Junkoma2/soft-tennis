@@ -90,6 +90,16 @@ function estimateSinkLaunch(startX, startY, startZ, tx, ty, speed, sinkOpts) {
   const dt = 1 / 240;
   const accel = sinkOpts.accel || 0;
   const rampSec = sinkOpts.rampSec || 0.05;
+  // 着地直前の落下速度(vz)の上限。ネット回避ループ(launchServeBall内)でspeedが
+  // 落とされたり、狙い距離の反復補正でTが変わったりすると、絶対値accelを
+  // そのまま時間積分するsink方式は着地直前のvzが際限なく積み上がってしまう
+  // （実測: speed21.8時で-15.6m/s、ネット回避でspeedが13前後まで落ちると
+  // -24m/s、着地角60度超・バウンド頂点9mというラリー中のカット系(-6〜-7m/s
+  // 相当)からかけ離れた暴走を確認した）。他のカット系サーブ(attackCut/slice、
+  // sinkなし)の着地直前vzが概ね -6.4〜-7.0m/s であることに合わせ、ここで
+  // 上限にクランプして「speedが変動しても着地の勢いは一定範囲に収まる」
+  // 頑健な挙動にする。
+  const maxLandVz = sinkOpts.maxLandVz != null ? sinkOpts.maxLandVz : Infinity;
 
   // dist(狙いの水平距離)を与えたときの実際の着地距離を求める簡易シム
   function landingDistFor(dist) {
@@ -105,6 +115,7 @@ function estimateSinkLaunch(startX, startY, startZ, tx, ty, speed, sinkOpts) {
         const ramp = Math.min(1, (t - sinkStartT) / rampSec);
         vz -= accel * ramp * dt;
       }
+      if (vz < -maxLandVz) vz = -maxLandVz;
       const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
       vx *= drag; vy *= drag;
       t += dt;
@@ -128,7 +139,7 @@ function estimateSinkLaunch(startX, startY, startZ, tx, ty, speed, sinkOpts) {
     vx: dirX * speed,
     vy: dirY * speed,
     vz,
-    sink: { accel, startFrac: sinkOpts.startFrac != null ? sinkOpts.startFrac : 0.7, rampSec, T, elapsed: 0 },
+    sink: { accel, startFrac: sinkOpts.startFrac != null ? sinkOpts.startFrac : 0.7, rampSec, maxLandVz, T, elapsed: 0 },
   };
 }
 
@@ -870,6 +881,12 @@ export function update(dt) {
   // にのみ下向きの追加加速度をランプさせる。マグヌス揚力で前半は平たく飛び、
   // 空気抵抗による失速とともに後半で沈む下回転(カット)の体感を再現する。
   // 他の球種・ラリー打球ではflightSinkがnullのため一切影響しない。
+  // maxLandVzで着地直前の落下速度に上限を掛ける: サーブのネット回避ループ
+  // (launchServeBall)でspeedが落とされて飛行時間Tが伸びた場合でも、絶対値の
+  // accelをそのまま積分すると着地直前の勢いが際限なく積み上がり、バウンドが
+  // 異常に高く跳ねてしまう（他のカット系サーブの着地直前vz -6〜-7m/s程度に
+  // 対し、-15〜-24m/sまで暴走することを実測で確認）。他のカット系サーブと
+  // 同水準の着地の勢いに収まるようクランプする。
   if (ball.flightSink) {
     const fs = ball.flightSink;
     fs.elapsed += dt;
@@ -878,6 +895,8 @@ export function update(dt) {
       const ramp = Math.min(1, (fs.elapsed - sinkStartT) / fs.rampSec);
       ball.vz -= fs.accel * ramp * dt;
     }
+    const maxLandVz = fs.maxLandVz != null ? fs.maxLandVz : Infinity;
+    if (ball.vz < -maxLandVz) ball.vz = -maxLandVz;
   }
   // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
   // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
