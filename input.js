@@ -10,7 +10,7 @@ function biasRoleLabel(bias) {
 
 import {
   keysWasd, setSpaceHeld, spaceHeld, state, charge, matchTime, aim,
-  spectatorMode, rallyControlled, ball,
+  spectatorMode, rallyControlled, ball, effects,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
   serveAimCursor, chargeBtn, serveCategoryControls, debugDraw, debugControls,
@@ -165,6 +165,16 @@ export function attemptSwing(family) {
     setPendingPower(power);
     setPendingAimX(aim.x);
     setPendingAimY(aim.y);
+  } else {
+    // 打点にまったく届かない（ボールが来ていない/遠すぎる）タイミングでの
+    // クリック＝空振り。原因が分かるよう軽いフィードバックだけ出す
+    // （判定・スコアには影響しない、見た目のみの表示）。
+    effects.push({
+      type: "text",
+      x: rallyControlled.x, y: rallyControlled.y - 0.9, t: 0, ttl: 0.6,
+      text: "空振り！",
+      color: "#94A3B8",
+    });
   }
 }
 

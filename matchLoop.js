@@ -21,6 +21,8 @@ import { draw } from "./render.js";
 
 import { latchCoverageOnHit } from "./aiPositioning.js";
 
+import { contactYawFor, toLocal } from "./geometry.js";
+
 import {
   serverTeamNow, serveFromRight, serviceBox, serveFault,
   currentServer, playerIsServer, receiverPlayerFor, receivePosition,
@@ -244,7 +246,12 @@ export function evaluateContact(side, hitter, contactZ) {
   const handSign = hitter.stats && hitter.stats.handed === "left" ? -1 : 1;
   const foreSign = facingDir * handSign;             // フォア側のx方向（利き腕を反映）
   const sideSign = backhand ? -foreSign : foreSign;  // 打点がある側のx方向
-  const lateral = (ball.x - hitter.x) * sideSign;    // 体から打点までの横距離(m)
+  // 体の正対yaw基準のローカル座標（lateral=正面から見た左右, forward=正面方向）に
+  // 回転してから距離を測る。ラリー中は正対(ballFacingYaw)がネット正面からズレるため、
+  // ワールド軸固定より実際の懐に近い評価になる（geometry.jsが単一の真実）。
+  const yaw = contactYawFor(hitter);
+  const { lateral: localX, forward: localY } = toLocal(hitter, ball.x - hitter.x, ball.y - hitter.y, yaw);
+  const lateral = localX * sideSign;    // 体から打点までの横距離(m)
   // フォアはバックより少し体から離れた位置が適正打点（idealLateralFor参照）。
   const idealLateral = backhand ? c.idealLateral : c.idealLateralFore;
 
@@ -254,7 +261,10 @@ export function evaluateContact(side, hitter, contactZ) {
   const overReach = clamp01((lateral - idealLateral - c.reachSlack) / c.reachRange);
 
   // 前後: 正=前すぎ（ネット寄り） / 負=後ろすぎ
-  const frontDist = (hitter.y - ball.y) * (side === "player" ? 1 : -1);
+  // localY は「ワールドy方向(dy)」基準のローカル前後距離。frontDistの符号定義
+  // （前すぎ=正）に合わせるため、旧来の (hitter.y - ball.y)*facingSign と
+  // 同じ向きになるよう反転する（baseYaw時はdy=ball.y-hitter.yそのものと一致）。
+  const frontDist = -localY * (side === "player" ? 1 : -1);
   const front = Math.max(-1, Math.min(1, (frontDist - c.frontYIdeal) / c.yTolerance));
 
   // 高さ: 正=高い打点（強打ゾーン） / 負=低い打点（すくい上げ）
@@ -476,8 +486,8 @@ export function hitBall(opts) {
     });
     let qualityText = null;
     let qualityColor = "#F59E0B";
-    if (ev.cramp < 0.35) { qualityText = "詰まった！"; }
-    else if (ev.overReach > 0.5) { qualityText = "泳いだ！"; }
+    if (ev.cramp < 0.35) { qualityText = "近い！詰まった"; }
+    else if (ev.overReach > 0.5) { qualityText = "遠い！泳いだ"; }
     else if (ev.overall > 0.85) { qualityText = "ジャスト！"; qualityColor = "#22C55E"; }
     else if (ev.backhand) { qualityText = "バック"; qualityColor = "#F59E0B"; }
     if (qualityText) {
@@ -486,6 +496,20 @@ export function hitBall(opts) {
         x: hitter.x, y: hitter.y - 0.9, t: 0, ttl: 0.8,
         text: qualityText,
         color: qualityColor,
+      });
+    }
+    // 打点の前後タイミング（早い=ネット寄りで捉えた／遅い=体の後ろに引き込みすぎた）。
+    // ev.front: 正=前すぎ(早打ち気味) / 負=後ろすぎ(遅れ気味)。品質ラベルと重複しないよう
+    // 近い/遠いほど極端でなければ別行で表示する。
+    let timingText = null;
+    if (ev.front > 0.45) timingText = "早い！";
+    else if (ev.front < -0.45) timingText = "遅い…";
+    if (timingText) {
+      effects.push({
+        type: "text",
+        x: hitter.x, y: hitter.y - 1.3, t: 0, ttl: 0.8,
+        text: timingText,
+        color: "#38BDF8",
       });
     }
   }

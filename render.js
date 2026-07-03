@@ -24,6 +24,7 @@ import { courseLabelFor, insideCourt, insideBox, predictLanding, predictHighCont
 import { canPlayerHit } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
 import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
+import { contactYawFor, fromLocal } from "./geometry.js";
 
 /* ===========================================================
  * 描画
@@ -541,10 +542,19 @@ function drawDebugHitboxFor(pl, opts) {
   const active = opts.controlled ? canPlayerHit(pl) : info.active;
   const color = active ? "rgba(74,222,128,0.95)" : opts.color;
   const fillColor = active ? "rgba(74,222,128,0.13)" : opts.fillColor;
-  const foreX = pl.x + info.foreDir * (info.foreWidth || 0.75);
-  const backX = pl.x - info.foreDir * (info.backWidth || 0.45);
-  const a = project(backX, pl.y, 0);
-  const b = project(foreX, pl.y, 0);
+
+  // 懐バーの両端は、判定と同じyawで体ローカル座標(lateral, forward=0)から
+  // ワールド座標へ戻して求める（geometry.jsのfromLocalが単一の真実）。
+  // yaw===baseYaw（ネット正対）のときは従来通りワールドx軸固定と一致する。
+  const yaw = contactYawFor(pl);
+  const foreWidth = info.foreWidth || 0.75;
+  const backWidth = info.backWidth || 0.45;
+  const foreLocal = fromLocal(pl, info.foreDir * foreWidth, 0, yaw);
+  const backLocal = fromLocal(pl, -info.foreDir * backWidth, 0, yaw);
+  const foreWorld = { x: pl.x + foreLocal.dx, y: pl.y + foreLocal.dy };
+  const backWorld = { x: pl.x + backLocal.dx, y: pl.y + backLocal.dy };
+  const a = project(backWorld.x, backWorld.y, 0);
+  const b = project(foreWorld.x, foreWorld.y, 0);
   const c = project(pl.x, pl.y, 0);
 
   ctx.setLineDash([8, 5]);
@@ -554,6 +564,51 @@ function drawDebugHitboxFor(pl, opts) {
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
   ctx.stroke();
+
+  // 前後方向の適正打点ゾーン（体ローカル座標: 横=fore/back幅, 前後=frontYIdeal±yTolerance）を
+  // yawで回転した矩形として可視化する。frontDist（前後距離）の符号定義はプレイヤー側/CPU側で
+  // 反転するため、ローカルforward軸へ変換するときにsideDirを合わせる（matchLoop.jsのevaluateContact参照）。
+  const isPlayerSide = pl === back || pl === front;
+  const sideDir = isPlayerSide ? 1 : -1;
+  const c2 = TUNING.contact;
+  const frontYIdeal = c2?.frontYIdeal ?? 0.35;
+  const yTolerance = c2?.yTolerance ?? 1.3;
+  const forwardNear = -(frontYIdeal - yTolerance) * sideDir;
+  const forwardFar = -(frontYIdeal + yTolerance) * sideDir;
+  const lateralFore = info.foreDir * foreWidth;
+  const lateralBack = -info.foreDir * backWidth;
+  const zoneCorners = [
+    [lateralBack, forwardNear],
+    [lateralFore, forwardNear],
+    [lateralFore, forwardFar],
+    [lateralBack, forwardFar],
+  ].map(([lat, fwd]) => {
+    const off = fromLocal(pl, lat, fwd, yaw);
+    return project(pl.x + off.dx, pl.y + off.dy, 0);
+  });
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  zoneCorners.forEach((pt, i) => {
+    if (i === 0) ctx.moveTo(pt.x, pt.y);
+    else ctx.lineTo(pt.x, pt.y);
+  });
+  ctx.closePath();
+  ctx.stroke();
+
+  // 適正中心（idealLateralFore付近 × frontYIdeal付近）にマーカーを打つ。
+  // evaluateContact（matchLoop.js）のフォア側 idealLateral 相当を流用し、懐幅を超えないようclampする。
+  const idealLateralFore = c2?.idealLateralFore ?? 1.3;
+  const centerLateral = info.foreDir * Math.min(foreWidth, idealLateralFore);
+  const centerForward = -frontYIdeal * sideDir;
+  const centerOff = fromLocal(pl, centerLateral, centerForward, yaw);
+  const centerPt = project(pl.x + centerOff.dx, pl.y + centerOff.dy, 0);
+  ctx.setLineDash([]);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(centerPt.x, centerPt.y, 3, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.setLineDash([]);
   ctx.fillStyle = fillColor;
