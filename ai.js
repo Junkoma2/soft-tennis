@@ -279,8 +279,34 @@ export function tryReturnAI(side) {
       if (openX != null && Math.random() < 0.7) {
         course = Math.max(-1, Math.min(1, openX / 4.6));
       }
+      // ストレートロブの駆け引き: 相手前衛が中央寄り（センター付近に詰めている）
+      // ときは、頭上をストレートロブで抜くセオリーが特に有効
+      // （前衛が横に張っておらず、後方への戻りも間に合いにくいため）。
+      // この状況に限ってロブの選択率を底上げし、さらにコースを前衛のいる
+      // 側（＝頭上を通す側）へ寄せる。前衛が大きく片側へ寄っているときは
+      // 通常のセオリー（クロス/弱点狙い）をそのまま使う。
+      const frontIsCentral = Math.abs(oppFront.x) <= 0.6;
+      // 元の配分（drive55% / flat20% / lob15% / slice10%）を維持したまま、
+      // 前衛が中央寄りのときだけ lob の取り分を底上げする（他3種の比率は保つ）。
+      const lobChance = frontIsCentral ? 0.30 : 0.15;
+      let straightLobCourse = null;
+      if (frontIsCentral) {
+        // 前衛がいる側（＝頭上を通す側）へ抜く。中央付近では前衛のわずかな
+        // 偏りを使い、完全に0のときは相手後衛と逆サイドへ振る。
+        const lobSign = oppFront.x !== 0 ? Math.sign(oppFront.x) : (oppBack.x >= 0 ? -1 : 1);
+        straightLobCourse = lobSign * (0.15 + Math.random() * 0.35);
+      }
+      const otherShare = 1 - lobChance; // drive/flat/sliceの合計取り分（元比率55:20:10を維持）
       const r = Math.random();
-      const shot = r < 0.55 ? "drive" : (r < 0.75 ? "flat" : (r < 0.9 ? "lob" : "slice"));
+      const driveUpper = otherShare * (0.55 / 0.85);
+      const flatUpper = otherShare * (0.75 / 0.85);
+      const sliceUpper = otherShare;
+      const shot = r < driveUpper ? "drive" :
+        (r < flatUpper ? "flat" :
+          (r < sliceUpper ? "slice" : "lob"));
+      if (shot === "lob" && straightLobCourse != null) {
+        course = straightLobCourse;
+      }
       hitBall({
         hitter: hitter, side: side, shot: shot,
         course: course,
