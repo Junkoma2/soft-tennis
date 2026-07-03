@@ -545,9 +545,20 @@ export function startSwing(p, side) {
 
 // 現在速度cur を 目標速度target へ、加速度(accel)/減速度(decel)で dt 秒分だけ近づける。
 // 目標へ向かう（加速）か遠ざかる/止める（減速）かでレートを切り替える＝軽い慣性。
-export function approachVelocity(cur, target, dt) {
-  const accel = TUNING.move.accel;
-  const decel = TUNING.move.decel;
+// lateral=true（横方向=x軸）かつ低速域（|cur|/|target|がsidestepMaxSpeed以下）のときは、
+// サイドステップ専用の加減速（通常より速い）を使う。見た目のサイドステップ切り替え
+// (player3d.js / sidestepMaxSpeed) と同じしきい値を共有し、動き出し・止まり際だけ
+// キビキビ反応させる。高速域（体を横向きにして走る域）は通常のaccel/decelのまま。
+export function approachVelocity(cur, target, dt, lateral) {
+  let accel = TUNING.move.accel;
+  let decel = TUNING.move.decel;
+  if (lateral) {
+    const regimeSpeed = Math.max(Math.abs(cur), Math.abs(target));
+    if (regimeSpeed <= TUNING.move.sidestepMaxSpeed) {
+      accel = TUNING.move.sidestepAccel;
+      decel = TUNING.move.sidestepDecel;
+    }
+  }
   // 目標と同方向に伸ばす（加速）か、0または反対方向へ寄せる（減速）かを判定
   const accelerating = Math.abs(target) > Math.abs(cur) && Math.sign(target) === Math.sign(cur || target);
   const rate = accelerating ? accel : decel;
@@ -848,7 +859,7 @@ export function update(dt) {
     // 入力なしの軸は目標0へ減速で止まる。最高速にはすぐ乗る軽さに留める。
     const targetVx = v.dx * speed;
     const targetVy = allowY ? v.dy * speed : 0;
-    mover.vx = approachVelocity(mover.vx, targetVx, dt);
+    mover.vx = approachVelocity(mover.vx, targetVx, dt, true);
     mover.vy = approachVelocity(mover.vy, targetVy, dt);
     if (mover.vx !== 0) setControlledX(mover, mover.x + mover.vx * dt);
     if (allowY && mover.vy !== 0) setControlledY(mover, mover.y + mover.vy * dt);
