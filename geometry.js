@@ -62,3 +62,14 @@ export function toLocal(pl, dx, dy, yaw) {
   const forward = dx * sin + dy * cos;
   return { lateral, forward };
 }
+
+// toLocal の逆変換。体ローカル座標(lateral, forward)を、プレイヤーのyawに応じて
+// ワールド座標のオフセット(dx, dy)へ戻す（デバッグ描画で判定ゾーンを可視化するために使う）。
+export function fromLocal(pl, lateral, forward, yaw) {
+  const useYaw = yaw != null ? yaw : contactYawFor(pl);
+  const delta = angleDelta(baseYawFor(pl), useYaw);
+  const sin = Math.sin(delta), cos = Math.cos(delta);
+  const dx = lateral * cos + forward * sin;
+  const dy = -lateral * sin + forward * cos;
+  return { dx, dy };
+}
