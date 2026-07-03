@@ -545,19 +545,19 @@ export function startSwing(p, side) {
 
 // 現在速度cur を 目標速度target へ、加速度(accel)/減速度(decel)で dt 秒分だけ近づける。
 // 目標へ向かう（加速）か遠ざかる/止める（減速）かでレートを切り替える＝軽い慣性。
-// lateral=true（横方向=x軸）かつ低速域（|cur|/|target|がsidestepMaxSpeed以下）のときは、
-// サイドステップ専用の加減速（通常より速い）を使う。見た目のサイドステップ切り替え
-// (player3d.js / sidestepMaxSpeed) と同じしきい値を共有し、動き出し・止まり際だけ
-// キビキビ反応させる。高速域（体を横向きにして走る域）は通常のaccel/decelのまま。
-export function approachVelocity(cur, target, dt, lateral) {
+// lateral=true（横方向=x軸）のときは以下の2つでサイドステップ専用の加減速を使う:
+//   - 減速側: 速度がsidestepMaxSpeed以下（止まり際は常にキビキビ止まる）
+//   - 加速側: inSidestepPhase=true（動き出しから約1秒のサイドステップ局面。呼び出し側で
+//     targetもsidestepMaxSpeedにクランプ済み）。フェーズが終われば通常accelで最高速まで
+//     加速する「走り」に移行する。
+// 見た目のサイドステップ切り替え(player3d.js / sidestepMaxSpeed)は実速度ベースなので、
+// 加速側のクランプにより自動的にサイドステップモーションが約1秒表示される。
+export function approachVelocity(cur, target, dt, lateral, inSidestepPhase) {
   let accel = TUNING.move.accel;
   let decel = TUNING.move.decel;
   if (lateral) {
-    const regimeSpeed = Math.max(Math.abs(cur), Math.abs(target));
-    if (regimeSpeed <= TUNING.move.sidestepMaxSpeed) {
-      accel = TUNING.move.sidestepAccel;
-      decel = TUNING.move.sidestepDecel;
-    }
+    if (inSidestepPhase) accel = TUNING.move.sidestepAccel;
+    if (Math.abs(cur) <= TUNING.move.sidestepMaxSpeed) decel = TUNING.move.sidestepDecel;
   }
   // 目標と同方向に伸ばす（加速）か、0または反対方向へ寄せる（減速）かを判定
   const accelerating = Math.abs(target) > Math.abs(cur) && Math.sign(target) === Math.sign(cur || target);
@@ -855,11 +855,24 @@ export function update(dt) {
     const slow = charging ? TUNING.charge.moveSlow : 1;
     const speed = TUNING.move.playerSpeed * mover.stats.speed * slow;
     const allowY = state !== "serve-toss" && state !== "serve-stance";
+    // 横移動の動き出しから約sidestepPhaseSec秒は「サイドステップ局面」として扱う（時間ベース）。
+    // 横入力が無くなった、または向きが反転したら新たな動き出しとしてフェーズタイマーをリセットする。
+    const inputSign = Math.abs(v.dx) > 0.05 ? Math.sign(v.dx) : 0;
+    if (inputSign === 0 || inputSign !== mover.lateralInputSign) {
+      mover.lateralPhaseT = 0;
+    }
+    mover.lateralInputSign = inputSign;
+    const inSidestepPhase = mover.lateralPhaseT < TUNING.move.sidestepPhaseSec;
+    if (inputSign !== 0) mover.lateralPhaseT += dt;
     // 目標速度（入力ベクトル*速度）へ軽い加減速で滑らかに追従させる（慣性）。
     // 入力なしの軸は目標0へ減速で止まる。最高速にはすぐ乗る軽さに留める。
-    const targetVx = v.dx * speed;
+    // 横方向はサイドステップ局面中のみ目標速度をsidestepMaxSpeedでクランプする。
+    let targetVx = v.dx * speed;
+    if (inSidestepPhase) {
+      targetVx = Math.max(-TUNING.move.sidestepMaxSpeed, Math.min(TUNING.move.sidestepMaxSpeed, targetVx));
+    }
     const targetVy = allowY ? v.dy * speed : 0;
-    mover.vx = approachVelocity(mover.vx, targetVx, dt, true);
+    mover.vx = approachVelocity(mover.vx, targetVx, dt, true, inSidestepPhase);
     mover.vy = approachVelocity(mover.vy, targetVy, dt);
     if (mover.vx !== 0) setControlledX(mover, mover.x + mover.vx * dt);
     if (allowY && mover.vy !== 0) setControlledY(mover, mover.y + mover.vy * dt);

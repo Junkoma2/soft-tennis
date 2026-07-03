@@ -283,6 +283,8 @@ export function makePlayer(opts) {
     // 陣形選択時に applyFormation() が自陣2選手へ再設定する。相手は常に雁行で固定。
     positionBias: 80,
     stats: makeStats(),
+    lateralPhaseT: 0,     // 横移動の動き出しからの経過時間（秒）。sidestepPhaseSec未満はサイドステップ局面
+    lateralInputSign: 0,  // 直近の横入力の向き（-1/0/1）。反転/消失を検知してlateralPhaseTをリセットする
   }, opts);
 }
 
