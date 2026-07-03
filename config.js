@@ -206,7 +206,7 @@ export const TUNING = {
   },
   // 移動の速さ（m/s）
   move: {
-    playerSpeed: 7.0,   // 操作キャラの足の速さ
+    playerSpeed: 7.5,   // 操作キャラの足の速さ
     partnerSpeed: 4.2,  // 味方AIの足の速さ
     cpuBackSpeed: 3.8,  // 相手後衛の足の速さ（抜けるコースを残す）
     cpuFrontSpeed: 3.6, // 相手前衛の足の速さ
