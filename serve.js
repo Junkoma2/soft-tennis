@@ -260,7 +260,7 @@ export function startServe(isFirstPointOfGame) {
     if (playerIsServer() && !spectatorMode) {
       who = "自分のサーブ";
       setControlMode("serve");
-      hintText.textContent = "アンダー/オーバーとパワー・回転を選び、マウスで狙う場所を指す→準備後クリックでトス";
+      hintText.textContent = "サーブ準備中";
     } else {
       who = spectatorMode ? "自チームのサーブ" : "相方のサーブ";
       setControlMode("rally");
@@ -323,9 +323,7 @@ export function startToss(server) {
   server.pose = "toss";
   hideMessage(); // ゲージが見えるようにオーバーレイを消す
   if (playerIsServer() && !spectatorMode) {
-    hintText.textContent = serveCategory === "under"
-      ? "適正マーカーの高さでクリック＝アンダーカット。マウスで狙う場所を指す（WASDで立ち位置）"
-      : "適正マーカーの高さで 左クリック=フラット / 右クリック=スライス / Space+クリック=攻撃カット。マウスで狙う場所を指す（WASDで立ち位置）";
+    hintText.textContent = "適正マーカーの高さで打つ";
   }
 }
 
@@ -418,7 +416,7 @@ export function launchPlayerServe(type) {
   hideMessage();
   setState("rally");
   setControlMode("rally");
-  hintText.textContent = "WASDで移動・マウスで狙い。打点ゾーンで左クリック=シュート/右クリック=カット/Space+クリック=ロブ";
+  hintText.textContent = "";
 
   if (!serveAimCursor.set) resetServeAimCursor();
   launchServeBall("player", server, server.stats, {
@@ -492,9 +490,7 @@ export function aiLaunchServe(team) {
   hideMessage();
   toss.active = false;
   setState("rally");
-  hintText.textContent = (team === "cpu")
-    ? "レシーブ！ WASD移動・マウスで狙い。左クリック=シュート/右クリック=カット/Space+クリック=ロブ"
-    : "ラリー再開。WASD移動・マウスで狙い。左クリック=シュート/右クリック=カット/Space+クリック=ロブ";
+  hintText.textContent = (team === "cpu") ? "レシーブ！" : "";
 
   const server = currentServer();
   const plan = aiServePlan || { type: "underCut", power: "mid", spin: "mid" };

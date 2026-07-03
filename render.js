@@ -12,6 +12,7 @@ import {
   back, front, cpuBack, cpuFront, matchTime, serveCategory,
   player, cpu,
   debugDraw, aiDebug,
+  inputMode, controlLegendShownAt,
 } from "./state.js";
 
 import {
@@ -194,9 +195,23 @@ function drawCoverageForSide(side) {
   covMarker(baseHome.x, baseHome.y, "rgba(220,38,38,0.95)");
 }
 
-/* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当を常時表示 ---- */
+/* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当 ----
+ * 操作方法は開始画面の「操作ガイド」に集約したため、試合中は常時表示しない。
+ * ・スワイプ操作（スマホ想定）ではマウスのクリック割当は関係ないため出さない
+ * ・マウス操作でも、state が切り替わった直後の数秒だけ一時的に出してフェードアウトする */
+const CONTROL_LEGEND_SHOW_SEC = 3;
+const CONTROL_LEGEND_FADE_SEC = 1;
 export function drawControlLegend() {
   if (state === "ready" || spectatorMode) return;
+  if (inputMode !== "mouse") return;
+
+  const elapsed = matchTime - controlLegendShownAt;
+  const visibleFor = CONTROL_LEGEND_SHOW_SEC + CONTROL_LEGEND_FADE_SEC;
+  if (elapsed >= visibleFor) return;
+  const alpha = elapsed <= CONTROL_LEGEND_SHOW_SEC
+    ? 1
+    : Math.max(0, 1 - (elapsed - CONTROL_LEGEND_SHOW_SEC) / CONTROL_LEGEND_FADE_SEC);
+
   const isServer = (state === "serve-stance" || state === "serve-toss") && playerIsServer();
 
   const st = TUNING.serve.types;
@@ -213,6 +228,8 @@ export function drawControlLegend() {
         { color: SHOT_FAMILY_META.lob.color,   text: "Space+クリック: ロブ" },
       ];
 
+  ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.font = "700 10px sans-serif";
   let maxW = 0;
   lines.forEach(function (l) {
@@ -244,6 +261,7 @@ export function drawControlLegend() {
     ctx.textAlign = "left";
     ctx.fillText(l.text, bx + 22, ly + 9);
   });
+  ctx.restore();
 }
 
 /* ---- 相手サーブの種類を打つ前に表示（サーバー頭上のバッジ） ---- */
@@ -840,10 +858,6 @@ export function drawTimingGauge() {
     ctx.beginPath();
     ctx.arc(p.x, p.y, Math.max(8, 0.35 * p.s), 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.font = "700 10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("\u30de\u30a6\u30b9\u3067\u72d9\u3046", W / 2, H - 10);
     return;
   }
 

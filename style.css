@@ -100,48 +100,38 @@ main {
 
 .screen[hidden] { display: none; }
 
-/* 試合画面はコートを主役にして余白を詰める */
+/* 試合画面はコートを主役にして余白を詰める。
+ * 操作パネルはコート上に重ねず、下部の専用帯に配置する（縦横画面共通の基本形）。
+ * コート(court-col)がflex:1 1 autoで残り高さを引き受け、パネルはflex:0 0 autoで
+ * 内容分の高さだけ確保するため、合計がビューポートを超えずスクロールが発生しない。 */
 #screen-game {
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
-  /* 操作ボタンをコート上に重ねるための基準。 */
-  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 操作ボタンをコート（キャンバス）上に重ねて表示する。別パネルの帯を作らず、
- * コートを広く見せる。コンテナ自体はクリックを透過し、ボタン群だけ受け取る。 */
+#screen-game[hidden] { display: none; }
+
+#screen-game .court-col {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 #screen-game .controls {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  left: auto;
-  bottom: auto;
-  transform: none;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-wrap: nowrap;
-  width: auto;
-  max-width: 48%;
+  position: static;
+  flex: 0 0 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  width: 100%;
+  max-width: none;
   gap: 6px;
-  z-index: 6;
-  pointer-events: none;
 }
 #screen-game .controls .control-group {
-  pointer-events: auto;
   background: rgba(255, 255, 255, .86);
   backdrop-filter: blur(2px);
   box-shadow: 0 2px 8px rgba(30, 27, 75, .18);
-}
-#screen-game .debug-controls-row {
-  top: auto;
-  bottom: 64px;
-}
-#screen-game .debug-controls-row .control-group {
-  background: rgba(15, 23, 42, .76);
-  border-color: rgba(148, 163, 184, .36);
-}
-#screen-game .debug-controls-row .control-label {
-  color: rgba(248, 250, 252, .82);
 }
 
 .description {
@@ -343,6 +333,19 @@ main {
 
 .games-sep { color: var(--color-border); }
 
+/* ---- コート列ラッパー ----
+ * 試合画面ではコートと操作パネルを縦積み(column)にするための実体コンテナ。
+ * #screen-game側でflex:1 1 auto（残り高さを引き受ける）を指定し、
+ * 操作パネル(.controls)はflex:0 0 auto（内容分のみ）にすることで、
+ * 縦横画面どちらでも合計高さがビューポートを超えずスクロールが発生しない。 */
+.court-col {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: center;
+}
+
 /* ---- コート（PC・横画面primary: 16:9のワイド中継ビュー） ----
  * 16:9を必ず保つため、高さ上限とビューポート幅の両方を尊重して自動サイズする。
  * （width:100%固定だと高さ制限時に横へ間延びして台形が歪むため使わない） */
@@ -372,14 +375,28 @@ main {
    * （main.jsのsyncViewport）、fillでも歪まずに画面いっぱいに描ける。 */
   object-fit: fill;
   background: transparent;
+  /* ゲーム操作用のタッチ(input.js側でpointerイベントを自前処理)を
+   * ブラウザ標準のスクロール/ズームに奪われないようにする。 */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* プレイ中は描画を端末画面いっぱいに広げる（向きを問わず全面）。 */
 body:has(#screen-game:not([hidden])) header,
 body:has(#screen-game:not([hidden])) footer { display: none; }
-body:has(#screen-game:not([hidden])) #app { padding: 0; max-width: none; }
+/* #appは基準がmin-height(下限)のみなので、操作パネル分だけ子要素が
+ * ビューポートより高く育つと、body(align-items:center)の中央寄せで
+ * 上下が均等にはみ出し、overflow:hiddenで上端・下端（操作説明など）が
+ * 見切れる。試合中はheightを明示してビューポート内に収める。 */
+body:has(#screen-game:not([hidden])) #app { padding: 0; max-width: none; height: 100dvh; min-height: 0; }
 body:has(#screen-game:not([hidden])) main {
-  flex: 1 1 auto; min-height: 0; width: 100%; display: flex;
+  /* 既定のalign-items:centerのままだと#screen-gameが内容分の高さ(コート+操作
+   * パネル)まで伸びて中央寄せされ、はみ出した分（操作パネル等）が見切れる。
+   * stretchでmainの高さいっぱいに広げ、#screen-game側のmin-height:0で
+   * 子要素（コート）を縮めて収める。 */
+  flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: stretch;
 }
 body:has(#screen-game:not([hidden])) #screen-game {
   flex: 1 1 auto; min-height: 0; width: 100%; gap: 0;
@@ -426,6 +443,11 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   align-items: stretch;
   justify-content: center;
   gap: 8px;
+  /* 試合中の誤操作防止: 長押し選択・コンテキストメニュー・ダブルタップズームを抑止 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 /* パワー・回転・攻守はボリューム調整バー（スライダー）で選ぶ */
@@ -487,10 +509,17 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 4px 8px;
+  /* 試合中の誤操作防止: 長押し選択・コンテキストメニュー・ダブルタップズームを抑止 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 .control-group[hidden] { display: none; }
 
+/* グループ見出しは極力小さく。ボタン自体の文言・アイコンで意味が伝わる場合は
+ * HTML側で省略し、サーブ/攻守など短縮しづらいものだけmini表示で残す。 */
 .control-label {
   font-size: 11px;
   color: var(--color-text-secondary);
@@ -499,14 +528,28 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   flex-shrink: 0;
 }
 
+.control-label-mini {
+  font-size: 9px;
+  min-width: 0;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0;
+  line-height: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .ctrl-btn {
   flex: 1;
-  padding: 8px 4px;
+  min-height: 44px;
+  padding: 10px 6px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
   background: var(--color-bg);
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   transition: background .12s, color .12s, border-color .12s;
@@ -514,6 +557,7 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 .ctrl-btn.is-active {
@@ -711,7 +755,9 @@ footer a:hover { color: var(--color-text); }
 /* 横画面（スマホ横向き・PCの横長ウィンドウ全般）。
  * 「試合映像を見やすくする」ことを最優先に、UI（スコア・操作）を左右端に置かず
  * 上下に集約し、コートを横幅いっぱいに広げる。コートは横長ビュー（config.jsの
- * applyViewportでcanvasを横長解像度に切替）で、左右に地面の余白を見せる。 */
+ * applyViewportでcanvasを横長解像度に切替）で、左右に地面の余白を見せる。
+ * 操作パネルはコートに重ねず、画面下部の専用帯に配置する（縦画面と同じ構造に
+ * 揃えることで、向きに関わらずビューポート内にスクロールなしで収める）。 */
 @media (orientation: landscape) {
   body:has(#screen-game:not([hidden])) header,
   body:has(#screen-game:not([hidden])) footer {
@@ -734,7 +780,7 @@ footer a:hover { color: var(--color-text); }
     min-height: 0;
   }
 
-  /* 縦積み: スコア(上) → コート(中央・可変で最大化) → 操作パネル(下) */
+  /* 縦並び: スコア＋コート(上・可変で最大化) → 操作パネル(下・専用帯) */
   #screen-game {
     flex-direction: column;
     align-items: stretch;
@@ -745,24 +791,38 @@ footer a:hover { color: var(--color-text); }
     min-height: 0;
   }
 
-  /* スコアは上端に横一列で薄く集約 */
+  /* スコアはコート列の上端に薄く重ねる（専用の帯は作らずコートを広く保つ） */
   #screen-game .scoreboard {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    right: 0;
     order: 0;
     flex-direction: row;
     align-items: center;
     justify-content: center;
     gap: 18px;
     padding: 2px 8px;
-    width: 100%;
-    flex-shrink: 0;
+    z-index: 5;
+    pointer-events: none;
   }
 
-  /* コートは残り高さを全て使い、横幅いっぱいに広げる（aspect比はcanvas側が保持） */
-  .court-wrap {
+  /* コート＋スコアの列。残りの縦幅いっぱいを使い、操作パネル分だけ縮む */
+  #screen-game .court-col {
+    position: relative;
     order: 1;
     flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+  }
+
+  /* コートは列の高さいっぱいに広げる（aspect比はcanvas側が保持） */
+  .court-wrap {
     width: 100%;
-    height: auto;
+    height: 100%;
     min-height: 0;
     aspect-ratio: auto;
     display: flex;
@@ -770,29 +830,37 @@ footer a:hover { color: var(--color-text); }
     justify-content: center;
   }
 
-  /* 操作パネルはコート上の右上隅に縦積みで重ねる（中央のプレイを邪魔しない）。 */
+  /* 操作パネルはコート下部の専用帯として配置する（重ねない）。
+   * 高さは内容分のみ確保し（flex-shrink:0）、コート側(court-col)が
+   * flex:1 1 autoで残り高さを引き受けるため、合計がビューポートを超えない。 */
   #screen-game .controls {
-    flex-direction: column;
+    position: static;
+    order: 2;
+    flex: 0 0 auto;
+    flex-direction: row;
     flex-wrap: nowrap;
-    align-items: flex-end;
-    justify-content: flex-start;
-    max-width: 46%;
-    gap: 6px;
+    align-items: stretch;
+    justify-content: center;
+    width: 100%;
+    max-width: none;
+    gap: 4px;
+    pointer-events: auto;
   }
 
   #screen-game .controls .control-group {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-width: 0;
-    padding: 3px 8px;
+    padding: 3px 6px;
   }
 
-  #screen-game #shot-select-controls { flex: 1 1 280px; }
-  #screen-game #shot-controls { flex: 0 1 160px; }
+  #screen-game #shot-select-controls { flex: 2 1 auto; }
+  #screen-game #shot-controls { flex: 1 1 auto; }
 
   #screen-game .hint { display: none; }
 }
 
-/* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作系は縦積み。 */
+/* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作パネルはコート下の
+ * 専用帯（ベースルールと同じ構造）に画面幅いっぱいで並べる。 */
 @media (orientation: portrait) {
   #app { max-width: 560px; }
   .court-wrap {
@@ -803,6 +871,19 @@ footer a:hover { color: var(--color-text); }
   .controls .control-group,
   #shot-select-controls,
   #shot-controls { flex: 1 1 auto; min-width: 0; }
+
+  #screen-game .controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  #screen-game .controls .control-group {
+    flex: 1 1 140px;
+  }
+
+  #screen-game #shot-select-controls { flex: 2 1 240px; }
+  #screen-game #shot-controls { flex: 1 1 120px; }
 }
 
 /* ---- バーチャルスティック（スマホの移動操作） ---- */
@@ -848,29 +929,20 @@ footer a:hover { color: var(--color-text); }
 }
 
 /* ---- 球種選択（3系統・色分け。各ボタンに専用キー番号を表示） ----
- * シュート(1)/カット(2)/ロブ(3)。内部の5種は打点高さ・ため量で自動振り分け。 */
+ * シュート(1)/カット(2)/ロブ(3)。内部の5種は打点高さ・ため量で自動振り分け。
+ * 補足説明文は廃止し、その分ボタン自体を大きく・押しやすくしている。 */
 .ctrl-btn.shot-sel {
-  font-size: 11px;
-  padding: 7px 2px;
+  font-size: 13px;
+  min-height: 48px;
+  padding: 10px 4px;
   white-space: nowrap;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  gap: 4px;
   line-height: 1.15;
 }
-
-/* 各ボタン下の補足（高い=フラット 等）。詰め込みすぎない小さめ表示 */
-.shot-note {
-  font-size: 8px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  white-space: normal;
-  text-align: center;
-  line-height: 1.1;
-}
-
-.ctrl-btn.shot-sel.is-active .shot-note { color: rgba(255, 255, 255, 0.85); }
 
 /* 3系統の色分け（非アクティブ時の縁取り。アクティブ時は系統色で塗る） */
 .ctrl-btn.shot-shoot { border-color: #FB923C; }
@@ -919,4 +991,24 @@ footer a:hover { color: var(--color-text); }
 /* ---- 開始画面のポジション・陣形セレクタ ---- */
 #screen-ready .control-group {
   width: 100%;
+}
+
+/* ---- 開始画面: デバッグ表示トグル（チェックボックス＋説明文） ---- */
+.toggle-group {
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.toggle-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.toggle-note {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  flex: 1 1 auto;
 }

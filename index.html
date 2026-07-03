@@ -87,6 +87,11 @@
           <button class="ctrl-btn is-active" data-input-mode="swipe" type="button">スワイプ</button>
           <button class="ctrl-btn" data-input-mode="mouse" type="button">マウス</button>
         </div>
+        <label class="control-group toggle-group" id="debug-visible-toggle-group" for="debug-visible-toggle">
+          <span class="control-label">デバッグ表示</span>
+          <input type="checkbox" id="debug-visible-toggle" class="toggle-checkbox" />
+          <span class="toggle-note">試合中に当たり判定・軌道等のボタンを表示</span>
+        </label>
         <details class="start-panel" id="player-stats-panel">
           <summary>選手ステータスを調整</summary>
           <div class="stats-grid" id="stats-grid"><!-- playerStatsPanel.js が生成 --></div>
@@ -106,7 +111,8 @@
           <div class="guide-body">
             <p><strong>移動</strong> WASD（スマホは左下スティック）／<strong>狙い</strong> マウス追従</p>
             <p><strong>打つ</strong> 左=シュート・右=カット・Space+クリック=ロブ。高低/深浅で球種が変化</p>
-            <p><strong>サーブ</strong> オーバー/アンダーを選び、マウスで対角コートを狙ってクリック。コート外はフォルト</p>
+            <p><strong>スマホ（スワイプ操作）</strong> コート上のスワイプで狙いを指定（左右=コース／上=深さ）。球種は下部の球種ボタン（シュート/カット/ロブ）で切り替える</p>
+            <p><strong>サーブ</strong> オーバー/アンダーを選び、マウスで対角コートを狙ってクリックでトス。適正マーカーの高さで 左=フラット・右=スライス、Space+左=アンダーカット・Space+右=攻撃カット。コート外はフォルト</p>
             <p><strong>攻守</strong> 相方AIの積極性。カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ</p>
           </div>
         </details>
@@ -131,39 +137,38 @@
           </div>
         </div>
 
-        <div class="court-wrap">
-          <canvas id="court" width="720" height="1080"></canvas>
-          <div id="message-overlay" class="message-overlay" hidden>
-            <p id="message-text"></p>
-          </div>
-          <div id="move-stick" class="move-stick">
-            <div id="move-stick-knob" class="move-stick-knob"></div>
+        <div class="court-col" id="court-col">
+          <div class="court-wrap">
+            <canvas id="court" width="720" height="1080"></canvas>
+            <div id="message-overlay" class="message-overlay" hidden>
+              <p id="message-text"></p>
+            </div>
+            <div id="move-stick" class="move-stick">
+              <div id="move-stick-knob" class="move-stick-knob"></div>
+            </div>
           </div>
         </div>
 
         <div class="controls" id="controls">
-          <div class="control-group" id="serve-category-controls" hidden>
-            <span class="control-label">サーブ</span>
+          <div class="control-group" id="serve-category-controls" hidden aria-label="サーブ">
+            <span class="control-label control-label-mini">サーブ</span>
             <button class="ctrl-btn is-active" data-serve-category="over" type="button">オーバー</button>
             <button class="ctrl-btn" data-serve-category="under" type="button">アンダー</button>
           </div>
-          <div class="control-group" id="aggression-controls" hidden>
-            <span class="control-label">攻守</span>
+          <div class="control-group" id="aggression-controls" hidden aria-label="相方AIの攻守">
+            <span class="control-label control-label-mini">攻守</span>
             <input class="ctrl-slider" id="aggression-range" type="range" min="0" max="1" step="0.25" value="0.5" aria-label="相方AIの攻守" />
             <span class="ctrl-slider-val" id="aggression-val">中</span>
           </div>
-          <div class="control-group" id="shot-select-controls">
-            <span class="control-label">球種（スマホ）</span>
-            <button class="ctrl-btn shot-sel shot-shoot is-active" data-shotsel="shoot" type="button"><span class="shot-dot" style="background:#FB923C"></span>シュート<span class="shot-note">高い=フラット/低い=ドライブ</span></button>
-            <button class="ctrl-btn shot-sel shot-cut" data-shotsel="cut" type="button"><span class="shot-dot" style="background:#38BDF8"></span>カット<span class="shot-note">深い=スライス/浅い=ドロップ</span></button>
+          <div class="control-group" id="shot-select-controls" aria-label="球種">
+            <button class="ctrl-btn shot-sel shot-shoot is-active" data-shotsel="shoot" type="button"><span class="shot-dot" style="background:#FB923C"></span>シュート</button>
+            <button class="ctrl-btn shot-sel shot-cut" data-shotsel="cut" type="button"><span class="shot-dot" style="background:#38BDF8"></span>カット</button>
             <button class="ctrl-btn shot-sel shot-lob" data-shotsel="lob" type="button"><span class="shot-dot" style="background:#FACC15"></span>ロブ</button>
           </div>
-          <div class="control-group" id="shot-controls">
-            <span class="control-label">打球（スマホ）</span>
+          <div class="control-group" id="shot-controls" aria-label="打球">
             <button class="ctrl-btn ctrl-btn-primary" id="charge-btn" type="button">打つ</button>
           </div>
-          <div class="control-group" id="debug-controls">
-            <span class="control-label">デバッグ</span>
+          <div class="control-group" id="debug-controls" aria-label="デバッグ">
             <button class="ctrl-btn" data-debug="hitboxes" type="button">当たり判定</button>
             <button class="ctrl-btn" data-debug="trajectory" type="button">軌道</button>
             <button class="ctrl-btn" data-debug="params" type="button">パラメータ</button>
@@ -171,7 +176,7 @@
           </div>
         </div>
 
-        <p class="hint" id="hint-text">PC推奨：WASDで移動・マウスで狙い・打点ゾーンで左クリック=シュート/右クリック=カット/Space+クリック=ロブ</p>
+        <p class="hint" id="hint-text"></p>
       </div>
 
       <div id="screen-result" class="screen" hidden>

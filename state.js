@@ -33,6 +33,7 @@ export const moveStickKnob = document.getElementById("move-stick-knob");
 export const formationControls = document.getElementById("formation-controls");
 export const handedControls = document.getElementById("handed-controls");
 export const inputModeControls = document.getElementById("input-mode-controls");
+export const debugVisibleToggle = document.getElementById("debug-visible-toggle");
 export const controlsPanel     = document.getElementById("controls");
 export const playerPicker        = document.getElementById("player-picker");
 export const pickerPlayerBack    = document.getElementById("picker-player-back");
@@ -83,6 +84,20 @@ export const cpuStats = {
 //  ready / serve-stance(トス前) / serve-toss(トス中) /
 //  rally / fault / point / gameset / matchend
 export let state = "ready";
+
+// デバッグボタン群（当たり判定・軌道・パラメータ・守備範囲）を試合画面に表示するか。
+// 通常プレイでは非表示にし、開始画面のトグルでオンにした場合だけ試合中に出す。
+// 直前の選択を次回起動でも引き継げるよう localStorage に保存する（無ければ既定OFF）。
+const DEBUG_VISIBLE_KEY = "softTennisDebugControlsVisible";
+export let debugControlsVisible = false;
+try {
+  debugControlsVisible = localStorage.getItem(DEBUG_VISIBLE_KEY) === "1";
+} catch (e) { /* localStorage不可の環境（プライベートモード等）は既定OFFのまま */ }
+export function setDebugControlsVisible(v) {
+  debugControlsVisible = !!v;
+  try { localStorage.setItem(DEBUG_VISIBLE_KEY, debugControlsVisible ? "1" : "0"); } catch (e) { /* 保存できなくても動作に支障なし */ }
+}
+
 export const debugDraw = { hitboxes: false, trajectory: false, params: false, coverage: false };
 export let debugHitboxes = false;
 export let debugTrajectory = false;
@@ -112,7 +127,15 @@ export let lastTime = 0;
 export let pendingSwing = 0;    // 早めにタップした時の予約スイング（秒）
 export let matchTime = 0;       // 経過時間（タイミング計算用）
 
-export function setState(v) { state = v; }
+// 画面左上の操作レジェンド（drawControlLegend）を出し始めた matchTime。
+// state が切り替わるたび（サーブ構え/トス/ラリー開始など）にリセットし、
+// そこから数秒だけ一時表示してフェードアウトさせる（常時表示はしない）。
+export let controlLegendShownAt = -Infinity;
+
+export function setState(v) {
+  if (v !== state) controlLegendShownAt = matchTime;
+  state = v;
+}
 export function setServeFaults(v) { serveFaults = v; }
 export function incServeFaults() { serveFaults++; }
 export function setRafId(v) { rafId = v; }

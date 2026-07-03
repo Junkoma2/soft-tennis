@@ -13,7 +13,7 @@ import {
   spectatorMode, rallyControlled, ball,
   setPendingSwing, setPendingShot, setPendingPower, setPendingAimX, setPendingAimY,
   selectedShot, setSelectedShot, shotSelectControls, mouseAim, stick, swipe,
-  serveAimCursor, chargeBtn, serveCategoryControls, debugDraw,
+  serveAimCursor, chargeBtn, serveCategoryControls, debugDraw, debugControls,
   setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
   setDebugHitboxes, setDebugTrajectory, setDebugParams, setDebugCoverage,
@@ -22,6 +22,8 @@ import {
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
+  debugVisibleToggle, debugControlsVisible, setDebugControlsVisible,
+  controlsPanel,
 } from "./state.js";
 
 import { updateMouseAimFromEvent } from "./main.js";
@@ -280,6 +282,22 @@ if (serveCategoryControls) {
   syncDebugButtons();
 }
 
+/* ---- デバッグボタン群の表示可否（開始画面トグル） ----
+ * 通常プレイではコート下の操作パネルにデバッグボタンを出さない。
+ * 開始画面の「デバッグ表示」トグルをONにした場合のみ、試合中に表示する。
+ * 選択は localStorage に保存し（state.js側）、次回起動時も引き継ぐ。 */
+function applyDebugControlsVisibility() {
+  if (debugControls) debugControls.hidden = !debugControlsVisible;
+}
+if (debugVisibleToggle) {
+  debugVisibleToggle.checked = debugControlsVisible;
+  debugVisibleToggle.addEventListener("change", function () {
+    setDebugControlsVisible(debugVisibleToggle.checked);
+    applyDebugControlsVisibility();
+  });
+}
+applyDebugControlsVisibility();
+
 // 攻守の割合（相方AIの積極性）もスライダーで選ぶ（0=守り 〜 1=攻め）。
 (function bindAggressionSlider() {
   const range = document.getElementById("aggression-range");
@@ -479,6 +497,12 @@ canvas.addEventListener("mousemove", function (e) {
 });
 // 右クリックのコンテキストメニューは抑止（右クリック=カット/カットサーブとして使う）
 canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+// 操作パネル（球種・打球・サーブ・攻守・デバッグボタン群）は長押しでの
+// コンテキストメニュー（コピー/共有メニュー等）が誤って出ないよう抑止する。
+if (controlsPanel) {
+  controlsPanel.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+}
 
 // コートをクリック: 球種はクリックしたボタンで決まる
 //   左クリック = シュート（フラット/ドライブ）/ サーブはトス→フラットサーブ

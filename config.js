@@ -334,16 +334,20 @@ export const G = 9.8; // 重力 m/s^2
 /* ---- カメラ（自陣ベースライン後方やや上空からの中継カメラ視点） ----
  * 横長16:9（960×540）想定。自陣ベースラインを画面下部・幅85%、相手ベースラインを
  * 画面上から約18%・幅40%の左右対称台形に投影する。俯角(pitch)を立てすぎず横方向の
- * 位置差がはっきり読めるパラメータ。fov/horizonYは下記の幾何から逆算した固定値。 */
+ * 位置差がはっきり読めるパラメータ。fov/horizonYは下記の幾何から逆算した固定値。
+ * pitchは applyViewport() が画面のアスペクト比に応じて上書きする（縦長ほど立てる）。 */
 export const CAM = {
   y: 30.0,       // 自陣ベースライン(11.885)後方のカメラ距離
   z: 11.0,       // カメラ高さ
-  pitch: 0.62,   // 俯角（縦長用にやや立てる。遠側コートの圧縮を緩和）
+  pitch: 0.62,   // 俯角（横長の基準値。縦長画面ではapplyViewportが上書きする）
   fov: 1300,     // 焦点距離相当（縦長でコート幅が収まるよう）
   horizonY: 800, // 投影の縦オフセット（縦長で奥行きを画面に収める）
   cos: Math.cos(0.62),
   sin: Math.sin(0.62),
 };
+
+const CAM_PITCH_BASE = 0.62;  // 横長・正方形に近い画面の俯角
+const CAM_PITCH_TALL = 1.08;  // 縦長(アスペクト比約2.2以上)の俯角上限
 
 /* ---- 試合状態の定数 ---- */
 export const POINT_LABELS = ["0", "1", "2", "3"];
@@ -409,6 +413,17 @@ export const Y_RANGE_FRONT = { min: 0.6, max: 17.0 };
 export function applyViewport(availW, availH) {
   W = Math.max(320, Math.round(availW));
   H = Math.max(320, Math.round(availH));
+  // 縦長画面ほど俯角を立てる。横幅基準のfovだけでは、幅に対して高さが大きい
+  // ほど「近側コートが画面上部の一部にしか収まらず、下側が余った芝のまま」に
+  // なる（横幅で決まるfovが小さくなるほど、同じ俯角では奥行き方向の縮尺も
+  // 小さくなり続けるため）。アスペクト比(H/W)に応じてpitchを立てることで、
+  // 横に余白を持たせたまま（コートが画面端で見切れないまま）、縦方向によく
+  // 使われる範囲（選手が下がれる後方まで）を画面下部近くまで描画できるようにする。
+  const aspect = H / W;
+  const pitchT = Math.max(0, Math.min(1, (aspect - 1) / 1.2));
+  CAM.pitch = CAM_PITCH_BASE + pitchT * (CAM_PITCH_TALL - CAM_PITCH_BASE);
+  CAM.cos = Math.cos(CAM.pitch);
+  CAM.sin = Math.sin(CAM.pitch);
   const fovByHeight = 1.95 * H; // 高さ基準（横長で支配的）
   const fovByWidth  = 1.55 * W; // 横幅基準（縦長・横に狭い画面で支配的）。鋭いワイド球で自陣後方の選手が見切れないよう左右に余白を確保
   CAM.fov = Math.min(fovByHeight, fovByWidth);
