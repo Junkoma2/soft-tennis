@@ -150,28 +150,25 @@
         </div>
 
         <div class="controls" id="controls">
-          <div class="control-group" id="serve-category-controls" hidden>
-            <span class="control-label">サーブ</span>
+          <div class="control-group" id="serve-category-controls" hidden aria-label="サーブ">
+            <span class="control-label control-label-mini">サーブ</span>
             <button class="ctrl-btn is-active" data-serve-category="over" type="button">オーバー</button>
             <button class="ctrl-btn" data-serve-category="under" type="button">アンダー</button>
           </div>
-          <div class="control-group" id="aggression-controls" hidden>
-            <span class="control-label">攻守</span>
+          <div class="control-group" id="aggression-controls" hidden aria-label="相方AIの攻守">
+            <span class="control-label control-label-mini">攻守</span>
             <input class="ctrl-slider" id="aggression-range" type="range" min="0" max="1" step="0.25" value="0.5" aria-label="相方AIの攻守" />
             <span class="ctrl-slider-val" id="aggression-val">中</span>
           </div>
-          <div class="control-group" id="shot-select-controls">
-            <span class="control-label">球種（スマホ）</span>
-            <button class="ctrl-btn shot-sel shot-shoot is-active" data-shotsel="shoot" type="button"><span class="shot-dot" style="background:#FB923C"></span>シュート<span class="shot-note">高い=フラット/低い=ドライブ</span></button>
-            <button class="ctrl-btn shot-sel shot-cut" data-shotsel="cut" type="button"><span class="shot-dot" style="background:#38BDF8"></span>カット<span class="shot-note">深い=スライス/浅い=ドロップ</span></button>
+          <div class="control-group" id="shot-select-controls" aria-label="球種">
+            <button class="ctrl-btn shot-sel shot-shoot is-active" data-shotsel="shoot" type="button"><span class="shot-dot" style="background:#FB923C"></span>シュート</button>
+            <button class="ctrl-btn shot-sel shot-cut" data-shotsel="cut" type="button"><span class="shot-dot" style="background:#38BDF8"></span>カット</button>
             <button class="ctrl-btn shot-sel shot-lob" data-shotsel="lob" type="button"><span class="shot-dot" style="background:#FACC15"></span>ロブ</button>
           </div>
-          <div class="control-group" id="shot-controls">
-            <span class="control-label">打球（スマホ）</span>
+          <div class="control-group" id="shot-controls" aria-label="打球">
             <button class="ctrl-btn ctrl-btn-primary" id="charge-btn" type="button">打つ</button>
           </div>
-          <div class="control-group" id="debug-controls">
-            <span class="control-label">デバッグ</span>
+          <div class="control-group" id="debug-controls" aria-label="デバッグ">
             <button class="ctrl-btn" data-debug="hitboxes" type="button">当たり判定</button>
             <button class="ctrl-btn" data-debug="trajectory" type="button">軌道</button>
             <button class="ctrl-btn" data-debug="params" type="button">パラメータ</button>

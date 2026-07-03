@@ -23,6 +23,7 @@ import {
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
   debugVisibleToggle, debugControlsVisible, setDebugControlsVisible,
+  controlsPanel,
 } from "./state.js";
 
 import { updateMouseAimFromEvent } from "./main.js";
@@ -496,6 +497,12 @@ canvas.addEventListener("mousemove", function (e) {
 });
 // 右クリックのコンテキストメニューは抑止（右クリック=カット/カットサーブとして使う）
 canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+// 操作パネル（球種・打球・サーブ・攻守・デバッグボタン群）は長押しでの
+// コンテキストメニュー（コピー/共有メニュー等）が誤って出ないよう抑止する。
+if (controlsPanel) {
+  controlsPanel.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+}
 
 // コートをクリック: 球種はクリックしたボタンで決まる
 //   左クリック = シュート（フラット/ドライブ）/ サーブはトス→フラットサーブ
