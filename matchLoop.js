@@ -696,7 +696,7 @@ export function updateServeReady(dt) {
   } else {
     if ((serveReady.timer >= cfg.aiReady && allInPosition) || timedOut) {
       serveReady.ready = true;
-      hintText.textContent = "全員準備OK。クリックでトス。マウスで狙う場所を指す";
+      hintText.textContent = "全員準備OK。トスをどうぞ";
     }
   }
 }

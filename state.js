@@ -127,7 +127,15 @@ export let lastTime = 0;
 export let pendingSwing = 0;    // 早めにタップした時の予約スイング（秒）
 export let matchTime = 0;       // 経過時間（タイミング計算用）
 
-export function setState(v) { state = v; }
+// 画面左上の操作レジェンド（drawControlLegend）を出し始めた matchTime。
+// state が切り替わるたび（サーブ構え/トス/ラリー開始など）にリセットし、
+// そこから数秒だけ一時表示してフェードアウトさせる（常時表示はしない）。
+export let controlLegendShownAt = -Infinity;
+
+export function setState(v) {
+  if (v !== state) controlLegendShownAt = matchTime;
+  state = v;
+}
 export function setServeFaults(v) { serveFaults = v; }
 export function incServeFaults() { serveFaults++; }
 export function setRafId(v) { rafId = v; }
