@@ -695,6 +695,45 @@ export function predictedContactX() {
   if (landing) return landing.x;
   return ball.x;
 }
+
+// 早めのテイクバック準備（pose="idle"→"prep"）の共通判定（見た目のみ・打球判定には無関係）。
+// 対象: 操作キャラ・味方パートナー・cpu後衛・cpu前衛のいずれでも同じ基準で適用する。
+//   side: そのプレイヤーの陣営（"player"/"cpu"）。p: 対象選手。
+// 前衛位置にいる選手には適用しない。前衛はネット際でボレー対応するため、ボールが
+// ネットを越えた時点で構えるのは不自然（実座標のネットからの距離で判定し、固定の
+// 役割クラスでは判定しない＝ダブル前衛/ダブル後衛など陣形が変わっても正しく動く）。
+// 前衛域の閾値は既存のスマッシュ判定（TUNING.smash.netDist）を流用する。
+export function updatePrepPose(p, side) {
+  if (p.pose === "swing" || p.recoverT > 0) return;
+  const homeSign = side === "player" ? 1 : -1;
+  const isFrontPosition = p.y * homeSign < TUNING.smash.netDist;
+  if (isFrontPosition) {
+    if (p.pose === "prep") {
+      p.pose = "idle";
+      p.swingSideLocked = false;
+    }
+    return;
+  }
+  const opponentSide = side === "player" ? "cpu" : "player";
+  const ballCrossedToOwnSide = ball.lastHitter === opponentSide && ball.y * homeSign > 0;
+  if (ballCrossedToOwnSide && p.pose === "idle") {
+    // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
+    // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
+    // ここで決めたフォア/バックは、続くready/swingでも上書きせず引き継ぐ
+    // （呼び出し元のhittable分岐参照）＝一連の構え〜スイングで種別を固定する。
+    p.pose = "prep";
+    // AI（後衛の回り込み等）がすでにswingSideを確定・ロック済みなら、それを
+    // 最優先で使い再計算しない（aiTask.jsのdecideBackStrokeTask参照）。
+    // 未ロックのときだけここで打点予測から決めてロックする。
+    if (!p.swingSideLocked) {
+      p.swingSide = isBackhandFor(side, p, predictedContactX()) ? "back" : "fore";
+      p.swingSideLocked = true;
+    }
+  } else if (!ballCrossedToOwnSide && p.pose === "prep") {
+    p.pose = "idle";
+    p.swingSideLocked = false;
+  }
+}
 /* ===========================================================
  * メインループ
  * =========================================================== */
@@ -939,6 +978,13 @@ export function update(dt) {
   updateCpuBack(dt);
   updateCpuFront(dt);
 
+  // 早めのテイクバック準備（見た目のみ）を、操作キャラ以外の3人（味方パートナー・
+  // cpu後衛・cpu前衛）にも同じ基準で適用する。操作キャラ分は下の構え管理内で行う。
+  const partner = (rallyControlled === back) ? front : back;
+  updatePrepPose(partner, "player");
+  updatePrepPose(cpuBack, "cpu");
+  updatePrepPose(cpuFront, "cpu");
+
   // 予約スイング（アシスト）: 早めに離した直後の猶予内にゾーンへ入れば打つ
   if (pendingSwing > 0) {
     setPendingSwing(pendingSwing - dt);
@@ -949,11 +995,6 @@ export function update(dt) {
   // （離して打つ操作は廃止。WASD移動はため中も常に有効）
   const cp = rallyControlled;
   const hittable = canPlayerHit(cp);
-  // ボールがネットを越えて自陣側(y>0)に入ったら、打点リーチに入る前から
-  // テイクバック準備（"prep"）に入ってよい（現状より少し早めの準備動作）。
-  // 自陣側＝相手が打ったボールが自分のコート側(y>0)に入っている状態。
-  const ballCrossedToOwnSide = ball.lastHitter === "cpu" && ball.y > 0;
-  const canPrepareSwing = !(cp.recoverT > 0) && cp.pose !== "swing";
   if (hittable) {
     if (ballHittableSince < 0) setBallHittableSince(matchTime);
     if (cp.pose !== "swing") {
@@ -976,26 +1017,10 @@ export function update(dt) {
   } else {
     setBallHittableSince(-1);
     if (cp.pose === "ready" || cp.pose === "prep") cp.pose = "idle";
-    // 観戦モードでは操作キャラも moveAutoAI が動かす＝立ち位置と一体で fore/back を
-    // 確定・保持している。ここで二重に swingSide を書くと競合・ちらつくため、
-    // 観戦時は見た目のテイクバックだけ行い swingSide は触らない。
-    if (!spectatorMode) {
-      if (cp.pose === "idle") cp.swingSideLocked = false;
-      if (canPrepareSwing && ballCrossedToOwnSide && cp.pose === "idle") {
-        // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
-        // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
-        // ここで決めたフォア/バックは、続く ready/swing でも上書きせず引き継ぐ
-        // （上の hittable 分岐参照）＝一連の構え〜スイングで種別を固定する。
-        cp.pose = "prep";
-        cp.swingSide = isBackhandFor("player", cp, predictedContactX()) ? "back" : "fore";
-        cp.swingSideLocked = true;
-      } else if (!ballCrossedToOwnSide && cp.pose === "prep") {
-        cp.pose = "idle";
-        cp.swingSideLocked = false;
-      }
-    } else if (canPrepareSwing && ballCrossedToOwnSide && cp.pose === "idle") {
-      cp.pose = "prep";
-    }
+    // 早めのテイクバック準備（見た目のみ）は共通関数に一本化。前衛位置にいる間は
+    // 適用されない（updatePrepPose内で判定）。観戦モードでも同じ基準で適用する
+    // （moveAutoAIが確定済みのswingSideは上書きしない＝関数内でロック済みなら再計算しない）。
+    updatePrepPose(cp, "player");
     if (charge.active && charge.source === "auto") {
       charge.active = false;
       charge.source = null;
