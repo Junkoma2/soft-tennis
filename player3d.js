@@ -48,6 +48,7 @@ const FRUST_H = 2.4;     // カメラが収める縦範囲(m)
 const ASPECT = 0.62;     // ビューポート横/縦比
 const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
+const TOP_PAD = 8;       // Keep far-side players from clipping against the canvas top edge.
 const D = Math.PI / 180;
 
 export function isReady3D() { return initialized; }
@@ -265,7 +266,9 @@ export function render3D() {
   for (const pl of players) {
     const g = project(pl.x, pl.y, 0);
     const s = g.s;
-    const vh = s * VH_K;
+    const baseVh = s * VH_K;
+    const maxVhByTop = (g.y - TOP_PAD) / Math.max(0.001, 1 - FEET_FRAC);
+    const vh = Math.max(1, Math.min(baseVh, maxVhByTop));
     const vw = vh * ASPECT;
     const vpX = Math.round(g.x - vw / 2);
     const vpYbottom = Math.round((H - g.y) - FEET_FRAC * vh);
