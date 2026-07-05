@@ -49,6 +49,10 @@ const ASPECT = 0.62;     // ビューポート横/縦比
 const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
 const TOP_PAD = 8;       // Keep far-side players from clipping against the canvas top edge.
+// テイクバック（ラケットを後ろ・上に引くポーズ）は肩の回転で腕とラケット先端が
+// 通常の構え姿勢より高く上がり、正射影カメラの上端(top)を超えてクリップされる
+// ことがある。bottom側はそのままに、top側だけ余裕を持たせて回避する。
+const FRUST_TOP_EXTRA = 0.55;
 const D = Math.PI / 180;
 
 export function isReady3D() { return initialized; }
@@ -78,7 +82,7 @@ export async function init3D(canvas) {
 
   // 固定の斜め上カメラ（正射影）
   const half = FRUST_H / 2;
-  camera = new THREE.OrthographicCamera(-half * ASPECT, half * ASPECT, half, -half, 0.1, 50);
+  camera = new THREE.OrthographicCamera(-half * ASPECT, half * ASPECT, half + FRUST_TOP_EXTRA, -half, 0.1, 50);
   camera.position.set(0, 2.0, 3.2);
   camera.lookAt(0, 0.95, 0);
 
