@@ -1011,7 +1011,12 @@ export function update(dt) {
         cp.swingSide = isBackhandFor("player", cp, predictedContactX()) ? "back" : "fore";
         cp.swingSideLocked = true;
       }
-      cp.pose = "ready";
+      // 既にテイクバック（prep）に入っている場合は ready へ戻さない。
+      // 打点ゾーンに入った瞬間に ready へ強制リセットすると、テイクバックが
+      // 途中で消えて「ため」の間ずっと構え直しのまま止まって見える
+      // （観戦モード/自動操作でテイクバックが遅く見える主因）。
+      // prep未着手（idle）のときだけ ready から入る。
+      if (cp.pose !== "prep") cp.pose = "ready";
     }
     if (!charge.active) startCharge("auto");
   } else {
