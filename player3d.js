@@ -44,16 +44,35 @@ function getMotion(pl) {
 }
 
 // 見た目チューニング
-const FRUST_H = 2.4;     // カメラが収める縦範囲(m)
+const FRUST_H = 2.4;     // カメラが収める縦範囲(m)（構え等、通常ポーズ基準）
 const ASPECT = 0.62;     // ビューポート横/縦比
 const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
 const TOP_PAD = 8;       // Keep far-side players from clipping against the canvas top edge.
-// テイクバック（ラケットを後ろ・上に引くポーズ）は肩の回転で腕とラケット先端が
-// 通常の構え姿勢より高く上がり、正射影カメラの上端(top)を超えてクリップされる
-// ことがある。bottom側はそのままに、top側だけ余裕を持たせて回避する。
-const FRUST_TOP_EXTRA = 0.55;
 const D = Math.PI / 180;
+
+// テイクバック（ラケットを後ろ・上に引くポーズ）は肩の回転で腕とラケット先端が
+// 通常の構え姿勢より高く上がる。上がり幅はストローク種別（前衛のフォア/バックと
+// 後衛の rearForehand）で大きく異なり、特に rearForehandTakeback/Load は肩を
+// 大きくひねるため通常構えの想定枠を大きく超える。
+//
+// 過去の対応（PR #64/#65）は固定値 FRUST_TOP_EXTRA でカメラの正射影 top のみを
+// 拡張したが、(a) 値がテイクバック種別ごとの実際の突出量を反映しておらず後衛の
+// より大きな振り上げでは不足し、(b) カメラの frustum を広げても
+// renderer.setViewport/setScissor に渡すピクセル矩形（vh, TOP_PAD 由来の
+// maxVhByTop）側は別計算のままだったため、frustum上は見えるはずのラケット先端が
+// scissor矩形の外側で切れたままになる、という2つの独立した問題があった。
+//
+// 今回は固定値をやめ、実際に適用したポーズの char.group を
+// THREE.Box3().setFromObject() で計測し、カメラのビュー空間へ変換した
+// 「そのフレームで実際に必要な上端拡張量」を毎回算出する。この同じ計測値を
+// (1) camera.top の一時的な拡張 と (2) ビューポート矩形の上限(maxVhByTop)の
+// 緩和 の両方に使うことで、frustumとscissorの拡張量を常に一致させる。
+const BASE_FRUST_TOP = FRUST_H / 2;
+const FRUST_TOP_MARGIN = 0.05; // 計測値への安全マージン(m)
+const _box = new THREE.Box3();
+const _boxCorner = new THREE.Vector3();
+const _camSpace = new THREE.Vector3();
 
 export function isReady3D() { return initialized; }
 
@@ -80,9 +99,10 @@ export async function init3D(canvas) {
 
   scene = new THREE.Scene();
 
-  // 固定の斜め上カメラ（正射影）
+  // 固定の斜め上カメラ（正射影）。top は通常ポーズ時の基準値で初期化し、
+  // テイクバック中など必要なフレームだけ render3D() 側で一時的に拡張する。
   const half = FRUST_H / 2;
-  camera = new THREE.OrthographicCamera(-half * ASPECT, half * ASPECT, half + FRUST_TOP_EXTRA, -half, 0.1, 50);
+  camera = new THREE.OrthographicCamera(-half * ASPECT, half * ASPECT, BASE_FRUST_TOP, -half, 0.1, 50);
   camera.position.set(0, 2.0, 3.2);
   camera.lookAt(0, 0.95, 0);
 
@@ -249,6 +269,27 @@ function poseNameFor3D(pl, isFront) {
   return poseNameForPlayer(pl, isFront);
 }
 
+// char.group（ポーズ適用後）のワールド包囲箱をカメラのビュー空間へ変換し、
+// 基準フラスタム上端(BASE_FRUST_TOP)をどれだけ超えているかを実測する。
+// 超えていなければ 0 を返す（通常ポーズでは拡張しない＝既存の見た目を変えない）。
+function measureFrustTopOverrun() {
+  _box.setFromObject(char.group);
+  if (_box.isEmpty()) return 0;
+  camera.updateMatrixWorld();
+  let maxViewY = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    _boxCorner.set(
+      i & 1 ? _box.max.x : _box.min.x,
+      i & 2 ? _box.max.y : _box.min.y,
+      i & 4 ? _box.max.z : _box.min.z,
+    );
+    _camSpace.copy(_boxCorner).applyMatrix4(camera.matrixWorldInverse);
+    if (_camSpace.y > maxViewY) maxViewY = _camSpace.y;
+  }
+  const overrun = maxViewY - BASE_FRUST_TOP;
+  return overrun > 0 ? overrun + FRUST_TOP_MARGIN : 0;
+}
+
 export function render3D() {
   if (!initialized) return;
   syncOverlayRect();
@@ -268,18 +309,8 @@ export function render3D() {
   const players = [cpuBack, cpuFront, back, front].slice().sort((a, b) => a.y - b.y);
 
   for (const pl of players) {
-    const g = project(pl.x, pl.y, 0);
-    const s = g.s;
-    const baseVh = s * VH_K;
-    const maxVhByTop = (g.y - TOP_PAD) / Math.max(0.001, 1 - FEET_FRAC);
-    const vh = Math.max(1, Math.min(baseVh, maxVhByTop));
-    const vw = vh * ASPECT;
-    const vpX = Math.round(g.x - vw / 2);
-    const vpYbottom = Math.round((H - g.y) - FEET_FRAC * vh);
     const isFront = (pl === front || pl === cpuFront);
-
-    // 画面外スキップ
-    if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) continue;
+    const swingSide = pl.swingSide === "back" ? "back" : "fore";
 
     setColors(pl);
 
@@ -311,9 +342,8 @@ export function render3D() {
 
     if (pl.pose === "swing" && state === "rally" && !ball.serving) {
       // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
-      const side = pl.swingSide === "back" ? "back" : "fore";
-      applySwingPhase(char.joints, side, swingPhaseOf(pl), BASE_HIP_Y, isFront);
-      pinBlend(pl, side === "back" ? "backhandFollow" : (isFront ? "forehandFollow" : "rearForehandFollow"));
+      applySwingPhase(char.joints, swingSide, swingPhaseOf(pl), BASE_HIP_Y, isFront);
+      pinBlend(pl, swingSide === "back" ? "backhandFollow" : (isFront ? "forehandFollow" : "rearForehandFollow"));
       // 振り抜き中は片手（左手IKは当てない）
     } else {
       const name = poseNameFor3D(pl, isFront);
@@ -326,10 +356,45 @@ export function render3D() {
       applyRunMotion(pl, char.joints, renderYaw, dt);
     }
 
+    // ポーズ適用後の実形状を計測し、基準フラスタム上端を超える分だけ
+    // camera.top を一時的に拡張する（超えていなければ拡張しない＝通常時は無変化）。
+    char.group.updateMatrixWorld(true);
+    const topOverrun = measureFrustTopOverrun();
+    if (topOverrun > 0) {
+      camera.top = BASE_FRUST_TOP + topOverrun;
+      camera.updateProjectionMatrix();
+    }
+
+    const g = project(pl.x, pl.y, 0);
+    const s = g.s;
+    const baseVh = s * VH_K;
+    // ビューポート矩形の上限(maxVhByTop)にも、camera.top を拡張したのと同じ
+    // 実測 topOverrun をそのまま反映する。フラスタム側とビューポート側で
+    // 別々の余白量を使わないことで、frustum上は見えるがscissorで切れる、
+    // という食い違いを構造的に無くす。
+    const topExtraPx = topOverrun > 0 ? (topOverrun / FRUST_H) * baseVh : 0;
+    const maxVhByTop = (g.y - TOP_PAD + topExtraPx) / Math.max(0.001, 1 - FEET_FRAC);
+    const vh = Math.max(1, Math.min(baseVh, maxVhByTop));
+    const vw = vh * ASPECT;
+    const vpX = Math.round(g.x - vw / 2);
+    const vpYbottom = Math.round((H - g.y) - FEET_FRAC * vh);
+
+    // 画面外スキップ
+    if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) {
+      if (topOverrun > 0) { camera.top = BASE_FRUST_TOP; camera.updateProjectionMatrix(); }
+      continue;
+    }
+
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);
     renderer.clearDepth();
     renderer.render(scene, camera);
+
+    // 次の選手のために基準値へ戻す（通常ポーズの選手の見た目を変えないため）。
+    if (topOverrun > 0) {
+      camera.top = BASE_FRUST_TOP;
+      camera.updateProjectionMatrix();
+    }
   }
 }
 
