@@ -229,15 +229,6 @@ export function isBackhandFor(side, hitter, ballX) {
   return diff <= 0.1;
 }
 
-// 狙い（ワールドx）とヒッターの立ち位置から表示用の呼び名を決める
-export function courseLabelFor(hitterX, targetX) {
-  const dx = targetX - hitterX;
-  if (Math.abs(dx) < 1.2) return "まっすぐ";
-  if (Math.abs(hitterX) < 0.6) return dx < 0 ? "左へ！" : "右へ！";
-  const isCross = (hitterX > 0) === (dx < 0); // 立ち位置と逆へ打つ=クロス
-  return isCross ? "クロス！" : "ストレート！";
-}
-
 /* ---- 打点の評価: 横距離・前後・高さ → 角度幅/球速/精度の係数 ---- */
 export function evaluateContact(side, hitter, contactZ) {
   const c = TUNING.contact;
@@ -482,44 +473,6 @@ export function hitBall(opts) {
     tx: tx, ty: ty, speed: speed, byPlayer: !!opts.byPlayer,
     contact: ev,
   });
-
-  // 打球時のフィードバック表示（コース + 打点品質）
-  if (opts.byPlayer && side === "player" && hitter === rallyControlled) {
-    effects.push({
-      type: "text",
-      x: hitter.x, y: hitter.y, t: 0, ttl: 0.7,
-      text: courseLabelFor(hitter.x, tx),
-      color: "#10B981",
-    });
-    let qualityText = null;
-    let qualityColor = "#F59E0B";
-    if (ev.cramp < 0.35) { qualityText = "近い！詰まった"; }
-    else if (ev.overReach > 0.5) { qualityText = "遠い！泳いだ"; }
-    else if (ev.overall > 0.85) { qualityText = "ジャスト！"; qualityColor = "#22C55E"; }
-    else if (ev.backhand) { qualityText = "バック"; qualityColor = "#F59E0B"; }
-    if (qualityText) {
-      effects.push({
-        type: "text",
-        x: hitter.x, y: hitter.y - 0.9, t: 0, ttl: 0.8,
-        text: qualityText,
-        color: qualityColor,
-      });
-    }
-    // 打点の前後タイミング（早い=ネット寄りで捉えた／遅い=体の後ろに引き込みすぎた）。
-    // ev.front: 正=前すぎ(早打ち気味) / 負=後ろすぎ(遅れ気味)。品質ラベルと重複しないよう
-    // 近い/遠いほど極端でなければ別行で表示する。
-    let timingText = null;
-    if (ev.front > 0.45) timingText = "早い！";
-    else if (ev.front < -0.45) timingText = "遅い…";
-    if (timingText) {
-      effects.push({
-        type: "text",
-        x: hitter.x, y: hitter.y - 1.3, t: 0, ttl: 0.8,
-        text: timingText,
-        color: "#38BDF8",
-      });
-    }
-  }
 }
 
 // このプレイヤーが今すぐ次の打球（スイング/ボレー含む）を打てるかどうか。
@@ -545,9 +498,20 @@ export function startSwing(p, side) {
 
 // 現在速度cur を 目標速度target へ、加速度(accel)/減速度(decel)で dt 秒分だけ近づける。
 // 目標へ向かう（加速）か遠ざかる/止める（減速）かでレートを切り替える＝軽い慣性。
-export function approachVelocity(cur, target, dt) {
-  const accel = TUNING.move.accel;
-  const decel = TUNING.move.decel;
+// lateral=true（横方向=x軸）のときは以下の2つでサイドステップ専用の加減速を使う:
+//   - 減速側: 速度がsidestepMaxSpeed以下（止まり際は常にキビキビ止まる）
+//   - 加速側: inSidestepPhase=true（動き出しから約1秒のサイドステップ局面。呼び出し側で
+//     targetもsidestepMaxSpeedにクランプ済み）。フェーズが終われば通常accelで最高速まで
+//     加速する「走り」に移行する。
+// 見た目のサイドステップ切り替え(player3d.js / sidestepMaxSpeed)は実速度ベースなので、
+// 加速側のクランプにより自動的にサイドステップモーションが約1秒表示される。
+export function approachVelocity(cur, target, dt, lateral, inSidestepPhase) {
+  let accel = TUNING.move.accel;
+  let decel = TUNING.move.decel;
+  if (lateral) {
+    if (inSidestepPhase) accel = TUNING.move.sidestepAccel;
+    if (Math.abs(cur) <= TUNING.move.sidestepMaxSpeed) decel = TUNING.move.sidestepDecel;
+  }
   // 目標と同方向に伸ばす（加速）か、0または反対方向へ寄せる（減速）かを判定
   const accelerating = Math.abs(target) > Math.abs(cur) && Math.sign(target) === Math.sign(cur || target);
   const rate = accelerating ? accel : decel;
@@ -731,6 +695,45 @@ export function predictedContactX() {
   if (landing) return landing.x;
   return ball.x;
 }
+
+// 早めのテイクバック準備（pose="idle"→"prep"）の共通判定（見た目のみ・打球判定には無関係）。
+// 対象: 操作キャラ・味方パートナー・cpu後衛・cpu前衛のいずれでも同じ基準で適用する。
+//   side: そのプレイヤーの陣営（"player"/"cpu"）。p: 対象選手。
+// 前衛位置にいる選手には適用しない。前衛はネット際でボレー対応するため、ボールが
+// ネットを越えた時点で構えるのは不自然（実座標のネットからの距離で判定し、固定の
+// 役割クラスでは判定しない＝ダブル前衛/ダブル後衛など陣形が変わっても正しく動く）。
+// 前衛域の閾値は既存のスマッシュ判定（TUNING.smash.netDist）を流用する。
+export function updatePrepPose(p, side) {
+  if (p.pose === "swing" || p.recoverT > 0) return;
+  const homeSign = side === "player" ? 1 : -1;
+  const isFrontPosition = p.y * homeSign < TUNING.smash.netDist;
+  if (isFrontPosition) {
+    if (p.pose === "prep") {
+      p.pose = "idle";
+      p.swingSideLocked = false;
+    }
+    return;
+  }
+  const opponentSide = side === "player" ? "cpu" : "player";
+  const ballCrossedToOwnSide = ball.lastHitter === opponentSide && ball.y * homeSign > 0;
+  if (ballCrossedToOwnSide && p.pose === "idle") {
+    // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
+    // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
+    // ここで決めたフォア/バックは、続くready/swingでも上書きせず引き継ぐ
+    // （呼び出し元のhittable分岐参照）＝一連の構え〜スイングで種別を固定する。
+    p.pose = "prep";
+    // AI（後衛の回り込み等）がすでにswingSideを確定・ロック済みなら、それを
+    // 最優先で使い再計算しない（aiTask.jsのdecideBackStrokeTask参照）。
+    // 未ロックのときだけここで打点予測から決めてロックする。
+    if (!p.swingSideLocked) {
+      p.swingSide = isBackhandFor(side, p, predictedContactX()) ? "back" : "fore";
+      p.swingSideLocked = true;
+    }
+  } else if (!ballCrossedToOwnSide && p.pose === "prep") {
+    p.pose = "idle";
+    p.swingSideLocked = false;
+  }
+}
 /* ===========================================================
  * メインループ
  * =========================================================== */
@@ -844,11 +847,24 @@ export function update(dt) {
     const slow = charging ? TUNING.charge.moveSlow : 1;
     const speed = TUNING.move.playerSpeed * mover.stats.speed * slow;
     const allowY = state !== "serve-toss" && state !== "serve-stance";
+    // 横移動の動き出しから約sidestepPhaseSec秒は「サイドステップ局面」として扱う（時間ベース）。
+    // 横入力が無くなった、または向きが反転したら新たな動き出しとしてフェーズタイマーをリセットする。
+    const inputSign = Math.abs(v.dx) > 0.05 ? Math.sign(v.dx) : 0;
+    if (inputSign === 0 || inputSign !== mover.lateralInputSign) {
+      mover.lateralPhaseT = 0;
+    }
+    mover.lateralInputSign = inputSign;
+    const inSidestepPhase = mover.lateralPhaseT < TUNING.move.sidestepPhaseSec;
+    if (inputSign !== 0) mover.lateralPhaseT += dt;
     // 目標速度（入力ベクトル*速度）へ軽い加減速で滑らかに追従させる（慣性）。
     // 入力なしの軸は目標0へ減速で止まる。最高速にはすぐ乗る軽さに留める。
-    const targetVx = v.dx * speed;
+    // 横方向はサイドステップ局面中のみ目標速度をsidestepMaxSpeedでクランプする。
+    let targetVx = v.dx * speed;
+    if (inSidestepPhase) {
+      targetVx = Math.max(-TUNING.move.sidestepMaxSpeed, Math.min(TUNING.move.sidestepMaxSpeed, targetVx));
+    }
     const targetVy = allowY ? v.dy * speed : 0;
-    mover.vx = approachVelocity(mover.vx, targetVx, dt);
+    mover.vx = approachVelocity(mover.vx, targetVx, dt, true, inSidestepPhase);
     mover.vy = approachVelocity(mover.vy, targetVy, dt);
     if (mover.vx !== 0) setControlledX(mover, mover.x + mover.vx * dt);
     if (allowY && mover.vy !== 0) setControlledY(mover, mover.y + mover.vy * dt);
@@ -962,6 +978,13 @@ export function update(dt) {
   updateCpuBack(dt);
   updateCpuFront(dt);
 
+  // 早めのテイクバック準備（見た目のみ）を、操作キャラ以外の3人（味方パートナー・
+  // cpu後衛・cpu前衛）にも同じ基準で適用する。操作キャラ分は下の構え管理内で行う。
+  const partner = (rallyControlled === back) ? front : back;
+  updatePrepPose(partner, "player");
+  updatePrepPose(cpuBack, "cpu");
+  updatePrepPose(cpuFront, "cpu");
+
   // 予約スイング（アシスト）: 早めに離した直後の猶予内にゾーンへ入れば打つ
   if (pendingSwing > 0) {
     setPendingSwing(pendingSwing - dt);
@@ -972,11 +995,6 @@ export function update(dt) {
   // （離して打つ操作は廃止。WASD移動はため中も常に有効）
   const cp = rallyControlled;
   const hittable = canPlayerHit(cp);
-  // ボールがネットを越えて自陣側(y>0)に入ったら、打点リーチに入る前から
-  // テイクバック準備（"prep"）に入ってよい（現状より少し早めの準備動作）。
-  // 自陣側＝相手が打ったボールが自分のコート側(y>0)に入っている状態。
-  const ballCrossedToOwnSide = ball.lastHitter === "cpu" && ball.y > 0;
-  const canPrepareSwing = !(cp.recoverT > 0) && cp.pose !== "swing";
   if (hittable) {
     if (ballHittableSince < 0) setBallHittableSince(matchTime);
     if (cp.pose !== "swing") {
@@ -993,32 +1011,21 @@ export function update(dt) {
         cp.swingSide = isBackhandFor("player", cp, predictedContactX()) ? "back" : "fore";
         cp.swingSideLocked = true;
       }
-      cp.pose = "ready";
+      // 既にテイクバック（prep）に入っている場合は ready へ戻さない。
+      // 打点ゾーンに入った瞬間に ready へ強制リセットすると、テイクバックが
+      // 途中で消えて「ため」の間ずっと構え直しのまま止まって見える
+      // （観戦モード/自動操作でテイクバックが遅く見える主因）。
+      // prep未着手（idle）のときだけ ready から入る。
+      if (cp.pose !== "prep") cp.pose = "ready";
     }
     if (!charge.active) startCharge("auto");
   } else {
     setBallHittableSince(-1);
     if (cp.pose === "ready" || cp.pose === "prep") cp.pose = "idle";
-    // 観戦モードでは操作キャラも moveAutoAI が動かす＝立ち位置と一体で fore/back を
-    // 確定・保持している。ここで二重に swingSide を書くと競合・ちらつくため、
-    // 観戦時は見た目のテイクバックだけ行い swingSide は触らない。
-    if (!spectatorMode) {
-      if (cp.pose === "idle") cp.swingSideLocked = false;
-      if (canPrepareSwing && ballCrossedToOwnSide && cp.pose === "idle") {
-        // まだ打点リーチには入っていないが、ネットを越えてきたので早めに
-        // 準備動作（テイクバック開始）へ入る。打球判定・タイミングには無関係（見た目のみ）。
-        // ここで決めたフォア/バックは、続く ready/swing でも上書きせず引き継ぐ
-        // （上の hittable 分岐参照）＝一連の構え〜スイングで種別を固定する。
-        cp.pose = "prep";
-        cp.swingSide = isBackhandFor("player", cp, predictedContactX()) ? "back" : "fore";
-        cp.swingSideLocked = true;
-      } else if (!ballCrossedToOwnSide && cp.pose === "prep") {
-        cp.pose = "idle";
-        cp.swingSideLocked = false;
-      }
-    } else if (canPrepareSwing && ballCrossedToOwnSide && cp.pose === "idle") {
-      cp.pose = "prep";
-    }
+    // 早めのテイクバック準備（見た目のみ）は共通関数に一本化。前衛位置にいる間は
+    // 適用されない（updatePrepPose内で判定）。観戦モードでも同じ基準で適用する
+    // （moveAutoAIが確定済みのswingSideは上書きしない＝関数内でロック済みなら再計算しない）。
+    updatePrepPose(cp, "player");
     if (charge.active && charge.source === "auto") {
       charge.active = false;
       charge.source = null;

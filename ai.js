@@ -131,25 +131,9 @@ export function tryReturnAI(side) {
   // 前衛ボレー判定用フラグ
   const frontChecked = side === "player" ? "frontChecked" : "cpuFrontChecked";
 
-  // ---- 後衛の早めのテイクバック準備（見た目のみ、打球判定には影響しない） ----
-  // 操作プレイヤー側（main.js）はボールが自陣に入った時点でpose="prep"へ
-  // 早めに移行しているが、AI後衛(cpuBack)はstartSwing（インパクト）まで
-  // pose="swing"にならず、テイクバックが遅れて見える。
-  // ここでも同じ考え方で、ボールが自陣側に入ったら早めにprepへ入れて
-  // swingSideを固定する（実際の打球判定・タイミングはこの下のhitBall呼び出しの
-  // ままで変更しない＝見た目だけの先行動作）。
-  // まずは影響範囲をcpuBackに限定する（player後衛は既存のprep経路で対応済み）。
-  if (side === "cpu" && canSwingNow(myBack)) {
-    const ballComingHome = ball.y * homeSign > 0;
-    if (ballComingHome) {
-      // 先行テイクバック（見た目だけ）。フォア/バックは moveAutoAI が立ち位置と
-      // 一体で確定済み（myBack.swingSide）なので、ここでは再計算しない
-      // ＝回り込み・表示・物理がすべて同じ確定値を参照し、矛盾もちらつきも出ない。
-      if (myBack.pose !== "prep") myBack.pose = "prep";
-    } else if (myBack.pose === "prep") {
-      myBack.pose = "idle";
-    }
-  }
+  // 後衛・前衛の早めのテイクバック準備（見た目のみ）は matchLoop.js の
+  // メインループが毎フレーム updatePrepPose() で全4選手に一律適用するため、
+  // ここでは扱わない（重複実装を解消）。
 
   // ---- サーブの返球: レシーブ担当（前衛/後衛どちらでも）がワンバウンドで返す ----
   // 返球者を担当レシーバーに固定し、非担当（特に後衛）が横取りしないようにする。

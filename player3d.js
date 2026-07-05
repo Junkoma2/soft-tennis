@@ -14,7 +14,7 @@
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
 import { TUNING } from "./config.js";
-import { back, front, cpuBack, cpuFront, ball, state } from "./state.js";
+import { back, front, cpuBack, cpuFront, ball, state, rallyControlled, spectatorMode } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import {
   applyPose, poseNameForPlayer, applyLeftHandGrip,
@@ -164,11 +164,22 @@ function smoothYawFor(pl, targetYaw, dt, turnRate) {
   return m.yaw;
 }
 
+// mover(rallyControlled/サーバー)がmatchLoop.js側の「サイドステップ局面」タイマー中かどうか。
+// pl.lateralPhaseT/lateralInputSignは全プレイヤーオブジェクトに存在するが、実際に更新される
+// のは人間操作中のmoverだけ（AI移動はaiPositioning.jsの別経路でこのタイマーを持たない）。
+// そのためAI選手には常にこのフラグをfalse扱いし、既存の実速度ベース判定へフォールバックする。
+function isPlayerSidestepPhase(pl) {
+  if (spectatorMode || pl !== rallyControlled) return false;
+  return pl.lateralInputSign !== 0 && pl.lateralPhaseT < TUNING.move.sidestepPhaseSec;
+}
+
 // 移動表現を2種に分ける:
 //   近距離（低速の横移動）＝サイドステップ … 体の正対(ballFacingYaw)を保ったまま足だけ横に運ぶ
 //   遠距離（速い/大きい移動）＝体を横向きにして走る … 進行方向へ体ごとターンして走る
-// どちらもmoveToward由来の実速度(pl.vx/vy)で判定するため、実際に足が動いているときだけ発動する
-// （静止中に残った速度でアニメだけ動くバグを防ぐ仕組みとは別軸の話）。
+// 人間操作中はmatchLoop.js側のサイドステップ局面フラグ（lateralPhaseT）を最優先で使う。
+// 実速度(hypot)は前後移動が混ざると横速度クランプ(sidestepMaxSpeed)を超えてしまい、斜め移動時に
+// 誤って「走り」判定へ落ちるため（横クランプはvxのみに掛かり、vyは対象外なので合成速度は超え得る）。
+// AI選手はこのタイマーを持たないため、従来どおり実速度ベースの判定にフォールバックする。
 function applyRunMotion(pl, joints, yaw, dt) {
   if (!joints || pl.pose === "swing") return;
   if (!Number.isFinite(yaw) || !Number.isFinite(pl.vx) || !Number.isFinite(pl.vy)) return;
@@ -186,13 +197,19 @@ function applyRunMotion(pl, joints, yaw, dt) {
   const lateral = Math.abs(side) > Math.abs(forward) * 0.75;
   const sideSign = side >= 0 ? 1 : -1;
 
-  // サイドステップか、体を横向きにして走るかを実速度で切り替える（見た目専用）。
-  const isRunTurn = lateral && speed > TUNING.move.sidestepMaxSpeed;
+  // サイドステップか、体を横向きにして走るかを切り替える（見た目専用）。
+  const isRunTurn = isPlayerSidestepPhase(pl) ? false : (lateral && speed > TUNING.move.sidestepMaxSpeed);
 
+  const isSidestep = lateral && !isRunTurn;
   const m = getMotion(pl);
   m.runPhase += dt * (8 + Math.min(5, speed * 0.9));
   const phase = m.runPhase;
-  const amp = Math.min(1, speed / 4.5);
+  // サイドステップはsidestepMaxSpeed(3.0)が上限のため、通常のspeed/4.5基準だと
+  // 振幅(amp)が最大でも0.7弱にしかならず動きが弱く見える。判別しやすくするため
+  // サイドステップ時はsidestepMaxSpeed基準でampを正規化し、最高速付近でも十分な振幅が出るようにする。
+  const amp = isSidestep
+    ? Math.min(1, speed / Math.max(0.001, TUNING.move.sidestepMaxSpeed))
+    : Math.min(1, speed / 4.5);
   const stride = Math.sin(phase);
   const counter = Math.sin(phase + Math.PI);
 
@@ -200,24 +217,24 @@ function applyRunMotion(pl, joints, yaw, dt) {
     joints.pelvis.position.y += Math.abs(stride) * 0.025 * amp;
   }
   if (joints.leanRoot) {
-    joints.leanRoot.rotation.x += (lateral && !isRunTurn ? 0 : -4) * amp * D;
+    joints.leanRoot.rotation.x += (isSidestep ? 0 : -4) * amp * D;
   }
 
   if (joints.hipR) {
-    joints.hipR.rotation.x += (lateral && !isRunTurn ? 8 : 22) * stride * amp * D;
-    joints.hipR.rotation.z += (lateral && !isRunTurn ? sideSign * 16 * Math.abs(stride) : 0) * amp * D;
+    joints.hipR.rotation.x += (isSidestep ? 8 : 22) * stride * amp * D;
+    joints.hipR.rotation.z += (isSidestep ? sideSign * 24 * Math.abs(stride) : 0) * amp * D;
   }
   if (joints.hipL) {
-    joints.hipL.rotation.x += (lateral && !isRunTurn ? 8 : 22) * counter * amp * D;
-    joints.hipL.rotation.z += (lateral && !isRunTurn ? sideSign * -16 * Math.abs(counter) : 0) * amp * D;
+    joints.hipL.rotation.x += (isSidestep ? 8 : 22) * counter * amp * D;
+    joints.hipL.rotation.z += (isSidestep ? sideSign * -24 * Math.abs(counter) : 0) * amp * D;
   }
   if (joints.kneeR) joints.kneeR.rotation.x += -18 * Math.max(0, -stride) * amp * D;
   if (joints.kneeL) joints.kneeL.rotation.x += -18 * Math.max(0, -counter) * amp * D;
   if (joints.footR) joints.footR.rotation.x += 12 * Math.max(0, stride) * amp * D;
   if (joints.footL) joints.footL.rotation.x += 12 * Math.max(0, counter) * amp * D;
 
-  if (joints.shoulderR) joints.shoulderR.rotation.x += (lateral && !isRunTurn ? 8 * sideSign : -14) * counter * amp * D;
-  if (joints.shoulderL) joints.shoulderL.rotation.x += (lateral && !isRunTurn ? -8 * sideSign : -14) * stride * amp * D;
+  if (joints.shoulderR) joints.shoulderR.rotation.x += (isSidestep ? 8 * sideSign : -14) * counter * amp * D;
+  if (joints.shoulderL) joints.shoulderL.rotation.x += (isSidestep ? -8 * sideSign : -14) * stride * amp * D;
 }
 
 function poseNameFor3D(pl, isFront) {
@@ -270,7 +287,7 @@ export function render3D() {
     const moveSpeed = Math.hypot(vx, vy);
     let targetYaw = ballFacingYaw(pl);
     let turnRate = 9;
-    if (pl.pose !== "swing" && moveSpeed > TUNING.move.sidestepMaxSpeed) {
+    if (pl.pose !== "swing" && !isPlayerSidestepPhase(pl) && moveSpeed > TUNING.move.sidestepMaxSpeed) {
       const yawBase = baseYawFor(pl);
       const bf = ballFacingYaw(pl);
       const forward = vx * Math.sin(yawBase) + vy * Math.cos(yawBase);
