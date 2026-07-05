@@ -917,26 +917,22 @@ export function drawTimingGauge() {
   }
 
   if (state === "rally" && charge.active) {
+    // ため状態は控えめな単色リング1本のみで示す（打点タイミングが分かれば十分で、
+    // 派手な多重パルス・発光合成は不要）。
     const k = chargeAmount();
     const p = project(rallyControlled.x, rallyControlled.y, 0.15);
-    const pulse = 0.82 + 0.18 * Math.sin(performance.now() / 85);
-    const r = (0.38 + 0.42 * k) * p.s * pulse;
+    const r = (0.38 + 0.42 * k) * p.s;
     const readyColor = k >= 1 ? "245,158,11" : "99,102,241";
 
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    for (let i = 0; i < 3; i++) {
-      ctx.strokeStyle = `rgba(${readyColor},${0.35 - i * 0.08})`;
-      ctx.lineWidth = 7 - i * 1.5;
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, r * (1 + i * 0.18), r * 0.34 * (1 + i * 0.12), 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    ctx.fillStyle = `rgba(${readyColor},0.92)`;
+    ctx.strokeStyle = `rgba(${readyColor},0.5)`;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(p.x, p.y - Math.max(16, 0.38 * p.s), Math.max(5, 0.08 * p.s) + 8 * k, 0, Math.PI * 2);
+    ctx.ellipse(p.x, p.y, r, r * 0.34, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(${readyColor},0.85)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - Math.max(16, 0.38 * p.s), Math.max(4, 0.06 * p.s), 0, Math.PI * 2);
     ctx.fill();
   }
 }
