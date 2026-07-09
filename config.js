@@ -495,7 +495,14 @@ export function applyViewport(availW, availH) {
   // 奥の選手の頭上を画面上端の少し下（スコアの下＝0.14H付近）に置く。
   // fovに依らず安定して同じ高さへ来るよう逆算する。これで横長はコートが縦いっぱい、
   // 縦長は上に空（スコア）を細く取りコートを上寄せにして手前側に芝の余白を作る。
-  const HEAD_Z = 1.9;
+  //
+  // HEAD_Z は「通常の構え時の頭上高さ」ではなく、テイクバック（ラケットを後ろ・上に
+  // 引くポーズ、特に後衛の rearForehandTakeback/Load）でラケット先端が到達しうる
+  // 高さを基準にする。通常の頭上高さ(約1.83m)のままだと、この上方向の余白自体が
+  // 足りず、player3d.js側の実測ベースの拡張（frustum/viewport）が使える余白が
+  // 数px程度しか残らず、大きな振り上げでラケットが画面上端でクリップされたままに
+  // なる。ここを底上げしてplayer3d.js側の拡張に実際の作業余地を持たせる。
+  const HEAD_Z = 2.4;
   const dyFar = CAM.y + COURT.halfL;      // 奥ベースライン(y=-halfL)までの前後距離
   const dzFar = HEAD_Z - CAM.z;
   const upFar = dyFar * CAM.sin + dzFar * CAM.cos;
