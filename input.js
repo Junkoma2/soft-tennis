@@ -16,7 +16,7 @@ import {
   serveAimCursor, chargeBtn, serveCategoryControls, debugDraw, debugControls,
   setServeCategory, aggressionControls, setPartnerAggressiveness,
   setPlayerPosition, formationControls, setFormation, formation,
-  setDebugHitboxes, setDebugTrajectory, setDebugParams, setDebugCoverage,
+  setDebugHitboxes, setDebugTrajectory, setDebugParams, setDebugCoverage, setDebugClipbox,
   handedControls, setPlayerHanded,
   setSpectatorMode, startBtn, moveStick, moveStickKnob,
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
@@ -266,7 +266,8 @@ if (serveCategoryControls) {
       const active = b.dataset.debug === "hitboxes" ? debugDraw.hitboxes
         : b.dataset.debug === "trajectory" ? debugDraw.trajectory
         : b.dataset.debug === "params" ? debugDraw.params
-        : debugDraw.coverage;
+        : b.dataset.debug === "coverage" ? debugDraw.coverage
+        : debugDraw.clipbox;
       b.classList.toggle("is-active", active);
     });
   }
@@ -281,6 +282,7 @@ if (serveCategoryControls) {
     if (btn.dataset.debug === "trajectory") setDebugTrajectory(!debugDraw.trajectory);
     if (btn.dataset.debug === "params") setDebugParams(!debugDraw.params);
     if (btn.dataset.debug === "coverage") setDebugCoverage(!debugDraw.coverage);
+    if (btn.dataset.debug === "clipbox") setDebugClipbox(!debugDraw.clipbox);
     syncDebugButtons();
   }
 

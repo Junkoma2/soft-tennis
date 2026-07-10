@@ -413,6 +413,7 @@ export function render3D() {
 
     // 画面外スキップ
     if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) {
+      pl.viewRect3d = null;
       if (extended) {
         camera.top = BASE_FRUST_TOP;
         camera.left = -BASE_FRUST_HALF_X;
@@ -421,6 +422,11 @@ export function render3D() {
       }
       continue;
     }
+
+    // デバッグ「描画枠」用に、実際に使ったビューポート矩形を選手へ記録する。
+    // render.js からこのモジュールをimportするとCDNのthree.jsが静的ロード
+    // されてしまうため、選手オブジェクト経由で受け渡す（yBottom=キャンバス下端基準）。
+    pl.viewRect3d = { x: vpX, yBottom: vpYbottom, w: Math.round(vw), h: Math.round(vh) };
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);

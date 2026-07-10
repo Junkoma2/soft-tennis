@@ -98,7 +98,7 @@ export function setDebugControlsVisible(v) {
   try { localStorage.setItem(DEBUG_VISIBLE_KEY, debugControlsVisible ? "1" : "0"); } catch (e) { /* 保存できなくても動作に支障なし */ }
 }
 
-export const debugDraw = { hitboxes: false, trajectory: false, params: false, coverage: false };
+export const debugDraw = { hitboxes: false, trajectory: false, params: false, coverage: false, clipbox: false };
 export let debugHitboxes = false;
 export let debugTrajectory = false;
 export let debugParams = false;
@@ -118,6 +118,9 @@ export function setDebugParams(v) {
 export function setDebugCoverage(v) {
   debugDraw.coverage = !!v;
   debugCoverage = debugDraw.coverage;
+}
+export function setDebugClipbox(v) {
+  debugDraw.clipbox = !!v;
 }
 export let player = { games: 0, points: 0 };
 export let cpu = { games: 0, points: 0 };
