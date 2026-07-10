@@ -46,7 +46,7 @@ function getMotion(pl) {
 // 見た目チューニング
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)（構え等、通常ポーズ基準）
 const ASPECT = 0.62;     // ビューポート横/縦比
-const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
+const VH_K = 2.5;        // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
 const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
 const TOP_PAD = 8;       // Keep far-side players from clipping against the canvas top edge.
 const D = Math.PI / 180;
