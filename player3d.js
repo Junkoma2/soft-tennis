@@ -68,8 +68,19 @@ const D = Math.PI / 180;
 // 「そのフレームで実際に必要な上端拡張量」を毎回算出する。この同じ計測値を
 // (1) camera.top の一時的な拡張 と (2) ビューポート矩形の上限(maxVhByTop)の
 // 緩和 の両方に使うことで、frustumとscissorの拡張量を常に一致させる。
+//
+// 追加対応: 上記は上方向（top）のみの拡張だったため、ラケットを横に大きく
+// 引く/振るポーズ（例: rearForehandLoad は shoulderR.y=-66・racket.y=-40と
+// 肩を大きく水平にひねる）や、横移動中に体が進行方向へ回転して普段は奥行き
+// 方向を向いていた腕の長軸がカメラの水平方向へ向くケースでは、左右方向にも
+// 同種の見切れが起きる。カメラの水平フラスタム(left/right)とビューポート幅
+// (vw)は従来ずっと固定値のままだったため、これらのケースは前衛/後衛や
+// コート内の位置に関係なく発生し得る。上端と同じ実測方式を左右にも適用し、
+// 深さ(y)方向だけでなく水平(x)方向の超過量も同時に算出する。
 const BASE_FRUST_TOP = FRUST_H / 2;
+const BASE_FRUST_HALF_X = (FRUST_H / 2) * ASPECT; // カメラ左右端の基準値（通常ポーズ基準の半width）
 const FRUST_TOP_MARGIN = 0.05; // 計測値への安全マージン(m)
+const FRUST_SIDE_MARGIN = 0.05; // 左右方向の安全マージン(m)
 const _box = new THREE.Box3();
 const _boxCorner = new THREE.Vector3();
 const _camSpace = new THREE.Vector3();
@@ -102,7 +113,7 @@ export async function init3D(canvas) {
   // 固定の斜め上カメラ（正射影）。top は通常ポーズ時の基準値で初期化し、
   // テイクバック中など必要なフレームだけ render3D() 側で一時的に拡張する。
   const half = FRUST_H / 2;
-  camera = new THREE.OrthographicCamera(-half * ASPECT, half * ASPECT, BASE_FRUST_TOP, -half, 0.1, 50);
+  camera = new THREE.OrthographicCamera(-BASE_FRUST_HALF_X, BASE_FRUST_HALF_X, BASE_FRUST_TOP, -half, 0.1, 50);
   camera.position.set(0, 2.0, 3.2);
   camera.lookAt(0, 0.95, 0);
 
@@ -270,13 +281,18 @@ function poseNameFor3D(pl, isFront) {
 }
 
 // char.group（ポーズ適用後）のワールド包囲箱をカメラのビュー空間へ変換し、
-// 基準フラスタム上端(BASE_FRUST_TOP)をどれだけ超えているかを実測する。
-// 超えていなければ 0 を返す（通常ポーズでは拡張しない＝既存の見た目を変えない）。
-function measureFrustTopOverrun() {
+// 基準フラスタム上端(BASE_FRUST_TOP)・左右端(±BASE_FRUST_HALF_X)をそれぞれ
+// どれだけ超えているかを実測する。超えていない軸は 0 を返す
+// （通常ポーズでは拡張しない＝既存の見た目を変えない）。
+// 左右は非対称に振れうる（利き手・スイング種別で片側に偏る）ため、
+// 超過が大きい側に合わせて camera.left/right を対称に広げる
+// （中心はプレイヤー位置に固定したいので、中心をずらさない対称拡張にする）。
+function measureFrustOverrun() {
   _box.setFromObject(char.group);
-  if (_box.isEmpty()) return 0;
+  if (_box.isEmpty()) return { top: 0, side: 0 };
   camera.updateMatrixWorld();
   let maxViewY = -Infinity;
+  let maxAbsViewX = 0;
   for (let i = 0; i < 8; i++) {
     _boxCorner.set(
       i & 1 ? _box.max.x : _box.min.x,
@@ -285,9 +301,15 @@ function measureFrustTopOverrun() {
     );
     _camSpace.copy(_boxCorner).applyMatrix4(camera.matrixWorldInverse);
     if (_camSpace.y > maxViewY) maxViewY = _camSpace.y;
+    const absX = Math.abs(_camSpace.x);
+    if (absX > maxAbsViewX) maxAbsViewX = absX;
   }
-  const overrun = maxViewY - BASE_FRUST_TOP;
-  return overrun > 0 ? overrun + FRUST_TOP_MARGIN : 0;
+  const topOverrun = maxViewY - BASE_FRUST_TOP;
+  const sideOverrun = maxAbsViewX - BASE_FRUST_HALF_X;
+  return {
+    top: topOverrun > 0 ? topOverrun + FRUST_TOP_MARGIN : 0,
+    side: sideOverrun > 0 ? sideOverrun + FRUST_SIDE_MARGIN : 0,
+  };
 }
 
 export function render3D() {
@@ -356,12 +378,16 @@ export function render3D() {
       applyRunMotion(pl, char.joints, renderYaw, dt);
     }
 
-    // ポーズ適用後の実形状を計測し、基準フラスタム上端を超える分だけ
-    // camera.top を一時的に拡張する（超えていなければ拡張しない＝通常時は無変化）。
+    // ポーズ適用後の実形状を計測し、基準フラスタム上端・左右端を超える分だけ
+    // camera.top / camera.left / camera.right を一時的に拡張する
+    // （超えていなければ拡張しない＝通常時は無変化）。
     char.group.updateMatrixWorld(true);
-    const topOverrun = measureFrustTopOverrun();
-    if (topOverrun > 0) {
-      camera.top = BASE_FRUST_TOP + topOverrun;
+    const overrun = measureFrustOverrun();
+    const extended = overrun.top > 0 || overrun.side > 0;
+    if (extended) {
+      camera.top = BASE_FRUST_TOP + overrun.top;
+      camera.left = -(BASE_FRUST_HALF_X + overrun.side);
+      camera.right = BASE_FRUST_HALF_X + overrun.side;
       camera.updateProjectionMatrix();
     }
 
@@ -372,16 +398,27 @@ export function render3D() {
     // 実測 topOverrun をそのまま反映する。フラスタム側とビューポート側で
     // 別々の余白量を使わないことで、frustum上は見えるがscissorで切れる、
     // という食い違いを構造的に無くす。
-    const topExtraPx = topOverrun > 0 ? (topOverrun / FRUST_H) * baseVh : 0;
+    const topExtraPx = overrun.top > 0 ? (overrun.top / FRUST_H) * baseVh : 0;
     const maxVhByTop = (g.y - TOP_PAD + topExtraPx) / Math.max(0.001, 1 - FEET_FRAC);
     const vh = Math.max(1, Math.min(baseVh, maxVhByTop));
-    const vw = vh * ASPECT;
+    // 左右も同様に、camera.left/right を広げたのと同じ比率でビューポート幅を
+    // 広げる。frustum側の水平半width(BASE_FRUST_HALF_X)を拡張した分だけ
+    // vw も比例して広げないと、frustum上は見えているはずの左右のはみ出しが
+    // 同じピクセル幅に押し込まれて縮んで見える（見切れではないが不自然な
+    // 縮小になる）ため、上下と同じ考え方で幅もスケールする。
+    const sideScale = overrun.side > 0 ? (BASE_FRUST_HALF_X + overrun.side) / BASE_FRUST_HALF_X : 1;
+    const vw = vh * ASPECT * sideScale;
     const vpX = Math.round(g.x - vw / 2);
     const vpYbottom = Math.round((H - g.y) - FEET_FRAC * vh);
 
     // 画面外スキップ
     if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) {
-      if (topOverrun > 0) { camera.top = BASE_FRUST_TOP; camera.updateProjectionMatrix(); }
+      if (extended) {
+        camera.top = BASE_FRUST_TOP;
+        camera.left = -BASE_FRUST_HALF_X;
+        camera.right = BASE_FRUST_HALF_X;
+        camera.updateProjectionMatrix();
+      }
       continue;
     }
 
@@ -391,8 +428,10 @@ export function render3D() {
     renderer.render(scene, camera);
 
     // 次の選手のために基準値へ戻す（通常ポーズの選手の見た目を変えないため）。
-    if (topOverrun > 0) {
+    if (extended) {
       camera.top = BASE_FRUST_TOP;
+      camera.left = -BASE_FRUST_HALF_X;
+      camera.right = BASE_FRUST_HALF_X;
       camera.updateProjectionMatrix();
     }
   }
