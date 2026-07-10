@@ -40,6 +40,7 @@ export function draw() {
   drawGroundEffects();
   drawDebugTrajectory();
   drawDebugHitboxes();
+  drawDebugClipbox();
   drawBallShadow();
 
   // キャラクターは3Dオーバーレイ（player3d.js）が描画する。ここでは場の要素のみ。
@@ -675,6 +676,24 @@ function drawDebugHitboxes() {
     controlled: false,
     color: "rgba(251,113,133,0.75)",
     fillColor: "rgba(251,113,133,0.07)",
+  });
+  ctx.restore();
+}
+
+// デバッグ: 3D選手の描画枠（scissor/ビューポート矩形）を赤枠で表示する。
+// この枠の外は描画されないため、ラケット見切れの調査に使う。
+// 矩形は player3d.js の render3D() が実際に使った値（pl.viewRect3d、
+// テイクバック等での動的拡張を含む前フレームの実測値）をそのまま描く。
+function drawDebugClipbox() {
+  if (!debugDraw.clipbox) return;
+  if (state === "ready") return;
+  ctx.save();
+  ctx.strokeStyle = "rgba(239,68,68,0.9)";
+  ctx.lineWidth = 2;
+  [back, front, cpuBack, cpuFront].forEach((pl) => {
+    const r = pl.viewRect3d;
+    if (!r) return;
+    ctx.strokeRect(r.x, H - r.yBottom - r.h, r.w, r.h);
   });
   ctx.restore();
 }

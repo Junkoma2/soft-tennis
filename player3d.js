@@ -13,7 +13,7 @@
 
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
-import { TUNING } from "./config.js";
+import { TUNING, COURT } from "./config.js";
 import { back, front, cpuBack, cpuFront, ball, state, rallyControlled, spectatorMode } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import {
@@ -21,6 +21,7 @@ import {
   swingPhaseOf, applySwingPhase,
 } from "./animation3d.js";
 import { baseYawFor, ballFacingYaw } from "./geometry.js";
+import { tunedValue } from "./viewTuning.js";
 
 let renderer = null, scene = null, camera = null, char = null;
 let courtCanvas = null, overlay = null;
@@ -46,10 +47,22 @@ function getMotion(pl) {
 // 見た目チューニング
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)（構え等、通常ポーズ基準）
 const ASPECT = 0.62;     // ビューポート横/縦比
-const VH_K = 2.18;       // ビューポート縦 = s * VH_K（キャラを全体的に大きく見せる）
+// キャラの大きさ（旧VH_K・標準2.5）は「表示の調整」パネルで変更できる
+// → viewTuning.js の charSize（0〜100、50=2.5）
 const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
 const TOP_PAD = 8;       // Keep far-side players from clipping against the canvas top edge.
 const D = Math.PI / 180;
+
+// 奥行きによるキャラの縮小を、コートの遠近(s∝1/depth)より緩やかにする指数。
+// 数値上はコートと同率で縮めても、キャラは固定カメラのミニ描画をs倍している
+// だけなので、体感では奥の選手が小さく見えすぎる。手前ベースライン付近の
+// 大きさは変えず、奥へ行くほど同率縮小との差が開く（=奥の選手が相対的に
+// 大きくなる）。1.0でコートと同率、小さいほど奥が大きい。
+// 指数（標準0.75）とキャラの大きさ係数（標準2.5）は「表示の調整」パネルの値を使う。
+function scaledVh(s) {
+  const sRef = project(0, COURT.halfL, 0).s; // 手前ベースラインの縮尺を基準に固定
+  return tunedValue("charSize") * sRef * Math.pow(s / sRef, tunedValue("farSize"));
+}
 
 // テイクバック（ラケットを後ろ・上に引くポーズ）は肩の回転で腕とラケット先端が
 // 通常の構え姿勢より高く上がる。上がり幅はストローク種別（前衛のフォア/バックと
@@ -322,6 +335,9 @@ export function render3D() {
 
   const W = courtCanvas.width, H = courtCanvas.height;
 
+  // ラケットの表示倍率（「表示の調整」パネル）。キャラは全選手共有なので1回でよい
+  if (char.joints.racket) char.joints.racket.scale.setScalar(tunedValue("racketSize"));
+
   // 全面クリア（透明）
   renderer.setViewport(0, 0, W, H);
   renderer.setScissor(0, 0, W, H);
@@ -392,8 +408,7 @@ export function render3D() {
     }
 
     const g = project(pl.x, pl.y, 0);
-    const s = g.s;
-    const baseVh = s * VH_K;
+    const baseVh = scaledVh(g.s);
     // ビューポート矩形の上限(maxVhByTop)にも、camera.top を拡張したのと同じ
     // 実測 topOverrun をそのまま反映する。フラスタム側とビューポート側で
     // 別々の余白量を使わないことで、frustum上は見えるがscissorで切れる、
@@ -413,6 +428,7 @@ export function render3D() {
 
     // 画面外スキップ
     if (vpX + vw < 0 || vpX > W || vpYbottom + vh < 0 || vpYbottom > H) {
+      pl.viewRect3d = null;
       if (extended) {
         camera.top = BASE_FRUST_TOP;
         camera.left = -BASE_FRUST_HALF_X;
@@ -421,6 +437,11 @@ export function render3D() {
       }
       continue;
     }
+
+    // デバッグ「描画枠」用に、実際に使ったビューポート矩形を選手へ記録する。
+    // render.js からこのモジュールをimportするとCDNのthree.jsが静的ロード
+    // されてしまうため、選手オブジェクト経由で受け渡す（yBottom=キャンバス下端基準）。
+    pl.viewRect3d = { x: vpX, yBottom: vpYbottom, w: Math.round(vw), h: Math.round(vh) };
 
     renderer.setViewport(vpX, vpYbottom, vw, vh);
     renderer.setScissor(vpX, vpYbottom, vw, vh);

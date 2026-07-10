@@ -82,9 +82,16 @@ function addRacketBar(parent, material, ax, ay, bx, by, radius) {
   return bar;
 }
 
+// ラケット全体の表示倍率の初期値。実寸比で作ると画面上で細く小さく読みにくい
+// ため、デフォルメとして大きめに見せる（当たり判定はリーチ定数側で別管理のため
+// 影響なし）。試合中は player3d.js が「表示の調整」パネルの値で毎フレーム上書き
+// するため、この初期値は model-viewer 等の単体表示でのみ使われる。
+const RACKET_SCALE = 1.2;
+
 // ラケット（右手に付ける）。グリップ→シャフト→楕円フレーム→簡易ガット。
 function makeRacket(frameMat, gripMat) {
   const racket = new THREE.Group();
+  racket.scale.setScalar(RACKET_SCALE);
 
   // グリップ
   const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.20, 10), gripMat);
