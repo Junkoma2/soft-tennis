@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <meta name="apple-mobile-web-app-title" content="ソフトテニス" />
-  <link rel="stylesheet" href="style.css?v=20260626-21" />
+  <link rel="stylesheet" href="style.css?v=20260710-01" />
 </head>
 <body>
   <div id="app">
@@ -96,6 +96,11 @@
           <summary>選手ステータスを調整</summary>
           <div class="stats-grid" id="stats-grid"><!-- playerStatsPanel.js が生成 --></div>
           <button id="stats-reset" class="stats-reset" type="button">標準値に戻す</button>
+        </details>
+        <details class="start-panel" id="view-tuning-panel">
+          <summary>表示の調整</summary>
+          <div class="stats-grid" id="view-tuning-grid"><!-- viewTuningPanel.js が生成 --></div>
+          <button id="view-tuning-reset" class="stats-reset" type="button">標準値に戻す</button>
         </details>
         <details class="start-panel">
           <summary>パラメータの説明</summary>
@@ -193,7 +198,7 @@
     </footer>
   </div>
 
-  <script type="module" src="main.js?v=20260626-21"></script>
+  <script type="module" src="main.js?v=20260710-01"></script>
   <script src="version.js?v=20260626-21"></script>
 </body>
 </html>

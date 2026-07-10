@@ -27,15 +27,23 @@ const PLAYER_DEFS = [
   { id: "c-front", label: "相手前衛", stats: cpuStats.front },
 ];
 
-const MIN = 0.4, MAX = 1.6, STEP = 0.05;
+// 内部値は 0.4〜1.6 の倍率だが、上限下限が直感的でないため画面上は
+// 0〜100 の自然数で扱う（50=標準の1.0）。換算はこの2関数に閉じ込める。
+const MIN = 0.4, MAX = 1.6;
+
+function toDisplay(v) {
+  if (!Number.isFinite(v)) return 50;
+  return Math.round((Math.max(MIN, Math.min(MAX, v)) - MIN) / (MAX - MIN) * 100);
+}
+
+function fromDisplay(n) {
+  if (!Number.isFinite(n)) return 1.0;
+  const t = Math.max(0, Math.min(100, Math.round(n))) / 100;
+  return MIN + (MAX - MIN) * t;
+}
 
 // 標準値（初期値）をスナップショットしておき「標準値に戻す」で復元する。
 const DEFAULTS = PLAYER_DEFS.map((p) => STAT_DEFS.map((s) => p.stats[s.key]));
-
-function clampStat(v) {
-  if (!Number.isFinite(v)) return 1.0;
-  return Math.max(MIN, Math.min(MAX, v));
-}
 
 function buildPanel() {
   const grid = document.getElementById("stats-grid");
@@ -59,17 +67,16 @@ function buildPanel() {
       wrap.className = "stats-cell";
       const input = document.createElement("input");
       input.type = "number";
-      input.min = String(MIN);
-      input.max = String(MAX);
-      input.step = String(STEP);
-      input.value = formatVal(p.stats[s.key]);
+      input.min = "0";
+      input.max = "100";
+      input.step = "1";
+      input.value = String(toDisplay(p.stats[s.key]));
       input.setAttribute("aria-label", `${p.label} ${s.label}`);
       input.addEventListener("input", () => {
-        const v = clampStat(parseFloat(input.value));
-        p.stats[s.key] = v;
+        p.stats[s.key] = fromDisplay(parseInt(input.value, 10));
       });
       input.addEventListener("blur", () => {
-        input.value = formatVal(p.stats[s.key]);
+        input.value = String(toDisplay(p.stats[s.key]));
       });
       wrap.appendChild(input);
       row.appendChild(wrap);
@@ -85,7 +92,7 @@ function buildPanel() {
       PLAYER_DEFS.forEach((p, pi) => {
         STAT_DEFS.forEach((s, si) => {
           p.stats[s.key] = DEFAULTS[pi][si];
-          inputs[pi][si].value = formatVal(DEFAULTS[pi][si]);
+          inputs[pi][si].value = String(toDisplay(DEFAULTS[pi][si]));
         });
       });
     });
@@ -97,11 +104,6 @@ function cell(text, className) {
   el.className = className;
   el.textContent = text;
   return el;
-}
-
-function formatVal(v) {
-  // 1.0 / 0.95 のように余分な桁を出さずに表示する
-  return (Math.round(v * 100) / 100).toString();
 }
 
 buildPanel();

@@ -22,6 +22,8 @@ import { assignReceiverSides, startServe } from "./serve.js";
 
 // 開始画面の選手ステータス調整パネル（読み込み時にDOMへ生成・配線する副作用import）
 import "./playerStatsPanel.js";
+// 開始画面の「表示の調整」パネル（同上）
+import "./viewTuningPanel.js";
 
 // 試合中ループは matchLoop.js が所有。開始ボタンから loop を起動する。
 import { loop } from "./matchLoop.js";
