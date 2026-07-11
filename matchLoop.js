@@ -15,6 +15,7 @@ import {
   pendingSwing, setPendingSwing, pendingShot, pendingPower, pendingAimX, pendingAimY,
   ballHittableSince, setBallHittableSince,
   lastTime, setLastTime, setRafId,
+  tutorialActive,
 } from "./state.js";
 
 import { draw } from "./render.js";
@@ -1149,7 +1150,10 @@ function render3DIfNeeded() {
 export function loop(now) {
   const dt = Math.min((now - lastTime) / 1000 || 0.016, 0.05);
   setLastTime(now);
-  update(dt);
+  // チュートリアルのオーバーレイ表示中はupdate(dt)自体を止め、ボール・選手・スコアを
+  // 完全に静止させる。lastTimeは毎フレーム更新し続けるので、閉じた直後のdtが
+  // 経過時間分まとめて跳ねることもない（state.jsのtutorialActive参照）。
+  if (!tutorialActive) update(dt);
   draw();
   render3DIfNeeded();
   setRafId(requestAnimationFrame(loop));

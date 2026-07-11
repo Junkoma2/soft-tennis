@@ -111,6 +111,16 @@ export function setTutorialSeen(v) {
   try { localStorage.setItem(TUTORIAL_SEEN_KEY, tutorialSeen ? "1" : "0"); } catch (e) { /* 保存できなくても動作に支障なし */ }
 }
 
+// チュートリアルのオーバーレイ表示中は試合シミュレーション（ボール・選手・スコア）を
+// 完全に一時停止する。オーバーレイはキャンバスの上に重なるだけで進行は止めない設計だと、
+// ユーザーがカードを読んでいる数秒〜数十秒の間も裏でラリー・得点・サーブが進み続け、
+// 閉じた瞬間にボールが別の場所へワープしたように見えてしまうため、tutorial.js から
+// このフラグを立てて matchLoop.js の update(dt) 呼び出し自体をスキップする。
+export let tutorialActive = false;
+export function setTutorialActive(v) {
+  tutorialActive = !!v;
+}
+
 export const debugDraw = { hitboxes: false, trajectory: false, params: false, coverage: false, clipbox: false };
 export let debugHitboxes = false;
 export let debugTrajectory = false;

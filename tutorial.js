@@ -1,4 +1,4 @@
-import { spectatorMode, tutorialSeen, setTutorialSeen } from "./state.js";
+import { spectatorMode, tutorialSeen, setTutorialSeen, setTutorialActive } from "./state.js";
 
 /* ===========================================================
  * 段階的チュートリアル（最初の1ポイント用）
@@ -8,8 +8,9 @@ import { spectatorMode, tutorialSeen, setTutorialSeen } from "./state.js";
  *   （state.js の tutorialSeen を localStorage に保存）
  * ・観戦モード（AI対AI）は操作不要のため出さない
  * ・開始画面の「もう一度見る」導線から、次の試合開始時にだけ再表示できる
- * ・試合の進行自体は止めない（裏でAI/CPUは通常通り動く）。あくまでDOMオーバーレイ
- *   としてキャンバスの上に重ねるだけで、既存のゲームループ・状態機械には触れない
+ * ・表示中は試合シミュレーションを一時停止する（state.js の tutorialActive）。
+ *   カードを読んでいる間も裏でラリーが進み続けると、閉じた瞬間にボールが
+ *   別の場所へワープしたように見えてしまうため、matchLoop.js側でupdate(dt)自体を止める
  * =========================================================== */
 
 const STEPS = [
@@ -57,6 +58,7 @@ function renderStep() {
 function closeTutorial() {
   if (overlay) overlay.hidden = true;
   setTutorialSeen(true);
+  setTutorialActive(false);
 }
 
 // 試合開始（最初の1ポイント）から呼ぶ。未視聴かつ観戦モードでない場合だけ表示する。
@@ -67,6 +69,7 @@ export function maybeStartTutorial() {
   stepIndex = 0;
   renderStep();
   overlay.hidden = false;
+  setTutorialActive(true);
 }
 
 if (nextBtn) {
