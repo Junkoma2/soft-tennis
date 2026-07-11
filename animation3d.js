@@ -12,7 +12,7 @@
  * POSES に足すだけで拡張できる。
  */
 
-import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import * as THREE from "./vendor/three/three.module.js";
 import { TUNING } from "./config.js";
 
 const D = Math.PI / 180;

@@ -11,7 +11,7 @@
  * 既存ゲームロジック・当たり判定・state には一切触れない。
  */
 
-import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import * as THREE from "./vendor/three/three.module.js";
 import { project } from "./math.js";
 import { TUNING, COURT } from "./config.js";
 import { back, front, cpuBack, cpuFront, rallyControlled, spectatorMode } from "./state.js";
