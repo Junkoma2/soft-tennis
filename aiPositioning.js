@@ -169,6 +169,14 @@ export function basePlayerOf(side) {
   return a.positionBias <= b.positionBias ? b : a;
 }
 
+// netPlayer/basePlayer はペア内の相対比較（bias が低い方/高い方）でしかない。
+// 雁行・ダブル前衛の netPlayer は実際にネット際にいるが、ダブル後衛の netPlayer
+// （2人とも後ろ寄り）は相対的に前なだけで実際はネットから離れている。
+// 「本当にネット際で前衛の戦術（深い球を追わない・ポーチに出る等）を適用してよいか」
+// はこの絶対的なしきい値で判定する（recoverDepthY/centerHugAmount と同じ基準）。
+export const NET_ROLE_BIAS_THRESHOLD = 45;
+export function isNetRole(p) { return p.positionBias < NET_ROLE_BIAS_THRESHOLD; }
+
 // positionBias(0=ネット際〜100=ベースライン)を自陣ネットからの距離yに写像する。
 // 雁行アンカー（bias25→frontY, bias80→backY）を通すよう校正し、従来の定位置を再現する。
 export function depthFromBias(bias) {
