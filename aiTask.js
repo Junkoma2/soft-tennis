@@ -7,7 +7,7 @@ import {
 import {
   predictLanding, predictStrokeContact, predictHighContact, isBackhandFor,
 } from "./matchLoop.js";
-import { moveToward, coverageGeom, idealPosition, arcApproachTarget } from "./aiPositioning.js";
+import { moveToward, coverageGeom, idealPosition, arcApproachTarget, isNetRole } from "./aiPositioning.js";
 
 /* ===========================================================
  * ③④⑤ タスク決定と実行
@@ -65,7 +65,12 @@ function updateContactLatch(side, netPlayer, basePlayer, situation) {
   const g = coverageGeom(side);
   const NET_BALL_DEPTH = TUNING.pos.frontY + 2.4;
   const deepBall = Math.abs(cy) > NET_BALL_DEPTH;
-  const forceBack = situation.isLob || deepBall;
+  // 「深い球/ロブは前衛ではなく後衛の仕事」の特例は、netPlayerが実際にネット際にいる
+  // 陣形（雁行・ダブル前衛）だけに適用する。ダブル後衛のように2人とも後ろ寄りの陣形では
+  // この特例を外し、左右ゾーン割り当て(responsibleRole)に委ねる。外さないと深い球は
+  // 常にbasePlayer固定になり、netPlayer側の担当ゾーンに来た球を誰も取りに行かず
+  // （もしくはbasePlayerが無理に反対側まで追って）取り逃す・両者が寄る原因になる。
+  const forceBack = isNetRole(netPlayer) && (situation.isLob || deepBall);
   const mul = (pp) => (pp === netPlayer ? 1.25 : 1.2);
   const owner = forceBack ? basePlayer : (g.responsibleRole(cx, cy) === "net" ? netPlayer : basePlayer);
   const other = owner === netPlayer ? basePlayer : netPlayer;
@@ -318,38 +323,44 @@ function decideSupportTask(p, ctx) {
     let frontDash = dash;
     let kind = "cover";
 
-    if (poachDesire > 0.15) {
-      const t2 = Math.abs(ball.vy) > 0.1 ? (netPlayer.homeY - ball.y) / ball.vy : -1;
-      const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
-      const poachReach = TUNING.ai.poachReach * netPlayer.stats.reach;
-      const ownBackSign = basePlayer.x >= 0 ? 1 : -1;
-      const frontSide = -ownBackSign;
-      const towardMySide = predX * frontSide >= -0.4;
-      const lateralPace = Math.abs(ball.vx) + Math.abs(ball.vy) * 0.3;
-      const catchable = lateralPace <= TUNING.ai.poachMaxPace;
-      if (towardMySide && catchable && Math.abs(predX - netPlayer.x) <= poachReach * 1.5) {
-        frontTargetX = Math.max(-3.4, Math.min(3.4, predX));
-        frontTy = netPlayer.homeY;
-        frontDash = catchable && lateralPace < TUNING.ai.poachMaxPace * 0.6 ? 1.35 : 1.15;
-        kind = "poach";
-      }
-    }
-
-    // ネット際を低く横切る球には、ポーチ判断と独立して「届く範囲だけ」踏み込む（advance）。
-    {
-      const ownBackSign = basePlayer.x >= 0 ? 1 : -1;
-      const frontSide = -ownBackSign;
-      const tNet = Math.abs(ball.vy) > 0.1 ? (netPlayer.homeY - ball.y) / ball.vy : -1;
-      if (tNet > 0 && tNet < 0.9) {
-        const crossX = ball.x + ball.vx * tNet;
-        const crossZ = ball.z + ball.vz * tNet - 0.5 * G * tNet * tNet;
-        const onMySide = (Math.sign(crossX) === frontSide);
-        const reach = TUNING.ai.frontVolleyReach * netPlayer.stats.reach;
-        if (onMySide && crossZ < 1.3 && Math.abs(crossX - netPlayer.x) <= reach * 0.9) {
-          frontTargetX = Math.max(-3.4, Math.min(3.4, crossX));
+    // ポーチ/ネット詰め(advance)は、netPlayerが実際にネット際にいる陣形（雁行・
+    // ダブル前衛）だけで働かせる。ダブル後衛はnetPlayerも後ろ寄りで、
+    // netPlayer.homeYが後衛の打点予測とほぼ同じ深さになるため、この特例を外さないと
+    // 「後衛が処理する球へ前寄り選手も一緒に飛び出す」＝同じ球へ2人が寄る/重なる原因になる。
+    if (isNetRole(netPlayer)) {
+      if (poachDesire > 0.15) {
+        const t2 = Math.abs(ball.vy) > 0.1 ? (netPlayer.homeY - ball.y) / ball.vy : -1;
+        const predX = (t2 > 0) ? ball.x + ball.vx * t2 : ball.x;
+        const poachReach = TUNING.ai.poachReach * netPlayer.stats.reach;
+        const ownBackSign = basePlayer.x >= 0 ? 1 : -1;
+        const frontSide = -ownBackSign;
+        const towardMySide = predX * frontSide >= -0.4;
+        const lateralPace = Math.abs(ball.vx) + Math.abs(ball.vy) * 0.3;
+        const catchable = lateralPace <= TUNING.ai.poachMaxPace;
+        if (towardMySide && catchable && Math.abs(predX - netPlayer.x) <= poachReach * 1.5) {
+          frontTargetX = Math.max(-3.4, Math.min(3.4, predX));
           frontTy = netPlayer.homeY;
-          frontDash = Math.max(frontDash, 1.15);
-          kind = kind === "poach" ? kind : "advance";
+          frontDash = catchable && lateralPace < TUNING.ai.poachMaxPace * 0.6 ? 1.35 : 1.15;
+          kind = "poach";
+        }
+      }
+
+      // ネット際を低く横切る球には、ポーチ判断と独立して「届く範囲だけ」踏み込む（advance）。
+      {
+        const ownBackSign = basePlayer.x >= 0 ? 1 : -1;
+        const frontSide = -ownBackSign;
+        const tNet = Math.abs(ball.vy) > 0.1 ? (netPlayer.homeY - ball.y) / ball.vy : -1;
+        if (tNet > 0 && tNet < 0.9) {
+          const crossX = ball.x + ball.vx * tNet;
+          const crossZ = ball.z + ball.vz * tNet - 0.5 * G * tNet * tNet;
+          const onMySide = (Math.sign(crossX) === frontSide);
+          const reach = TUNING.ai.frontVolleyReach * netPlayer.stats.reach;
+          if (onMySide && crossZ < 1.3 && Math.abs(crossX - netPlayer.x) <= reach * 0.9) {
+            frontTargetX = Math.max(-3.4, Math.min(3.4, crossX));
+            frontTy = netPlayer.homeY;
+            frontDash = Math.max(frontDash, 1.15);
+            kind = kind === "poach" ? kind : "advance";
+          }
         }
       }
     }
