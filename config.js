@@ -198,6 +198,11 @@ export const TUNING = {
     rallyMsgHide: 500, // ポーチ/ボレー等のラリー中告知の表示時間(ms)
     swingDuration: 0.42, // インパクトから振り抜きが収まるまでの表示時間(秒)
     swingRecover: 0.22, // フォロースルー終了(swingT=0)後、構え直しが完了するまで次の打球を禁止する時間(秒)
+    // スイング開始(phase=0)からラケットが「インパクト」の姿勢に達するまでの位相(0..1)。
+    // ボールは打撃を決めた瞬間ではなく、スイングがこの位相に到達したフレームでのみ発生させる。
+    // animation3d.js の SWING_KEYS / SERVE_KEYS の contact/impact キーフレームと同じ値を使う
+    // （打球イベントの発火条件とモーションの見た目を単一の値で揃える）。
+    impactPhase: { front: 0.48, rear: 0.52, back: 0.40, serve: 0.46 },
   },
   // ボレー（ノーバウンド返球）の調整
   volley: {

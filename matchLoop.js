@@ -422,30 +422,6 @@ export function hitBall(opts) {
     }
   }
 
-  ball.spin = def.spin;
-  ball.spinMag = def.spinMag;
-  ball.trailColor = def.color;
-  ball.lastHitter = side;
-  ball.serving = false;
-  ball.frontChecked = (side === "cpu") ? false : true;
-  ball.cpuFrontChecked = (side === "player") ? false : true;
-  setReceiveDone(true); // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
-  launchBall(hitter.x, hitter.y, fromZ, tx, ty, speed);
-  // 相手が打った瞬間 = ここ。打たれた側の守備（展開・左右責任）をこの一打で確定し
-  // 次に相手が打つまで固定する（飛行中に責任が入れ替わらないように）。
-  latchCoverageOnHit(side);
-
-  // 打球を受ける側チームの前衛に作戦を抽選する（両チーム対称）。
-  // player が打つ→相手(cpu)前衛、cpu が打つ→味方(player)前衛。
-  // 味方前衛のポーチは観戦モードでのみ自走（人間モードは partnerAggressiveness 側で制御）。
-  if (side === "player") {
-    setCpuFrontPlan(pickFrontPlan());
-    setPlayerFrontPlan("base");
-  } else {
-    setCpuFrontPlan("base");
-    setPlayerFrontPlan(spectatorMode ? pickFrontPlan() : "base");
-  }
-
   // 見た目（フォア/バックのポーズ・ラケット軌道）は、ready/prep時点で
   // すでに固定済み（swingSideLocked）なら hitter.swingSide を最優先で使う。
   // ここで isBackhandFor を再評価すると、ready固定後にボールが動いて
@@ -454,25 +430,67 @@ export function hitBall(opts) {
   // ready/prepを経由しないヒッター（AIの前衛/後衛/パートナー等）は
   // ロックされていないので、その場の backhand 判定をそのまま使う。
   const visualSide = hitter.swingSideLocked ? hitter.swingSide : (backhand ? "back" : "fore");
+  const isFront = hitter === front || hitter === cpuFront;
+  const holdX = hitter.x, holdY = hitter.y;
+
+  // 状態機械: テイクバック→スイング→インパクト→フォロースルー。
+  // ここ（打つと決めた瞬間）ではボールを発生させず、ヒッターの手元に留めておく。
+  // 実際の発生（速度・スピン等の反映）は、スイングがインパクトの姿勢に到達した
+  // フレームでのみ行う（update()内のpendingImpact監視・下のimpactPhaseFor参照）。
+  ball.x = holdX; ball.y = holdY; ball.z = fromZ;
+  ball.vx = 0; ball.vy = 0; ball.vz = 0;
+  ball.held = true;
+
+  hitter.pendingImpact = {
+    phase: impactPhaseFor(visualSide, isFront),
+    fired: false,
+    run: function () {
+      ball.spin = def.spin;
+      ball.spinMag = def.spinMag;
+      ball.trailColor = def.color;
+      ball.lastHitter = side;
+      ball.serving = false;
+      ball.frontChecked = (side === "cpu") ? false : true;
+      ball.cpuFrontChecked = (side === "player") ? false : true;
+      setReceiveDone(true); // サーブ以外の打球が出た=レシーブ完了（前衛が動き出せる）
+      ball.held = false;
+      launchBall(holdX, holdY, fromZ, tx, ty, speed);
+      // 相手が打った瞬間 = ここ。打たれた側の守備（展開・左右責任）をこの一打で確定し
+      // 次に相手が打つまで固定する（飛行中に責任が入れ替わらないように）。
+      latchCoverageOnHit(side);
+
+      // 打球を受ける側チームの前衛に作戦を抽選する（両チーム対称）。
+      // player が打つ→相手(cpu)前衛、cpu が打つ→味方(player)前衛。
+      // 味方前衛のポーチは観戦モードでのみ自走（人間モードは partnerAggressiveness 側で制御）。
+      if (side === "player") {
+        setCpuFrontPlan(pickFrontPlan());
+        setPlayerFrontPlan("base");
+      } else {
+        setCpuFrontPlan("base");
+        setPlayerFrontPlan(spectatorMode ? pickFrontPlan() : "base");
+      }
+
+      // スマッシュは決め球として大きく告知（プレイヤー・AI前衛とも）
+      if (isSmash) {
+        effects.push({
+          type: "text",
+          x: hitter.x, y: hitter.y - 0.6, t: 0, ttl: 0.8,
+          text: "スマッシュ！",
+          color: "#F43F5E",
+        });
+      }
+
+      setLastHitInfo({
+        side: side, shot: shotKey, course: opts.course != null ? opts.course : null,
+        aimX: opts.aimX != null ? opts.aimX : null,
+        aimY: opts.aimY != null ? opts.aimY : null,
+        tx: tx, ty: ty, speed: speed, byPlayer: !!opts.byPlayer,
+        contact: ev,
+      });
+    },
+  };
+
   startSwing(hitter, visualSide);
-
-  // スマッシュは決め球として大きく告知（プレイヤー・AI前衛とも）
-  if (isSmash) {
-    effects.push({
-      type: "text",
-      x: hitter.x, y: hitter.y - 0.6, t: 0, ttl: 0.8,
-      text: "スマッシュ！",
-      color: "#F43F5E",
-    });
-  }
-
-  setLastHitInfo({
-    side: side, shot: shotKey, course: opts.course != null ? opts.course : null,
-    aimX: opts.aimX != null ? opts.aimX : null,
-    aimY: opts.aimY != null ? opts.aimY : null,
-    tx: tx, ty: ty, speed: speed, byPlayer: !!opts.byPlayer,
-    contact: ev,
-  });
 }
 
 // このプレイヤーが今すぐ次の打球（スイング/ボレー含む）を打てるかどうか。
@@ -488,12 +506,30 @@ export function canSwingNow(p) {
   return p.pose !== "swing" && !(p.recoverT > 0);
 }
 
-export function startSwing(p, side) {
+export function startSwing(p, side, kind) {
   p.pose = "swing";
   p.swingSide = side;
+  p.swingKind = kind || null; // null=通常ストローク/ボレー・スマッシュ / "serve"=サーブ（描画側の分岐用）
   p.swingSideLocked = false; // スイング種別は確定済み。以降は固定不要（次のreadyで再ロックされる）
   p.swingT = TUNING.tempo.swingDuration;
   p.recoverT = 0;
+}
+
+// スイング開始(swingT=swingDuration)からの経過を位相0..1で返す。
+// animation3d.js の swingPhaseOf と同じ式（THREE.js依存のanimation3d.jsを
+// ここ（常時ロードされるゲームループ）からは読み込まないため、式のみ複製する）。
+function currentSwingPhase(p) {
+  const dur = (TUNING.tempo && TUNING.tempo.swingDuration) || 0.42;
+  return Math.max(0, Math.min(1, 1 - (p.swingT || 0) / dur));
+}
+
+// side("fore"/"back")・isFrontから、打球（ボール発生）をトリガーする位相(0..1)を返す。
+// animation3d.js の SWING_KEYS と同じ TUNING.tempo.impactPhase を参照するため、
+// モーションのインパクトキーフレームと常に同じ位相になる。
+function impactPhaseFor(side, isFront) {
+  const ip = TUNING.tempo.impactPhase;
+  if (side === "back") return ip.back;
+  return isFront ? ip.front : ip.rear;
 }
 
 // 現在速度cur を 目標速度target へ、加速度(accel)/減速度(decel)で dt 秒分だけ近づける。
@@ -891,6 +927,7 @@ export function update(dt) {
       if (p.swingT <= 0) {
         p.swingT = 0;
         p.pose = "idle";
+        p.swingKind = null;
         // フォロースルー終了直後は構え直しが完了するまで次の打球を打てない
         // （クールダウン。前衛同士の近距離ボレー応酬を抑える）。
         p.recoverT = TUNING.tempo.swingRecover;
@@ -898,6 +935,19 @@ export function update(dt) {
     } else if (p.recoverT > 0) {
       p.recoverT -= dt;
       if (p.recoverT < 0) p.recoverT = 0;
+    }
+
+    // 状態機械: 打撃決定済み・未発生の打球(pendingImpact)を、スイングが
+    // インパクトの位相に到達したフレームでのみ発生させる。
+    // pose が"swing"でなくなった（外的要因での中断等）場合も、ボールが
+    // ヒッターの手元で凍結されたまま残らないよう安全網として即発生させる。
+    const pend = p.pendingImpact;
+    if (pend && !pend.fired) {
+      if (p.pose !== "swing" || currentSwingPhase(p) >= pend.phase) {
+        pend.fired = true;
+        pend.run();
+        p.pendingImpact = null;
+      }
     }
   });
 
@@ -920,57 +970,61 @@ export function update(dt) {
     return;
   }
 
-  // ボール物理（メートル・秒）
-  const prevX = ball.x;
-  const prevY = ball.y;
-  const prevZ = ball.z;
-  ball.x += ball.vx * dt;
-  ball.y += ball.vy * dt;
-  ball.z += ball.vz * dt;
-  ball.vz -= G * dt;
-  // 回転による飛行中の沈み込み（アンダーカットサーブ専用、ball.flightSink参照）。
-  // launchBall()が沈み込み込みの初速を計算した上で、飛行後半（startFrac以降）
-  // にのみ下向きの追加加速度をランプさせる。マグヌス揚力で前半は平たく飛び、
-  // 空気抵抗による失速とともに後半で沈む下回転(カット)の体感を再現する。
-  // 他の球種・ラリー打球ではflightSinkがnullのため一切影響しない。
-  // maxLandVzで着地直前の落下速度に上限を掛ける: サーブのネット回避ループ
-  // (launchServeBall)でspeedが落とされて飛行時間Tが伸びた場合でも、絶対値の
-  // accelをそのまま積分すると着地直前の勢いが際限なく積み上がり、バウンドが
-  // 異常に高く跳ねてしまう（他のカット系サーブの着地直前vz -6〜-7m/s程度に
-  // 対し、-15〜-24m/sまで暴走することを実測で確認）。他のカット系サーブと
-  // 同水準の着地の勢いに収まるようクランプする。
-  if (ball.flightSink) {
-    const fs = ball.flightSink;
-    fs.elapsed += dt;
-    const sinkStartT = fs.T * fs.startFrac;
-    if (fs.elapsed > sinkStartT) {
-      const ramp = Math.min(1, (fs.elapsed - sinkStartT) / fs.rampSec);
-      ball.vz -= fs.accel * ramp * dt;
+  // ボール物理（メートル・秒）。打撃決定〜インパクト位相まで held の間は、
+  // ボールをヒッターの手元に凍結して物理更新・ネット/バウンド判定を止める
+  // （pendingImpact発火時にheldが解除され、次フレームから物理を再開する）。
+  if (!ball.held) {
+    const prevX = ball.x;
+    const prevY = ball.y;
+    const prevZ = ball.z;
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+    ball.z += ball.vz * dt;
+    ball.vz -= G * dt;
+    // 回転による飛行中の沈み込み（アンダーカットサーブ専用、ball.flightSink参照）。
+    // launchBall()が沈み込み込みの初速を計算した上で、飛行後半（startFrac以降）
+    // にのみ下向きの追加加速度をランプさせる。マグヌス揚力で前半は平たく飛び、
+    // 空気抵抗による失速とともに後半で沈む下回転(カット)の体感を再現する。
+    // 他の球種・ラリー打球ではflightSinkがnullのため一切影響しない。
+    // maxLandVzで着地直前の落下速度に上限を掛ける: サーブのネット回避ループ
+    // (launchServeBall)でspeedが落とされて飛行時間Tが伸びた場合でも、絶対値の
+    // accelをそのまま積分すると着地直前の勢いが際限なく積み上がり、バウンドが
+    // 異常に高く跳ねてしまう（他のカット系サーブの着地直前vz -6〜-7m/s程度に
+    // 対し、-15〜-24m/sまで暴走することを実測で確認）。他のカット系サーブと
+    // 同水準の着地の勢いに収まるようクランプする。
+    if (ball.flightSink) {
+      const fs = ball.flightSink;
+      fs.elapsed += dt;
+      const sinkStartT = fs.T * fs.startFrac;
+      if (fs.elapsed > sinkStartT) {
+        const ramp = Math.min(1, (fs.elapsed - sinkStartT) / fs.rampSec);
+        ball.vz -= fs.accel * ramp * dt;
+      }
+      const maxLandVz = fs.maxLandVz != null ? fs.maxLandVz : Infinity;
+      if (ball.vz < -maxLandVz) ball.vz = -maxLandVz;
     }
-    const maxLandVz = fs.maxLandVz != null ? fs.maxLandVz : Infinity;
-    if (ball.vz < -maxLandVz) ball.vz = -maxLandVz;
-  }
-  // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
-  // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
-  const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
-  ball.vx *= drag;
-  ball.vy *= drag;
+    // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
+    // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
+    const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
+    ball.vx *= drag;
+    ball.vy *= drag;
 
-  ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
-  if (ball.trail.length > 7) ball.trail.shift();
+    ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
+    if (ball.trail.length > 7) ball.trail.shift();
 
-  if (checkNet(prevY, prevZ)) return;
+    if (checkNet(prevY, prevZ)) return;
 
-  if (ball.z <= 0 && ball.vz < 0) {
-    // z=0を跨いだフレームの実際の着地点(x,y)を線形補間で求め、
-    // 通り過ぎた分の誤差を消してからin/out判定する
-    if (prevZ > 0) {
-      const t = prevZ / (prevZ - ball.z);
-      ball.x = prevX + (ball.x - prevX) * t;
-      ball.y = prevY + (ball.y - prevY) * t;
+    if (ball.z <= 0 && ball.vz < 0) {
+      // z=0を跨いだフレームの実際の着地点(x,y)を線形補間で求め、
+      // 通り過ぎた分の誤差を消してからin/out判定する
+      if (prevZ > 0) {
+        const t = prevZ / (prevZ - ball.z);
+        ball.x = prevX + (ball.x - prevX) * t;
+        ball.y = prevY + (ball.y - prevY) * t;
+      }
+      handleBounce();
+      if (state !== "rally") return;
     }
-    handleBounce();
-    if (state !== "rally") return;
   }
 
   updatePartner(dt);
@@ -1071,7 +1125,7 @@ let p3d = null, p3dLoading = false;
 function ensure3D() {
   if (p3d || p3dLoading) return;
   p3dLoading = true;
-  import("./player3d.js?v=20260710-01")
+  import("./player3d.js?v=20260711-01")
     .then((m) => m.init3D(canvas).then(() => { p3d = m; }))
     .catch((e) => { console.warn("3D初期化失敗:", e); })
     .finally(() => { p3dLoading = false; });

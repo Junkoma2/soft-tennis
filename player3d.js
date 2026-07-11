@@ -14,11 +14,11 @@
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { project } from "./math.js";
 import { TUNING, COURT } from "./config.js";
-import { back, front, cpuBack, cpuFront, ball, state, rallyControlled, spectatorMode } from "./state.js";
+import { back, front, cpuBack, cpuFront, rallyControlled, spectatorMode } from "./state.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import {
   applyPose, poseNameForPlayer, applyLeftHandGrip,
-  swingPhaseOf, applySwingPhase,
+  swingPhaseOf, applySwingPhase, applyServeSwingPhase,
 } from "./animation3d.js";
 import { baseYawFor, ballFacingYaw } from "./geometry.js";
 import { tunedValue } from "./viewTuning.js";
@@ -164,7 +164,10 @@ function setColors(pl) {
 function updateBlend(pl, targetName, dt) {
   const b = getBlend(pl);
   if (targetName !== b.b) { b.a = b.b; b.b = targetName; b.t = 0; }
-  b.t = Math.min(1, b.t + dt * 6); // 補間速度
+  // 補間速度。スイング自体はswingDuration(既定0.42秒)でゆっくり振り抜くため、
+  // 構え・待機・回復側の遷移が速すぎるとスイングだけ間延びして見える。
+  // 全体のテンポ感を揃えるため、遷移を少し引き延ばす（旧: dt*6 ≒0.17秒で完了）。
+  b.t = Math.min(1, b.t + dt * 4.2);
   return b;
 }
 
@@ -207,7 +210,8 @@ function smoothYawFor(pl, targetYaw, dt, turnRate) {
     m.yaw = targetYaw;
     return targetYaw;
   }
-  const rate = turnRate != null ? turnRate : 9;
+  // 既定値もスイング以外の見た目テンポを揃えるため少し落とす（旧: 9）。
+  const rate = turnRate != null ? turnRate : 6.5;
   const alpha = 1 - Math.exp(-dt * rate);
   m.yaw += angleDelta(m.yaw, targetYaw) * alpha;
   return m.yaw;
@@ -251,7 +255,8 @@ function applyRunMotion(pl, joints, yaw, dt) {
 
   const isSidestep = lateral && !isRunTurn;
   const m = getMotion(pl);
-  m.runPhase += dt * (8 + Math.min(5, speed * 0.9));
+  // 足の回転速度もスイングのゆったりしたテンポに合わせて少し落とす（旧: 8 + min(5, speed*0.9)）。
+  m.runPhase += dt * (6 + Math.min(4, speed * 0.75));
   const phase = m.runPhase;
   // サイドステップはsidestepMaxSpeed(3.0)が上限のため、通常のspeed/4.5基準だと
   // 振幅(amp)が最大でも0.7弱にしかならず動きが弱く見える。判別しやすくするため
@@ -378,7 +383,13 @@ export function render3D() {
     const renderYaw = smoothYawFor(pl, targetYaw, dt, turnRate);
     char.group.rotation.y = renderYaw;
 
-    if (pl.pose === "swing" && state === "rally" && !ball.serving) {
+    if (pl.pose === "swing" && pl.swingKind === "serve") {
+      // サーブ：トス後のトロフィーポジション→インパクト→フォロースルーを再生する。
+      // 打球判定側（matchLoop.js）が同じ位相(TUNING.tempo.impactPhase.serve)で
+      // ボールを発生させるため、ここでの見た目とタイミングは常に一致する。
+      applyServeSwingPhase(char.joints, swingPhaseOf(pl), BASE_HIP_Y);
+      pinBlend(pl, "serveFollow");
+    } else if (pl.pose === "swing") {
       // スイング：swingT 由来の phase で takeback→contact→follow を水平に振り抜く
       applySwingPhase(char.joints, swingSide, swingPhaseOf(pl), BASE_HIP_Y, isFront);
       pinBlend(pl, swingSide === "back" ? "backhandFollow" : (isFront ? "forehandFollow" : "rearForehandFollow"));

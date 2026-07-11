@@ -1090,6 +1090,239 @@ export const POSES = {
       "z": 0
     }
   },
+  // サーブ: トス後にラケットを背中側へ落とすトロフィーポジション。
+  // 非利き手（shoulderL）はトスを終えた直後の高い位置を残す。
+  "serveTakeback": {
+    "bodyLean": -6,
+    "rootLift": -0.10,
+    "rootShiftZ": -0.05,
+    "pelvisTurn": 20,
+    "chest": {
+      "x": -10,
+      "y": 20,
+      "z": 0
+    },
+    "head": {
+      "x": -8,
+      "y": -10,
+      "z": 0
+    },
+    "shoulderR": {
+      "x": 20,
+      "y": -60,
+      "z": 70
+    },
+    "elbowR": {
+      "x": 70,
+      "y": 20,
+      "z": 20
+    },
+    "handR": {
+      "x": 10,
+      "y": 0,
+      "z": -10
+    },
+    "racket": {
+      "x": -60,
+      "y": -10,
+      "z": -110
+    },
+    "shoulderL": {
+      "x": 110,
+      "y": 10,
+      "z": -30
+    },
+    "elbowL": {
+      "x": -20,
+      "y": 0,
+      "z": 0
+    },
+    "hipR": {
+      "x": 14,
+      "y": 0,
+      "z": 12
+    },
+    "kneeR": {
+      "x": -30,
+      "y": 0,
+      "z": 0
+    },
+    "footR": {
+      "x": 20,
+      "y": 0,
+      "z": 0
+    },
+    "hipL": {
+      "x": 14,
+      "y": 0,
+      "z": -12
+    },
+    "kneeL": {
+      "x": -30,
+      "y": 0,
+      "z": 0
+    },
+    "footL": {
+      "x": 20,
+      "y": 0,
+      "z": 0
+    }
+  },
+  // サーブ: 頭上のインパクト。膝を伸ばし切って高い打点を捉える。
+  "serveImpact": {
+    "bodyLean": 10,
+    "rootLift": 0.02,
+    "rootShiftZ": 0.05,
+    "pelvisTurn": 4,
+    "chest": {
+      "x": 6,
+      "y": 4,
+      "z": 0
+    },
+    "head": {
+      "x": 4,
+      "y": -4,
+      "z": 0
+    },
+    "shoulderR": {
+      "x": 150,
+      "y": -6,
+      "z": 10
+    },
+    "elbowR": {
+      "x": -10,
+      "y": 0,
+      "z": 0
+    },
+    "handR": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "racket": {
+      "x": 30,
+      "y": 4,
+      "z": -4
+    },
+    "shoulderL": {
+      "x": 40,
+      "y": -10,
+      "z": -30
+    },
+    "elbowL": {
+      "x": -30,
+      "y": 0,
+      "z": 0
+    },
+    "hipR": {
+      "x": 8,
+      "y": 0,
+      "z": 10
+    },
+    "kneeR": {
+      "x": -14,
+      "y": 0,
+      "z": 0
+    },
+    "footR": {
+      "x": 12,
+      "y": 0,
+      "z": 0
+    },
+    "hipL": {
+      "x": 8,
+      "y": 0,
+      "z": -10
+    },
+    "kneeL": {
+      "x": -14,
+      "y": 0,
+      "z": 0
+    },
+    "footL": {
+      "x": 12,
+      "y": 0,
+      "z": 0
+    }
+  },
+  // サーブ: インパクト後、腕が体の前を横切って収まるフォロースルー。
+  "serveFollow": {
+    "bodyLean": 14,
+    "rootLift": -0.04,
+    "rootShiftX": 0.05,
+    "rootShiftZ": 0.09,
+    "pelvisTurn": -10,
+    "chest": {
+      "x": 4,
+      "y": -20,
+      "z": 0
+    },
+    "head": {
+      "x": 2,
+      "y": 10,
+      "z": 0
+    },
+    "shoulderR": {
+      "x": 60,
+      "y": 30,
+      "z": -60
+    },
+    "elbowR": {
+      "x": -50,
+      "y": 0,
+      "z": 0
+    },
+    "handR": {
+      "x": -10,
+      "y": 0,
+      "z": 0
+    },
+    "racket": {
+      "x": 10,
+      "y": 30,
+      "z": -60
+    },
+    "shoulderL": {
+      "x": 20,
+      "y": -14,
+      "z": 30
+    },
+    "elbowL": {
+      "x": -34,
+      "y": 0,
+      "z": 0
+    },
+    "hipR": {
+      "x": 20,
+      "y": 0,
+      "z": 8
+    },
+    "kneeR": {
+      "x": -36,
+      "y": 0,
+      "z": 0
+    },
+    "footR": {
+      "x": 18,
+      "y": 0,
+      "z": 0
+    },
+    "hipL": {
+      "x": 10,
+      "y": 0,
+      "z": -10
+    },
+    "kneeL": {
+      "x": -20,
+      "y": 0,
+      "z": 0
+    },
+    "footL": {
+      "x": 16,
+      "y": 0,
+      "z": 0
+    }
+  },
   "backhandFollow": {
     "bodyLean": 5,
     "rootLift": -0.04,
@@ -1168,26 +1401,36 @@ export const POSES = {
   }
 };
 
-// スイングの3キーフレーム（phase 0..1）。impact がやや早め。
+// スイングの3〜5キーフレーム（phase 0..1）。impact/contact の位相は
+// TUNING.tempo.impactPhase を参照し、打球発生タイミング（matchLoop.js）と揃える。
 const SWING_KEYS = {
   frontFore: [
     { p: 0.0, pose: "forehandTakeback" },
-    { p: 0.48, pose: "forehandContact" },
+    { p: TUNING.tempo.impactPhase.front, pose: "forehandContact" },
     { p: 0.74, pose: "forehandFollow" },
   ],
   rearFore: [
     { p: 0.0, pose: "rearForehandTakeback" },
     { p: 0.30, pose: "rearForehandLoad" },
-    { p: 0.52, pose: "rearForehandContact" },
+    { p: TUNING.tempo.impactPhase.rear, pose: "rearForehandContact" },
     { p: 0.64, pose: "rearForehandDrive" },
     { p: 0.78, pose: "rearForehandFollow" },
   ],
   back: [
     { p: 0.0, pose: "backhandTakeback" },
-    { p: 0.40, pose: "backhandContact" },
+    { p: TUNING.tempo.impactPhase.back, pose: "backhandContact" },
     { p: 1.0, pose: "backhandFollow" },
   ],
 };
+
+// サーブの4キーフレーム: トス後のテイクバック(トロフィーポジション) →
+// インパクト → フォロースルー。impact の位相は TUNING.tempo.impactPhase.serve
+// を参照し、matchLoop.js 側のボール発生タイミングと揃える。
+const SERVE_KEYS = [
+  { p: 0.0, pose: "serveTakeback" },
+  { p: TUNING.tempo.impactPhase.serve, pose: "serveImpact" },
+  { p: 0.82, pose: "serveFollow" },
+];
 
 const JOINT_NAMES = [
   "chest", "head", "shoulderR", "elbowR", "handR", "racket",
@@ -1447,14 +1690,8 @@ function poseAt(keys, phase) {
 }
 
 function applyRearForehandStroke(joints, phase, baseHipY) {
-  const keys = [
-    { p: 0.0, pose: "rearForehandTakeback" },
-    { p: 0.30, pose: "rearForehandLoad" },
-    { p: 0.52, pose: "rearForehandContact" },
-    { p: 0.64, pose: "rearForehandDrive" },
-    { p: 0.78, pose: "rearForehandFollow" },
-  ];
-  const { prev, from, to, next, t } = poseAt(keys, phase);
+  // SWING_KEYS.rearFore と同じキーフレームを使う（二重定義を避ける）。
+  const { prev, from, to, next, t } = poseAt(SWING_KEYS.rearFore, phase);
   const eased = smoothstep(t);
   const armT = t;
   const lowerT = eased;
@@ -1498,10 +1735,46 @@ function applyRearForehandStroke(joints, phase, baseHipY) {
 export function poseNameForPlayer(pl, isFront) {
   const p = pl && pl.pose;
   const front = !!isFront;
+  if (p === "toss") return "serveTakeback";
   if (p === "prep") {
     if (pl.swingSide === "back") return "backhandTakeback";
     return front ? "forehandTakeback" : "rearForehandTakeback";
   }
   if (p === "volley") return front ? "forehandVolleyTakeback" : "rearReady";
   return front ? "ready" : "rearReady";
+}
+
+/**
+ * ストローク/ボレー/スマッシュ（打者の側 side="fore"/"back" と前衛/後衛 isFront）で、
+ * スイング開始(phase=0)からインパクトのキーフレームに達するまでの位相(0..1)。
+ * matchLoop.js 側の打球発生（ボールの実発生）はこの位相に一致させる。
+ */
+export function impactPhaseFor(side, isFront) {
+  const keys = side === "back"
+    ? SWING_KEYS.back
+    : (isFront ? SWING_KEYS.frontFore : SWING_KEYS.rearFore);
+  const found = keys.find((k) => /Contact/.test(k.pose));
+  return found ? found.p : 0.5;
+}
+
+/** サーブのインパクト位相（matchLoop.js 側のボール発生タイミングと共有）。 */
+export function serveImpactPhase() {
+  const found = SERVE_KEYS.find((k) => /Impact/.test(k.pose));
+  return found ? found.p : TUNING.tempo.impactPhase.serve;
+}
+
+/** phase に応じ、SERVE_KEYS の隣接2キーフレームを補間して joints へ適用する（サーブ専用）。 */
+export function applyServeSwingPhase(joints, phase, baseHipY) {
+  let i = 0;
+  while (i < SERVE_KEYS.length - 1 && phase > SERVE_KEYS[i + 1].p) i++;
+  const k0 = SERVE_KEYS[i];
+  const k1 = SERVE_KEYS[Math.min(i + 1, SERVE_KEYS.length - 1)];
+  const span = k1.p - k0.p;
+  const t = span > 0 ? (phase - k0.p) / span : 0;
+  const clampedT = clamp01(t);
+  applyPose(joints, k0.pose, k1.pose, clampedT, baseHipY, {
+    lower: smoothstep(clampedT),
+    torso: smoothstep(clampedT),
+    arm: smoothstep(clampedT),
+  });
 }
