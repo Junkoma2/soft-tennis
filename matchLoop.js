@@ -1121,13 +1121,24 @@ export function update(dt) {
   }
 }
 // --- 3D オーバーレイ（遅延ロード） ---
+// CDN（three.js）の取得に失敗した場合、キャラは3Dオーバーレイでしか描画されない
+// （2Dキャラ描画は廃止済み）ため、通信が回復すれば表示が戻るようリトライ自体は
+// 続ける。ただしバックオフなしで毎フレーム再importすると、失敗が続く間は
+// 失敗リクエストを秒間60回近く発行し続けてしまうため、失敗後は一定時間
+// （RETRY_DELAY_MS）空けてから次のリトライを行う。
 let p3d = null, p3dLoading = false;
+let nextRetryAt = 0;
+const RETRY_DELAY_MS = 4000;
 function ensure3D() {
   if (p3d || p3dLoading) return;
+  if (performance.now() < nextRetryAt) return;
   p3dLoading = true;
   import("./player3d.js?v=20260711-01")
     .then((m) => m.init3D(canvas).then(() => { p3d = m; }))
-    .catch((e) => { console.warn("3D初期化失敗:", e); })
+    .catch((e) => {
+      console.warn("3D初期化失敗:", e);
+      nextRetryAt = performance.now() + RETRY_DELAY_MS;
+    })
     .finally(() => { p3dLoading = false; });
 }
 function render3DIfNeeded() {
