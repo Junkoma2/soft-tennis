@@ -75,6 +75,7 @@ export function resetPlayersForPoint() {
   ball.vx = 0; ball.vy = 0; ball.vz = 0;
   ball.bounces = 0;
   ball.serving = false;
+  ball.held = false;
   ball.spin = "flat";
   ball.spinMag = 1;
   ball.trailColor = "#DFFF4F";
@@ -93,6 +94,7 @@ export function resetPlayersForPoint() {
   toss.t = 0;
   [back, front, cpuBack, cpuFront].forEach((p) => {
     p.pose = "idle"; p.swingT = 0; p.recoverT = 0;
+    p.swingKind = null; p.pendingImpact = null; // 未発生の打球情報が次のポイントへ持ち越されないようにする
     p.swingSideLocked = false; p.wrapCommitted = false; p.wrapTargetX = null;
     p.approachTargetX = null;
     // 前のポイントで走っていた勢い(vx/vy)が残ったままだと、サーブ前の静止中に

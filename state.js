@@ -270,10 +270,12 @@ export function makePlayer(opts) {
     color: "#6366F1", skin: "#F1C7A8", label: "",
     look: makeLook(),  // 髪・ラケット等の外見（人体とラケットを分離して保持）
     facing: -1,
-    pose: "idle",      // idle / ready / swing / serve / toss
+    pose: "idle",      // idle / ready / swing / prep / volley / toss
     swingSide: "fore", // fore / back
     swingSideLocked: false, // trueの間はready/prepで固定済みのswingSideを再評価しない
     swingT: 0,
+    swingKind: null,   // null(通常ストローク/ボレー) / "serve"（描画側でサーブ専用モーションを選ぶ）
+    pendingImpact: null, // 打撃決定済み・未発生の打球情報。スイングがインパクト位相に達したフレームでのみ発生させる
     recoverT: 0,       // フォロースルー終了後、構え直しが完了するまでの残り時間（秒）。
                         // >0の間は次の打球を受け付けない（クールダウン。見た目はidleでもよい）。
     wrapCommitted: false, // 来球に対して打ち方を一度決めたらtrue（打つまで再評価しない）
@@ -317,6 +319,7 @@ export const ball = {
   bounces: 0,
   lastHitter: "cpu",  // "player" / "cpu"（チーム単位）
   serving: false,     // サーブのボール（1バウンド目でイン判定）
+  held: false,        // 打撃決定〜インパクト位相までヒッターの手元に留めている間true（物理更新を止める）
   spin: "flat",       // flat / slice / drive（バウンド後の挙動が変わる）
   spinMag: 1,         // 回転の強さ（バウンドの変化量を強調）
   flightSink: null,   // 飛行中の回転沈み込み(マグヌス+失速)設定。非nullの間だけ効く。

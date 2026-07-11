@@ -405,7 +405,7 @@ export function launchPlayerServe(type) {
   const zone = TUNING.serve.types[type].zone;
 
   toss.active = false;
-  startSwing(server, "fore");
+  startSwing(server, "fore", "serve");
 
   // 高すぎる打点は届かず空振り（フォルト）
   if (z > zone.max) {
@@ -496,6 +496,7 @@ export function aiLaunchServe(team) {
   const plan = aiServePlan || { type: "underCut", power: "mid", spin: "mid" };
   setAiServePlan(null);
   const zone = TUNING.serve.types[plan.type].zone;
+  startSwing(server, "fore", "serve");
   launchServeBall(team, server, server.stats, {
     type: plan.type,
     power: plan.power,
@@ -504,7 +505,6 @@ export function aiLaunchServe(team) {
     contactZ: zone.ideal + (Math.random() - 0.5) * 0.25,
     aim: aiServeAimFor(team, plan.type),
   });
-  startSwing(server, "fore");
 }
 
 /* ---- サーブ打球の生成（事前設定のパワー・回転 × 打点品質） ---- */
@@ -529,9 +529,11 @@ export function launchServeBall(team, server, stats, cfg) {
   // 回転が強いほどさらに浅く落ちる（カット系の食い込み/減速を表現）
   let speed = tcfg.speed * SERVE_INITIAL_SPEED_MUL * stats.serve * powerMul;
   let ty = targetDepth * (COURT.serviceY - tcfg.depthOffset - 0.6 * (spinMul - 1));
-  ball.spin = tcfg.spinKind;
-  ball.spinMag = tcfg.spinMagBase * spinMul;
-  ball.trailColor = tcfg.color;
+  // ball.* への反映はインパクト発生時（pendingImpact.run）にまとめて行う。
+  // ここでは値を確定させるだけに留める。
+  const spinKind = tcfg.spinKind;
+  const spinMag = tcfg.spinMagBase * spinMul;
+  const trailColor = tcfg.color;
   speed *= 1 - s.qualitySpeedDrop * (1 - q);
   // AI打球は両チーム共通パラメータ（cpuSpeedScale廃止・対称性確保）
 
@@ -561,17 +563,40 @@ export function launchServeBall(team, server, stats, cfg) {
     speed *= 0.93;
     netTries++;
   }
-  ball.lastHitter = team;
+  const holdX = server.x, holdY = server.y;
+  const sink = tcfg.sink || null;
+
+  // 状態機械: サーブも通常打と同じく、スイングがインパクトの姿勢に到達した
+  // フレームでのみボールを発生させる。ここ（トス→スイング決定の瞬間）では
+  // ボールをサーバーの手元に凍結し、実際の発生は下のpendingImpact.runで行う。
+  // ball.serving はコート表示（サービスボックスのハイライト等）が参照するため、
+  // 「サーブ中である」という状態はここで即時に立てておく（速度・スピン等の
+  // 反映だけをインパクトへ遅延させる）。
+  ball.x = holdX; ball.y = holdY; ball.z = fromZ;
+  ball.vx = 0; ball.vy = 0; ball.vz = 0;
+  ball.held = true;
   ball.serving = true;
   ball.bounces = 0;
-  ball.frontChecked = true;     // サーブには前衛は触らない
-  ball.cpuFrontChecked = true;
-  setReceiveDone(false);          // レシーブが返るまで前衛はポジション移動しない
-  // アンダーカットのみ、回転による飛行中の沈み込み(tcfg.sink)をlaunchBallに渡す。
-  // 他のサーブ種別・ラリー打球はsink未指定のため従来どおりの純放物線のまま。
-  launchBall(server.x, server.y, fromZ, tx, ty, speed, tcfg.sink || null);
-  // サーブも「相手が打った」一打。レシーブ側の守備をこのサーブで確定する。
-  latchCoverageOnHit(team);
+
+  server.pendingImpact = {
+    phase: TUNING.tempo.impactPhase.serve,
+    fired: false,
+    run: function () {
+      ball.spin = spinKind;
+      ball.spinMag = spinMag;
+      ball.trailColor = trailColor;
+      ball.lastHitter = team;
+      ball.frontChecked = true;     // サーブには前衛は触らない
+      ball.cpuFrontChecked = true;
+      setReceiveDone(false);          // レシーブが返るまで前衛はポジション移動しない
+      ball.held = false;
+      // アンダーカットのみ、回転による飛行中の沈み込み(tcfg.sink)をlaunchBallに渡す。
+      // 他のサーブ種別・ラリー打球はsink未指定のため従来どおりの純放物線のまま。
+      launchBall(holdX, holdY, fromZ, tx, ty, speed, sink);
+      // サーブも「相手が打った」一打。レシーブ側の守備をこのサーブで確定する。
+      latchCoverageOnHit(team);
+    },
+  };
 }
 /* ===========================================================
  * サーブのフォルト処理（2本制）
