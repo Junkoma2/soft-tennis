@@ -98,6 +98,19 @@ export function setDebugControlsVisible(v) {
   try { localStorage.setItem(DEBUG_VISIBLE_KEY, debugControlsVisible ? "1" : "0"); } catch (e) { /* 保存できなくても動作に支障なし */ }
 }
 
+// 操作説明の段階的チュートリアル（tutorial.js）を最初の1ポイントで見せたかどうか。
+// 一度見たら以後の試合開始では自動表示しない。開始画面から明示的に見返す操作をすると
+// このフラグをfalseへ戻し、次の試合開始時にもう一度表示する。
+const TUTORIAL_SEEN_KEY = "softTennisTutorialSeen";
+export let tutorialSeen = false;
+try {
+  tutorialSeen = localStorage.getItem(TUTORIAL_SEEN_KEY) === "1";
+} catch (e) { /* localStorage不可の環境は既定（毎回表示）のまま */ }
+export function setTutorialSeen(v) {
+  tutorialSeen = !!v;
+  try { localStorage.setItem(TUTORIAL_SEEN_KEY, tutorialSeen ? "1" : "0"); } catch (e) { /* 保存できなくても動作に支障なし */ }
+}
+
 export const debugDraw = { hitboxes: false, trajectory: false, params: false, coverage: false, clipbox: false };
 export let debugHitboxes = false;
 export let debugTrajectory = false;

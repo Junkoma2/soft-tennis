@@ -21,7 +21,7 @@ import {
 
 import { pointLabel } from "./main.js";
 import { insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount } from "./matchLoop.js";
-import { canPlayerHit } from "./input.js";
+import { canPlayerHit, ballIncomingToPlayer } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
 import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
 import { contactYawFor, fromLocal } from "./geometry.js";
@@ -34,6 +34,7 @@ export function draw() {
   ctx.clearRect(0, 0, W, H);
   drawBackground();
   drawCourt();
+  drawControlledMarker();
   drawDebugCoverage();
   drawLandingMarker();
   drawAimCursor();
@@ -58,6 +59,26 @@ export function draw() {
   drawScore();
   drawControlLegend();
   drawDebugParams();
+}
+
+/* ===========================================================
+ * 操作可能な選手の可視化: 自分が今動かしているキャラの足元に、
+ * 味方（AI操作）とは違う色のリングを常時出す。観戦モードは全員AIのため出さない。
+ * ===========================================================*/
+function drawControlledMarker() {
+  if (state === "ready") return;
+  if (spectatorMode) return;
+  const p = rallyControlled;
+  const s = project(p.x, p.y, 0);
+  const pulse = 0.92 + 0.08 * Math.sin(performance.now() / 260);
+  const r = Math.max(9, 0.34 * s.s) * pulse;
+  ctx.save();
+  ctx.strokeStyle = "rgba(250,204,21,0.85)";
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.ellipse(s.x, s.y, r, r * 0.42, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /* ===========================================================
@@ -200,17 +221,20 @@ function drawCoverageForSide(side) {
 /* ---- 操作レジェンド: 左クリック/右クリック/Space+クリックの球種割当 ----
  * 操作方法は開始画面の「操作ガイド」に集約したため、試合中は常時表示しない。
  * ・スワイプ操作（スマホ想定）ではマウスのクリック割当は関係ないため出さない
- * ・マウス操作でも、state が切り替わった直後の数秒だけ一時的に出してフェードアウトする */
+ * ・マウス操作でも、state が切り替わった直後の数秒だけ一時的に出してフェードアウトする
+ * ・打点ゾーンに入っている間（charge.active＝実際に打てるタイミング）は、選べる球種を
+ *   思い出せるようフェードさせずに出し続ける */
 const CONTROL_LEGEND_SHOW_SEC = 3;
 const CONTROL_LEGEND_FADE_SEC = 1;
 export function drawControlLegend() {
   if (state === "ready" || spectatorMode) return;
   if (inputMode !== "mouse") return;
 
+  const keepVisible = state === "rally" && charge.active;
   const elapsed = matchTime - controlLegendShownAt;
   const visibleFor = CONTROL_LEGEND_SHOW_SEC + CONTROL_LEGEND_FADE_SEC;
-  if (elapsed >= visibleFor) return;
-  const alpha = elapsed <= CONTROL_LEGEND_SHOW_SEC
+  if (!keepVisible && elapsed >= visibleFor) return;
+  const alpha = keepVisible || elapsed <= CONTROL_LEGEND_SHOW_SEC
     ? 1
     : Math.max(0, 1 - (elapsed - CONTROL_LEGEND_SHOW_SEC) / CONTROL_LEGEND_FADE_SEC);
 
@@ -937,11 +961,13 @@ export function drawTimingGauge() {
 
   if (state === "rally" && charge.active) {
     // ため状態は控えめな単色リング1本のみで示す（打点タイミングが分かれば十分で、
-    // 派手な多重パルス・発光合成は不要）。
+    // 派手な多重パルス・発光合成は不要）。リングが出ている間＝打球可能範囲に入っている
+    // タイミングそのものなので、短いラベルを添えて意味を明確にする。
     const k = chargeAmount();
     const p = project(rallyControlled.x, rallyControlled.y, 0.15);
     const r = (0.38 + 0.42 * k) * p.s;
-    const readyColor = k >= 1 ? "245,158,11" : "99,102,241";
+    const ready = k >= 1;
+    const readyColor = ready ? "245,158,11" : "99,102,241";
 
     ctx.strokeStyle = `rgba(${readyColor},0.5)`;
     ctx.lineWidth = 3;
@@ -953,6 +979,31 @@ export function drawTimingGauge() {
     ctx.beginPath();
     ctx.arc(p.x, p.y - Math.max(16, 0.38 * p.s), Math.max(4, 0.06 * p.s), 0, Math.PI * 2);
     ctx.fill();
+
+    if (!spectatorMode) {
+      ctx.font = "700 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = `rgba(${readyColor},0.95)`;
+      ctx.strokeStyle = "rgba(15,23,42,0.75)";
+      ctx.lineWidth = 3;
+      const label = ready ? "打てる！" : "ため中";
+      const ly = p.y - Math.max(28, 0.55 * p.s);
+      ctx.strokeText(label, p.x, ly);
+      ctx.fillText(label, p.x, ly);
+    }
+  } else if (state === "rally" && !spectatorMode && ballIncomingToPlayer()) {
+    // まだ打点ゾーンに入っていないが、球はこちらへ向かっている＝もうすぐ打球可能範囲が開く。
+    // 控えめな点線リングだけを出し、上の「ため」表示と混同しないよう主張は弱くする。
+    const p = project(rallyControlled.x, rallyControlled.y, 0.05);
+    const r = 0.34 * p.s;
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "rgba(226,232,240,0.4)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, r, r * 0.34, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 

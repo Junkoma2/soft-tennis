@@ -166,16 +166,29 @@ export function attemptSwing(family) {
     setPendingAimX(aim.x);
     setPendingAimY(aim.y);
   } else {
-    // 打点にまったく届かない（ボールが来ていない/遠すぎる）タイミングでの
-    // クリック＝空振り。原因が分かるよう軽いフィードバックだけ出す
-    // （判定・スコアには影響しない、見た目のみの表示）。
-    effects.push({
-      type: "text",
-      x: rallyControlled.x, y: rallyControlled.y - 0.9, t: 0, ttl: 0.6,
-      text: "空振り！",
-      color: "#94A3B8",
-    });
+    showSwingMissFeedback();
   }
+}
+
+// 打点にまったく届かない（ボールが来ていない/遠すぎる）タイミングでのクリック＝空振り。
+// 判定・スコアには影響しない、見た目だけの短いフィードバック。原因ごとに一言変え、
+// 早すぎ/遅すぎ/距離外のどれで失敗したかが分かるようにする
+// （早すぎのケースは予約スイングが不発になった時点でmatchLoop.js側から別途表示する）。
+function showSwingMissFeedback() {
+  let text = "空振り！";
+  if (!ballIncomingToPlayer()) {
+    // 既に2バウンド以上した後（＝取りに行くには遅すぎた）と、
+    // まだ自分の番ではない（相手が打っていない等）を分けて伝える。
+    text = ball.bounces >= 2 ? "遅い！" : "まだ来ない";
+  } else {
+    text = "届かない";
+  }
+  effects.push({
+    type: "text",
+    x: rallyControlled.x, y: rallyControlled.y - 0.9, t: 0, ttl: 0.6,
+    text: text,
+    color: "#94A3B8",
+  });
 }
 
 export function shotFamilyForClick(button) {

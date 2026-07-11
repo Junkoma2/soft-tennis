@@ -333,6 +333,24 @@ main {
   text-underline-offset: 4px;
 }
 
+.tutorial-replay-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.tutorial-replay-note {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.tutorial-replay-note[hidden] { display: none; }
+
 /* ---- スコアボード ----
  * スコアは render.js の drawScore がキャンバス上部（空の領域）に直接描画するため、
  * HTMLのスコア枠は表示しない（要素はJSの参照先として残す）。 */
@@ -467,6 +485,77 @@ body:has(#screen-game:not([hidden])) .court-wrap {
 }
 
 .message-overlay[hidden] { display: none; }
+
+/* ---- 段階的チュートリアル（最初の1ポイント用オーバーレイ） ---- */
+.tutorial-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(15, 23, 42, .38);
+}
+
+.tutorial-overlay[hidden] { display: none; }
+
+.tutorial-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--color-surface);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .28);
+}
+
+.tutorial-step {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--color-text-secondary);
+}
+
+.tutorial-title {
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.tutorial-body {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.tutorial-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.tutorial-skip-btn,
+.tutorial-next-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tutorial-skip-btn {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.tutorial-next-btn {
+  background: var(--color-primary);
+  color: #fff;
+}
 
 #message-text {
   color: #fff;

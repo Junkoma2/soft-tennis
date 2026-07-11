@@ -1042,7 +1042,17 @@ export function update(dt) {
   // 予約スイング（アシスト）: 早めに離した直後の猶予内にゾーンへ入れば打つ
   if (pendingSwing > 0) {
     setPendingSwing(pendingSwing - dt);
-    if (canPlayerHit(rallyControlled)) playerHitBall(pendingShot, pendingPower, pendingAimX, pendingAimY);
+    if (canPlayerHit(rallyControlled)) {
+      playerHitBall(pendingShot, pendingPower, pendingAimX, pendingAimY);
+    } else if (pendingSwing <= 0) {
+      // 猶予内にゾーンへ入らなかった＝早すぎた入力。原因が分かるよう一言フィードバック。
+      effects.push({
+        type: "text",
+        x: rallyControlled.x, y: rallyControlled.y - 0.9, t: 0, ttl: 0.6,
+        text: "早すぎた！",
+        color: "#94A3B8",
+      });
+    }
   }
 
   // 構え・打点タイミングの管理。打点ゾーンに入ったら自動でため開始
