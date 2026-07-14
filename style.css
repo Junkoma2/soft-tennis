@@ -585,6 +585,19 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   white-space: pre-line;
 }
 
+/* ---- 得点/フォルト/ゲーム獲得メッセージの一瞬の画面反応 ----
+ * .message-overlay は[hidden]切替でdisplay:none <-> flexが入れ替わるため、
+ * 表示のたびにアニメーションが自然に再生される（JS側での再トリガー不要）。 */
+.message-overlay:not([hidden]) #message-text {
+  animation: message-pop .32s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes message-pop {
+  0% { transform: scale(.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 /* ---- 操作パネル（横画面: コート下に横並びで配置） ---- */
 .controls {
   width: 100%;
@@ -855,8 +868,25 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   text-align: center;
 }
 
-.result-title.is-win { color: var(--color-primary); }
-.result-title.is-lose { color: var(--color-text-secondary); }
+.result-title.is-win {
+  color: var(--color-primary);
+  animation: result-win-pop .5s cubic-bezier(.34, 1.56, .64, 1);
+}
+.result-title.is-lose {
+  color: var(--color-text-secondary);
+  animation: result-lose-fade .5s ease;
+}
+
+@keyframes result-win-pop {
+  0% { transform: scale(.5); opacity: 0; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes result-lose-fade {
+  0% { transform: translateY(-6px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
 
 .result-detail {
   font-size: 15px;
