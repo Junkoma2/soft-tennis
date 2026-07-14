@@ -26,6 +26,8 @@ import { startSwing, launchBall, netClearance } from "./matchLoop.js";
 
 import { latchCoverageOnHit } from "./aiPositioning.js";
 
+import { playMissSound } from "./sound.js";
+
 // サーブのパワー/回転は UI ではなく打つ選手の能力(stats)から内部で決める。
 // serve（球速）が高い選手は強いサーブ、control（精度）が高い選手はよく回転をかける、
 // というイメージ。3段階モデル(weak/mid/strong)へ写像する。
@@ -610,6 +612,7 @@ export function serveFault(reason) {
     awardPoint(receiverIsPlayer, "ダブルフォルト");
     return;
   }
+  playMissSound();
   setState("fault");
   showMessage("フォルト\n" + reason);
   setTimeout(function () {
