@@ -15,6 +15,7 @@ import {
   pendingSwing, setPendingSwing, pendingShot, pendingPower, pendingAimX, pendingAimY,
   ballHittableSince, setBallHittableSince,
   lastTime, setLastTime, setRafId,
+  tutorialActive,
 } from "./state.js";
 
 import { draw } from "./render.js";
@@ -1042,7 +1043,17 @@ export function update(dt) {
   // 予約スイング（アシスト）: 早めに離した直後の猶予内にゾーンへ入れば打つ
   if (pendingSwing > 0) {
     setPendingSwing(pendingSwing - dt);
-    if (canPlayerHit(rallyControlled)) playerHitBall(pendingShot, pendingPower, pendingAimX, pendingAimY);
+    if (canPlayerHit(rallyControlled)) {
+      playerHitBall(pendingShot, pendingPower, pendingAimX, pendingAimY);
+    } else if (pendingSwing <= 0) {
+      // 猶予内にゾーンへ入らなかった＝早すぎた入力。原因が分かるよう一言フィードバック。
+      effects.push({
+        type: "text",
+        x: rallyControlled.x, y: rallyControlled.y - 0.9, t: 0, ttl: 0.6,
+        text: "早すぎた！",
+        color: "#94A3B8",
+      });
+    }
   }
 
   // 構え・打点タイミングの管理。打点ゾーンに入ったら自動でため開始
@@ -1139,7 +1150,10 @@ function render3DIfNeeded() {
 export function loop(now) {
   const dt = Math.min((now - lastTime) / 1000 || 0.016, 0.05);
   setLastTime(now);
-  update(dt);
+  // チュートリアルのオーバーレイ表示中はupdate(dt)自体を止め、ボール・選手・スコアを
+  // 完全に静止させる。lastTimeは毎フレーム更新し続けるので、閉じた直後のdtが
+  // 経過時間分まとめて跳ねることもない（state.jsのtutorialActive参照）。
+  if (!tutorialActive) update(dt);
   draw();
   render3DIfNeeded();
   setRafId(requestAnimationFrame(loop));

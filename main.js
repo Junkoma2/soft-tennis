@@ -20,6 +20,8 @@ import { draw } from "./render.js";
 
 import { assignReceiverSides, startServe } from "./serve.js";
 
+import { maybeStartTutorial } from "./tutorial.js";
+
 // 開始画面の選手ステータス調整パネル（読み込み時にDOMへ生成・配線する副作用import）
 import "./playerStatsPanel.js";
 // 開始画面の「表示の調整」パネル（同上）
@@ -138,6 +140,9 @@ export function startMatch() {
   // ゲーム画面が表示されてレイアウトが確定してから描画領域に合わせて同期する。
   requestAnimationFrame(syncViewport);
   startServe(true);
+  // 最初の1ポイント（試合開始直後）だけ、操作要素を順に説明するチュートリアルを出す。
+  // 既に見た/スキップ済みなら何もしない（tutorial.js側でtutorialSeenを見て判定）。
+  maybeStartTutorial();
 }
 
 

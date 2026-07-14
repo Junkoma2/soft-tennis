@@ -121,6 +121,8 @@
             <p><strong>攻守</strong> 相方AIの積極性。カウントは 0→1→2→3、3ゲーム先取の5ゲームマッチ</p>
           </div>
         </details>
+        <button id="tutorial-replay-btn" class="tutorial-replay-link" type="button">操作チュートリアルをもう一度見る</button>
+        <p class="tutorial-replay-note" id="tutorial-replay-note" hidden>次に試合を始めるとチュートリアルを表示します</p>
         <button id="start-btn" class="primary-btn" type="button">試合を始める</button>
         <a class="model-viewer-link" href="model-viewer.html">3Dフォーム確認ページを開く</a>
       </div>
@@ -150,6 +152,17 @@
             </div>
             <div id="move-stick" class="move-stick">
               <div id="move-stick-knob" class="move-stick-knob"></div>
+            </div>
+            <div id="tutorial-overlay" class="tutorial-overlay" hidden>
+              <div class="tutorial-card">
+                <p class="tutorial-step" id="tutorial-step">1 / 6</p>
+                <h2 class="tutorial-title" id="tutorial-title"></h2>
+                <p class="tutorial-body" id="tutorial-body"></p>
+                <div class="tutorial-actions">
+                  <button type="button" id="tutorial-skip-btn" class="tutorial-skip-btn">スキップ</button>
+                  <button type="button" id="tutorial-next-btn" class="tutorial-next-btn">次へ</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
