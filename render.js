@@ -26,6 +26,18 @@ import { hitLineInfo } from "./hit-detection.js";
 import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
 import { contactYawFor, fromLocal } from "./geometry.js";
 
+// HUD用の共通パネル（半透明の背景＋淡い縁取り）。試合中に出す情報ボックス
+// （得点・サーブ表示・操作レジェンド等）の質感を1箇所に揃え、個別に色味が
+// バラつかないようにする。
+function drawHudPanel(x, y, w, h, r, alpha) {
+  ctx.fillStyle = "rgba(15,23,42," + (alpha != null ? alpha : 0.55) + ")";
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
 /* ===========================================================
  * 描画
  * =========================================================== */
@@ -269,9 +281,7 @@ export function drawControlLegend() {
   // スコアと被らないようにする。
   const bx = 10, by = 8;
 
-  ctx.fillStyle = "rgba(30,27,75,0.55)";
-  roundRect(ctx, bx, by, boxW, boxH, 6);
-  ctx.fill();
+  drawHudPanel(bx, by, boxW, boxH, 6, 0.5);
 
   lines.forEach(function (l, i) {
     const ly = by + 6 + i * lineH;
@@ -321,9 +331,7 @@ export function drawHud() {
     const text = serveCategory === "under" ? "アンダーサーブ" : "オーバーサーブ";
     const boxW = 140;
     const bx = (W - boxW) / 2, by = 62;
-    ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(ctx, bx, by, boxW, 22, 6);
-    ctx.fill();
+    drawHudPanel(bx, by, boxW, 22, 6);
     ctx.fillStyle = "#fff";
     ctx.font = "700 10px sans-serif";
     ctx.textAlign = "center";
@@ -342,9 +350,7 @@ export function drawHud() {
     const text = "相手サーブ: " + tcfg.label;
     const boxW = 158;
     const bx = (W - boxW) / 2, by = 62;
-    ctx.fillStyle = "rgba(30,27,75,0.55)";
-    roundRect(ctx, bx, by, boxW, 22, 6);
-    ctx.fill();
+    drawHudPanel(bx, by, boxW, 22, 6);
     ctx.fillStyle = tcfg.color;
     ctx.font = "700 11px sans-serif";
     ctx.textAlign = "center";
@@ -360,6 +366,8 @@ export function drawHud() {
 
 // スコアをキャンバス上部（空の領域）に描画する。HTMLのヘッダ枠を作らず、
 // コートの上方にそのまま重ねて表示する（中継のスコアテロップ風）。
+// 得点は試合中もっとも優先度の高い情報のため、他のHUDパネルと同じ質感の
+// 背景（drawHudPanel）で軽く囲い、視覚的な優先順位を明確にする。
 export function drawScore() {
   if (state === "ready") return;
   const sc = W / 1280;           // 解像度に応じた拡縮
@@ -370,18 +378,28 @@ export function drawScore() {
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
 
-  ctx.fillStyle = "rgba(30,41,59,0.65)";
+  const leftScore = pointLabel(player.points, cpu.points);
+  const rightScore = pointLabel(cpu.points, player.points);
+  const numFont = "900 " + (34 * sc) + "px sans-serif";
+  ctx.font = numFont;
+  const maxScoreW = Math.max(ctx.measureText(leftScore).width, ctx.measureText(rightScore).width);
+  const halfSpan = gap + maxScoreW / 2 + 26 * sc;
+  const panelW = halfSpan * 2;
+  const panelH = yNum + 10 * sc;
+  drawHudPanel(cx - panelW / 2, 0, panelW, panelH, 10 * sc, 0.46);
+
+  ctx.fillStyle = "rgba(226,232,240,0.85)";
   ctx.font = "700 " + (13 * sc) + "px sans-serif";
   ctx.fillText("あなた", cx - gap, yLabel);
   ctx.fillText("相手", cx + gap, yLabel);
 
-  ctx.fillStyle = "#4338CA";
-  ctx.font = "900 " + (34 * sc) + "px sans-serif";
-  ctx.fillText(pointLabel(player.points, cpu.points), cx - gap, yNum);
-  ctx.fillText(pointLabel(cpu.points, player.points), cx + gap, yNum);
+  ctx.fillStyle = "#A5B4FC";
+  ctx.font = numFont;
+  ctx.fillText(leftScore, cx - gap, yNum);
+  ctx.fillText(rightScore, cx + gap, yNum);
 
   // ゲームカウント（中央）
-  ctx.fillStyle = "rgba(30,41,59,0.85)";
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.font = "800 " + (20 * sc) + "px sans-serif";
   ctx.fillText(player.games + " - " + cpu.games, cx, yNum - 4 * sc);
 }
@@ -1010,38 +1028,46 @@ export function drawTimingGauge() {
 export function drawBallShadow() {
   if (state === "ready") return;
   const p = project(ball.x, ball.y, 0);
-  const r = Math.max(2, 0.16 * p.s * (1 + Math.min(ball.z, 4) * 0.12));
-  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  // 高さが上がるほど影は小さく・薄くする（実際の接地影に近い挙動）。
+  // 影のサイズ/濃さだけでも「今どのくらいの高さにあるか」が伝わり、
+  // 着地点の予測しやすさ＝ボールの視認性向上につながる。
+  const heightK = Math.min(1, ball.z / 4.2);
+  const r = Math.max(2, 0.17 * p.s * (1 - heightK * 0.5));
+  const alpha = 0.36 * (1 - heightK * 0.6);
+  ctx.fillStyle = "rgba(10,20,10," + alpha.toFixed(3) + ")";
   ctx.beginPath();
-  ctx.ellipse(p.x, p.y, r * 1.4, r * 0.55, 0, 0, Math.PI * 2);
+  ctx.ellipse(p.x, p.y, r * 1.5, r * 0.55, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
 export function drawBall() {
-  // 軌道（トレイル）は球種ごとの色で描く（視認性向上）
+  // 球速が速いほどトレイルを濃く・大きく尾引かせ、速度感を強調する
+  // （遅球は控えめ、スマッシュ級は視覚的にはっきり「速い」と分かるように）。
+  const spd = Math.hypot(ball.vx, ball.vy, ball.vz);
+  const speedK = Math.max(0, Math.min(1, (spd - 6) / 24));
+
   ball.trail.forEach(function (tp, i) {
     const p = project(tp.x, tp.y, tp.z);
     const k = (i + 1) / ball.trail.length;
-    ctx.globalAlpha = 0.22 * k;
+    ctx.globalAlpha = (0.16 + 0.36 * speedK) * k;
     ctx.fillStyle = ball.trailColor || "#DFFF4F";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, Math.max(1.5, 0.13 * p.s), 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, Math.max(1.5, (0.12 + 0.05 * speedK) * p.s) * (0.6 + 0.4 * k), 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.globalAlpha = 1;
 
   const p = project(ball.x, ball.y, ball.z);
-  const r = Math.max(2.5, 0.16 * p.s);
+  const r = Math.max(3, 0.175 * p.s);
 
   if (ball.flashT > 0) {
     ctx.fillStyle = "rgba(255,255,255," + (ball.flashT / 0.22) * 0.8 + ")";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, r * 2.1, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, r * 2.4, 0, Math.PI * 2);
     ctx.fill();
   }
 
   // 速い球は進行方向に伸びる（球速の演出）
-  const spd = Math.hypot(ball.vx, ball.vy, ball.vz);
   const stretch = Math.min(0.45, Math.max(0, (spd - 10) * 0.035));
   let angle = 0;
   if (stretch > 0.01) {
@@ -1053,11 +1079,18 @@ export function drawBall() {
   ctx.beginPath();
   ctx.ellipse(p.x, p.y, r * (1 + stretch), r * (1 - stretch * 0.45), angle, 0, Math.PI * 2);
   ctx.fill();
+  // 常時ダークアウトラインを入れ、芝の上でも輪郭が沈まないようにする
   ctx.strokeStyle = ball.trailColor && ball.trailColor !== "#DFFF4F"
     ? ball.trailColor
-    : "rgba(30,27,75,0.45)";
-  ctx.lineWidth = 1.4;
+    : "rgba(30,27,75,0.55)";
+  ctx.lineWidth = 1.6;
   ctx.stroke();
+
+  // 小さなハイライトで球体感を出し、位置の視認性を補助する
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.beginPath();
+  ctx.ellipse(p.x - r * 0.32, p.y - r * 0.32, r * 0.28, r * 0.2, angle, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 /* キャラクター描画は3Dオーバーレイ（player3d.js）が担当する。 */

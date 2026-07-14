@@ -22,6 +22,8 @@ import { draw } from "./render.js";
 
 import { latchCoverageOnHit } from "./aiPositioning.js";
 
+import { playHitSound } from "./sound.js";
+
 import { contactYawFor, toLocal } from "./geometry.js";
 
 import {
@@ -459,6 +461,10 @@ export function hitBall(opts) {
       // 相手が打った瞬間 = ここ。打たれた側の守備（展開・左右責任）をこの一打で確定し
       // 次に相手が打つまで固定する（飛行中に責任が入れ替わらないように）。
       latchCoverageOnHit(side);
+
+      // 打球成功の演出/効果音（スマッシュは playHitSound 内でより鋭い音になる）。
+      playHitSound(isSmash);
+      effects.push({ type: "ripple", x: holdX, y: holdY, t: 0, ttl: 0.22 });
 
       // 打球を受ける側チームの前衛に作戦を抽選する（両チーム対称）。
       // player が打つ→相手(cpu)前衛、cpu が打つ→味方(player)前衛。
@@ -1011,7 +1017,9 @@ export function update(dt) {
     ball.vy *= drag;
 
     ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
-    if (ball.trail.length > 7) ball.trail.shift();
+    // トレイルを少し長めに保持し、速球ほど尾を引く見た目（render.js側でspeedKにより
+    // 濃さ・太さを可変にする）がより伝わるようにする。
+    if (ball.trail.length > 10) ball.trail.shift();
 
     if (checkNet(prevY, prevZ)) return;
 

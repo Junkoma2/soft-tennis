@@ -39,6 +39,28 @@ function makePivot(x, y, z) {
   return g;
 }
 
+// 選手の接地影を「ぼかしの効いたブロブ」にするための放射グラデーション
+// テクスチャ。単色の円（旧実装）は輪郭が硬く浮いて見えるため、中心が濃く
+// 外周へ向かって透明にフェードするテクスチャに差し替え、接地感を強める。
+// 共有キャラ1体分だけ生成すればよいので、モジュールでキャッシュする。
+let sharedShadowTexture = null;
+function getShadowTexture() {
+  if (sharedShadowTexture) return sharedShadowTexture;
+  const size = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, "rgba(0,0,0,0.55)");
+  grad.addColorStop(0.55, "rgba(0,0,0,0.32)");
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  sharedShadowTexture = new THREE.CanvasTexture(c);
+  sharedShadowTexture.needsUpdate = true;
+  return sharedShadowTexture;
+}
+
 function addLimbSideMarkers(parent, length, radius, innerSign, materials, markerStore) {
   const markerLen = length * 0.78;
   const y = -length / 2;
@@ -311,9 +333,13 @@ export function createCharacter(opts) {
   joints.shoeL = footLMesh;
   footL.add(footLMesh);
 
-  // 接地影（簡易ブロブ）
-  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 });
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.34, 24), shadowMat);
+  // 接地影（ぼかしグラデーションのブロブ）。輪郭が硬い単色円だと足元が
+  // 宙に浮いて見えるため、中心が濃く外周へフェードするテクスチャで
+  // 接地感・立体感を出す。
+  const shadowMat = new THREE.MeshBasicMaterial({
+    map: getShadowTexture(), transparent: true, depthWrite: false,
+  });
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 24), shadowMat);
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.01;
   shadow.scale.set(1, 0.7, 1);

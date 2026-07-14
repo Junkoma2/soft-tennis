@@ -14,6 +14,7 @@ import {
   setState, setServeFaults, setRafId, setLastTime, setMatchTime,
   playerPosition, formation, spectatorMode, devMode,
   back, front, cpuBack, cpuFront, setRallyControlled,
+  ball, effects,
 } from "./state.js";
 
 import { draw } from "./render.js";
@@ -21,6 +22,8 @@ import { draw } from "./render.js";
 import { assignReceiverSides, startServe } from "./serve.js";
 
 import { maybeStartTutorial } from "./tutorial.js";
+
+import { unlockAudio, playMissSound, playPointSound, playGameEndSound } from "./sound.js";
 
 // 開始画面の選手ステータス調整パネル（読み込み時にDOMへ生成・配線する副作用import）
 import "./playerStatsPanel.js";
@@ -165,6 +168,19 @@ export function awardPoint(toPlayer, reason) {
   else cpu.points++;
   setServeFaults(0);
 
+  // ミス（アウト/ネット/ツーバウンド等）の演出: 起きた場所に理由を短く表示しつつ
+  // 低いブザー音を鳴らし、続けて得点の上昇チャイムを鳴らす（同じ瞬間の2つの出来事）。
+  playMissSound();
+  playPointSound(0.11);
+  if (reason) {
+    effects.push({
+      type: "text",
+      x: ball.x, y: ball.y, t: 0, ttl: 0.7,
+      text: reason,
+      color: "#94A3B8",
+    });
+  }
+
   const winPts = isFinalGame() ? FINAL_GAME_POINTS : POINTS_TO_WIN_GAME;
   const pP = player.points;
   const cP = cpu.points;
@@ -185,6 +201,9 @@ export function finishGame(playerWon) {
   player.points = 0;
   cpu.points = 0;
   updateScoreboard();
+  // ゲーム終了（1ゲームの決着）の演出。直前のawardPoint内の得点チャイムと
+  // 重なりすぎないよう少し遅らせる。試合そのものの決着はendMatch側で別途鳴らす。
+  playGameEndSound(playerWon, false, 0.3);
 
   if (player.games >= GAMES_TO_WIN_MATCH || cpu.games >= GAMES_TO_WIN_MATCH) {
     setState("matchend");
@@ -208,6 +227,7 @@ export function endMatch(playerWon) {
   cancelAnimationFrame(rafId);
   setRafId(null);
   showScreen("result");
+  playGameEndSound(playerWon, true);
   if (playerWon) {
     resultTitle.textContent = "WIN!";
     resultTitle.className = "result-title is-win";
@@ -235,6 +255,7 @@ function beginMatchFromStartButton(e) {
     e.stopPropagation();
   }
   if (screens.ready.hidden) return;
+  unlockAudio(); // ユーザー操作起点でAudioContextを解禁（打球/ミス/得点等の効果音用）
   startMatch();
   if (!rafId) {
     setLastTime(performance.now());
