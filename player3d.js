@@ -40,8 +40,20 @@ function getBlend(pl) {
 const motionState = new Map();
 function getMotion(pl) {
   let m = motionState.get(pl);
-  if (!m) { m = { yaw: null, runPhase: 0 }; motionState.set(pl, m); }
+  if (!m) { m = { yaw: null, runPhase: 0, bodyLateral: false, gaitLateral: false }; motionState.set(pl, m); }
   return m;
+}
+
+// 横方向優位（サイドステップ/走りターン、ボール正対/進行方向）の判定は、瞬間の
+// 速度ベクトルに閾値を1回だけ当てると、比率が境界付近で揺れたときに毎フレーム
+// 判定が反転し、体の向きや足の運びが小刻みに切り替わって見える（「気持ち悪さ」の
+// 原因）。他のAI判定（aiTask.jsのwrapCommitted等）と同様に、入る側と抜ける側で
+// 異なる閾値を使うヒステリシスを持たせ、一度切り替わったら比率が反対側の閾値を
+// 明確に超えるまで状態を保持する。
+const LATERAL_ENTER_RATIO = 0.9;
+const LATERAL_EXIT_RATIO = 0.55;
+function withHysteresis(current, ratio, enterAt, exitAt) {
+  return current ? ratio >= exitAt : ratio >= enterAt;
 }
 
 // 見た目チューニング
@@ -247,14 +259,16 @@ function applyRunMotion(pl, joints, yaw, dt) {
   const rightY = -Math.sin(yaw);
   const forward = vx * forwardX + vy * forwardY;
   const side = vx * rightX + vy * rightY;
-  const lateral = Math.abs(side) > Math.abs(forward) * 0.75;
+  const m = getMotion(pl);
+  const gaitRatio = Math.abs(side) / Math.max(0.001, Math.abs(forward));
+  m.gaitLateral = withHysteresis(m.gaitLateral, gaitRatio, LATERAL_ENTER_RATIO, LATERAL_EXIT_RATIO);
+  const lateral = m.gaitLateral;
   const sideSign = side >= 0 ? 1 : -1;
 
   // サイドステップか、体を横向きにして走るかを切り替える（見た目専用）。
   const isRunTurn = isPlayerSidestepPhase(pl) ? false : (lateral && speed > TUNING.move.sidestepMaxSpeed);
 
   const isSidestep = lateral && !isRunTurn;
-  const m = getMotion(pl);
   // 足の回転速度もスイングのゆったりしたテンポに合わせて少し落とす（旧: 8 + min(5, speed*0.9)）。
   m.runPhase += dt * (6 + Math.min(4, speed * 0.75));
   const phase = m.runPhase;
@@ -373,7 +387,10 @@ export function render3D() {
       const bf = ballFacingYaw(pl);
       const forward = vx * Math.sin(yawBase) + vy * Math.cos(yawBase);
       const lateralV = vx * Math.cos(yawBase) - vy * Math.sin(yawBase);
-      if (Math.abs(lateralV) > Math.abs(forward) * 0.75) {
+      const bodyRatio = Math.abs(lateralV) / Math.max(0.001, Math.abs(forward));
+      const bm = getMotion(pl);
+      bm.bodyLateral = withHysteresis(bm.bodyLateral, bodyRatio, LATERAL_ENTER_RATIO, LATERAL_EXIT_RATIO);
+      if (bm.bodyLateral) {
         targetYaw = travelYaw(vx, vy);
         turnRate = TUNING.move.runTurnSpeed;
       } else {
