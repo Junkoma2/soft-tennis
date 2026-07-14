@@ -21,6 +21,7 @@ const { COURT } = await import("../config.js");
 const state = await import("../state.js");
 const { handleBounce, checkNet, insideCourt, isSmashContact } = await import("../matchLoop.js");
 const { awardPoint, pointLabel, isFinalGame, finishGame } = await import("../main.js");
+const { serverTeamNow, serveFromRight } = await import("../serve.js");
 
 const { ball, player, cpu, messageText } = state;
 
@@ -230,6 +231,61 @@ test("得点加算: 0→1→2→3とJSTA表記で進み、3-3はデュース、2
   assert.equal(state.state, "gameset");
 });
 
+test("ゲーム成立: 相手が0・1・2点なら4点目、3点ならデュース後の2点差で成立する", async (t) => {
+  const cases = [
+    { opponentPoints: 0, winningPoints: 4 },
+    { opponentPoints: 1, winningPoints: 4 },
+    { opponentPoints: 2, winningPoints: 4 },
+    { opponentPoints: 3, winningPoints: 5 },
+  ];
+
+  for (const { opponentPoints, winningPoints } of cases) {
+    await t.test(`相手${opponentPoints}点`, () => {
+      resetPoint();
+      player.points = winningPoints - 1;
+      cpu.points = opponentPoints;
+
+      awardPoint(true, "ゲーム成立境界");
+
+      assert.equal(player.games, 1);
+      assert.equal(player.points, 0, "ゲーム成立後はポイントをリセットする");
+      assert.equal(cpu.points, 0, "相手ポイントもリセットする");
+      assert.equal(state.state, "gameset");
+    });
+  }
+});
+
+test("ゲーム成立前: 0・1・2点目ではゲーム数を増やさずポイントを継続する", async (t) => {
+  for (const currentPoints of [0, 1, 2]) {
+    await t.test(`${currentPoints}点からの得点`, () => {
+      resetPoint();
+      player.points = currentPoints;
+
+      awardPoint(true, "ゲーム成立前");
+
+      assert.equal(player.points, currentPoints + 1);
+      assert.equal(player.games, 0);
+      assert.equal(state.state, "point");
+    });
+  }
+});
+
+test("ゲーム交代: ゲーム成立ごとにサーブ側が交代し、次ゲームは右サイドから始まる", () => {
+  resetPoint();
+  assert.equal(serverTeamNow(), "player", "第1ゲームはplayer側のサーブ");
+  assert.equal(serveFromRight(), true, "ゲーム開始時は右サイド");
+
+  finishGame(true);
+  assert.equal(state.state, "gameset");
+  assert.equal(serverTeamNow(), "cpu", "第2ゲームはcpu側へ交代");
+  assert.equal(serveFromRight(), true, "ポイントリセット後は右サイドから再開");
+
+  state.setState("rally");
+  finishGame(false);
+  assert.equal(state.state, "gameset");
+  assert.equal(serverTeamNow(), "player", "第3ゲームはplayer側へ戻る");
+});
+
 test("得点加算: ファイナルゲーム(2-2)は数字そのまま表示され、デュース表記にならない", () => {
   resetPoint();
   player.games = 2; cpu.games = 2;
@@ -246,5 +302,17 @@ test("得点加算: マッチポイントを取ると試合終了状態(matchend
   finishGame(true);
 
   assert.equal(player.games, 3, "3ゲーム先取でマッチ終了");
+  assert.equal(state.state, "matchend");
+});
+
+test("試合終了: CPUも3ゲーム目を取るとmatchendに遷移する", () => {
+  resetPoint();
+  player.games = 1; cpu.games = 2;
+
+  finishGame(false);
+
+  assert.equal(cpu.games, 3, "CPU側も3ゲーム先取で試合終了する");
+  assert.equal(player.points, 0);
+  assert.equal(cpu.points, 0);
   assert.equal(state.state, "matchend");
 });
