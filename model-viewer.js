@@ -1,4 +1,4 @@
-import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import * as THREE from "./vendor/three/three.module.js";
 import { createCharacter } from "./simpleCharacter3d.js";
 import { POSES, applyPose, applyLeftHandGrip, applySwingPhase } from "./animation3d.js";
 
