@@ -12,7 +12,7 @@ import {
   moveStick, controlsPanel, mouseAim, makeStats, cpuStats,
   state, player, cpu, rafId,
   setState, setServeFaults, setRafId, setLastTime, setMatchTime,
-  playerPosition, formation, spectatorMode,
+  playerPosition, formation, spectatorMode, devMode,
   back, front, cpuBack, cpuFront, setRallyControlled,
 } from "./state.js";
 
@@ -272,6 +272,12 @@ function syncViewport() {
 window.addEventListener("resize", syncViewport);
 window.addEventListener("orientationchange", syncViewport);
 syncViewport();
+
+// 開発モードでなければ開始画面の開発用調整機能（デバッグ表示トグル・選手ステータス調整・
+// 表示の調整・パラメータの説明・3Dフォーム確認ページへのリンク）を隠し、通常プレイヤーの
+// 開始画面を「操作キャラ・陣形・利き腕・操作方法・試合開始」だけのゲーム画面に見せる。
+// 開発モードの有無は state.js の devMode（?dev=1 / localStorage）で決まる。
+document.querySelectorAll(".dev-only").forEach((el) => { el.hidden = !devMode; });
 
 /* 3D 関連は削除済み */
 

@@ -85,6 +85,22 @@ export const cpuStats = {
 //  rally / fault / point / gameset / matchend
 export let state = "ready";
 
+// 開発モード（選手ステータス調整・表示の調整・デバッグ表示トグル等、開発用の調整機能一式を
+// 開始画面に出すかどうか）。通常プレイヤーの導線を「ゲーム」に見せるため既定はOFF。
+// URLパラメータ ?dev=1 で有効化し、次回以降も引き継げるよう localStorage に保存する
+// （?dev=0 を付けると明示的に解除できる）。
+const DEV_MODE_KEY = "softTennisDevMode";
+export let devMode = false;
+try {
+  const params = new URLSearchParams(location.search);
+  if (params.has("dev")) {
+    devMode = params.get("dev") !== "0";
+    localStorage.setItem(DEV_MODE_KEY, devMode ? "1" : "0");
+  } else {
+    devMode = localStorage.getItem(DEV_MODE_KEY) === "1";
+  }
+} catch (e) { /* URL/localStorage不可の環境は既定で開発モードOFFのまま */ }
+
 // デバッグボタン群（当たり判定・軌道・パラメータ・守備範囲）を試合画面に表示するか。
 // 通常プレイでは非表示にし、開始画面のトグルでオンにした場合だけ試合中に出す。
 // 直前の選択を次回起動でも引き継げるよう localStorage に保存する（無ければ既定OFF）。
