@@ -1011,7 +1011,9 @@ export function update(dt) {
     ball.vy *= drag;
 
     ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
-    if (ball.trail.length > 7) ball.trail.shift();
+    // トレイルを少し長めに保持し、速球ほど尾を引く見た目（render.js側でspeedKにより
+    // 濃さ・太さを可変にする）がより伝わるようにする。
+    if (ball.trail.length > 10) ball.trail.shift();
 
     if (checkNet(prevY, prevZ)) return;
 

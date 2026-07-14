@@ -489,6 +489,18 @@ body:has(#screen-game:not([hidden])) .court-wrap {
 
 .message-overlay[hidden] { display: none; }
 
+/* ---- コートの縁を軽く落として中継カメラのような緊張感を出す装飾 ----
+ * 判定・入力には関与しない見た目だけの層（pointer-events:none）。
+ * 3Dキャラのオーバーレイ(#court-3d, z-index:5)より上、チュートリアル
+ * カード(z-index:30)より下に置き、常に薄く縁だけを落とす。 */
+.court-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 58%, rgba(0, 0, 0, 0) 55%, rgba(6, 10, 24, .28) 100%);
+}
+
 /* ---- 段階的チュートリアル（最初の1ポイント用オーバーレイ） ---- */
 .tutorial-overlay {
   position: absolute;

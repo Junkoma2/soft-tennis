@@ -142,11 +142,16 @@ export async function init3D(canvas) {
   camera.position.set(0, 2.0, 3.2);
   camera.lookAt(0, 0.95, 0);
 
-  // ライト
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(2.5, 5, 3.5);
-  scene.add(dir);
+  // ライト: 屋外コートの晴天光を想定し、背景の空(#BFD9F2)に寄せた色温度で
+  // 選手の質感をコート/空の色調と統一する。主光(暖色寄りの太陽光)＋
+  // 反対側からの弱い補助光(空の反射を想定した寒色)で立体感を出す。
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xfff2d9, 1.0);
+  sun.position.set(2.5, 5, 3.5);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xbfd9f2, 0.35);
+  fill.position.set(-3, 2, -2);
+  scene.add(fill);
 
   // 共有キャラ
   char = createCharacter({});
