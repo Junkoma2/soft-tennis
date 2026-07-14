@@ -403,7 +403,7 @@ export function setLastHitInfo(v) { lastHitInfo = v; }
 
 /* ---- プレイヤー操作 ---- */
 export const keysWasd  = { left: false, right: false, up: false, down: false };
-export const stick = { active: false, dx: 0, dy: 0 }; // dx,dy は -1..1（dy: 正=自陣ベースライン方向）
+export const stick = { active: false, pointerId: null, dx: 0, dy: 0 }; // dx,dy は -1..1（dy: 正=自陣ベースライン方向）
 
 // スマホ: コート(canvas)上のスワイプ操作（右手・狙い+打球用）。
 // active中はスワイプの移動量から決めた狙いを優先し、pointerup でスイングする。
