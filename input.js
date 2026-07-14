@@ -170,11 +170,19 @@ export function attemptSwing(family) {
   }
 }
 
+// 早押し（連打）対策: 空振りフィードバックはテキストが重なって読めなくなるほど
+// 短い間隔では出し直さない。判定自体（pendingSwingの予約等）は毎クリック評価するため
+// 入力の取りこぼしにはならず、見た目の重なりだけを間引く。
+const MISS_FEEDBACK_COOLDOWN = 0.35;
+let lastMissFeedbackAt = -Infinity;
+
 // 打点にまったく届かない（ボールが来ていない/遠すぎる）タイミングでのクリック＝空振り。
 // 判定・スコアには影響しない、見た目だけの短いフィードバック。原因ごとに一言変え、
 // 早すぎ/遅すぎ/距離外のどれで失敗したかが分かるようにする
 // （早すぎのケースは予約スイングが不発になった時点でmatchLoop.js側から別途表示する）。
 function showSwingMissFeedback() {
+  if (matchTime - lastMissFeedbackAt < MISS_FEEDBACK_COOLDOWN) return;
+  lastMissFeedbackAt = matchTime;
   let text = "空振り！";
   if (!ballIncomingToPlayer()) {
     // 既に2バウンド以上した後（＝取りに行くには遅すぎた）と、

@@ -342,7 +342,10 @@ main {
   text-decoration: underline;
   text-underline-offset: 4px;
   cursor: pointer;
-  padding: 4px;
+  min-height: 36px;
+  padding: 8px 4px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .tutorial-replay-note {
@@ -541,10 +544,13 @@ body:has(#screen-game:not([hidden])) .court-wrap {
 .tutorial-next-btn {
   border: none;
   border-radius: 999px;
-  padding: 8px 16px;
+  min-height: 44px;
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .tutorial-skip-btn {
