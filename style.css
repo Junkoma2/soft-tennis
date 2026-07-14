@@ -899,6 +899,12 @@ footer a:hover { color: var(--color-text); }
  * 操作パネルはコートに重ねず、画面下部の専用帯に配置する（縦画面と同じ構造に
  * 揃えることで、向きに関わらずビューポート内にスクロールなしで収める）。 */
 @media (orientation: landscape) {
+  body:has(#screen-game:not([hidden])) {
+    --game-safe-left: env(safe-area-inset-left, 0px);
+    --game-safe-right: env(safe-area-inset-right, 0px);
+    --game-safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   body:has(#screen-game:not([hidden])) header,
   body:has(#screen-game:not([hidden])) footer {
     display: none;
@@ -909,7 +915,11 @@ footer a:hover { color: var(--color-text); }
   }
 
   body:has(#screen-game:not([hidden])) #app {
-    padding: 4px 6px;
+    padding:
+      4px
+      max(6px, var(--game-safe-right))
+      max(4px, var(--game-safe-bottom))
+      max(6px, var(--game-safe-left));
     max-width: none;
     height: 100dvh;
     overflow: hidden;
@@ -935,8 +945,8 @@ footer a:hover { color: var(--color-text); }
   #screen-game .scoreboard {
     position: absolute;
     top: 2px;
-    left: 0;
-    right: 0;
+    left: var(--game-safe-left);
+    right: var(--game-safe-right);
     order: 0;
     flex-direction: row;
     align-items: center;
