@@ -434,12 +434,18 @@ export function hitBall(opts) {
   // ロックされていないので、その場の backhand 判定をそのまま使う。
   const visualSide = hitter.swingSideLocked ? hitter.swingSide : (backhand ? "back" : "fore");
   const isFront = hitter === front || hitter === cpuFront;
-  const holdX = hitter.x, holdY = hitter.y;
+  // ワープ防止: 打点位置は「入力を受け付けた瞬間の実際のボール座標」(x/y)を使う。
+  // hitter.x/hitter.y（ヒッターの中心座標）を使うと、インパクトまでの間
+  // ボールがヒッターの中心へ瞬間移動して見える（構え〜スイング中に打点が
+  // ラケットから離れた不自然な位置に飛ぶ）。ball.x/ball.y はこの時点では
+  // まだ書き換えていないため、実際の打点座標をそのまま保持できる。
+  const holdX = ball.x, holdY = ball.y;
 
   // 状態機械: テイクバック→スイング→インパクト→フォロースルー。
-  // ここ（打つと決めた瞬間）ではボールを発生させず、ヒッターの手元に留めておく。
-  // 実際の発生（速度・スピン等の反映）は、スイングがインパクトの姿勢に到達した
-  // フレームでのみ行う（update()内のpendingImpact監視・下のimpactPhaseFor参照）。
+  // ここ（打つと決めた瞬間）ではボールを発生させず、実際の打点(holdX/holdY)に
+  // 留めておく（z のみ打点高さに揃える）。実際の発生（速度・スピン等の反映）は、
+  // スイングがインパクトの姿勢に到達したフレームでのみ行う
+  // （update()内のpendingImpact監視・下のimpactPhaseFor参照）。
   ball.x = holdX; ball.y = holdY; ball.z = fromZ;
   ball.vx = 0; ball.vy = 0; ball.vz = 0;
   ball.held = true;
