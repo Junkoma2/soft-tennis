@@ -585,6 +585,73 @@ export function insideBox(x, y, box) {
   return x >= box.x1 - m && x <= box.x2 + m && y >= box.y1 - m && y <= box.y2 + m;
 }
 
+// バウンド時の反発・摩擦係数。回転の種類と強さで変わる:
+//   slice: 止まる・低く滑る / drive: 食い込んで伸びる / flat: 中間
+//   spinMagが大きいほど flat からの差が強調される
+// 実際のバウンド処理(handleBounce)・打点/頂点予測(predictHighContact/
+// predictStrokeContact)・デバッグ軌道予測(render.jsのsimulateTrajectory利用側)が
+// 同じ値を使うことで、予測と実際のバウンドが食い違わないようにする。
+export function bounceCoeffs(spin, spinMag) {
+  const sp = TUNING.spin[spin] || TUNING.spin.flat;
+  const flat = TUNING.spin.flat;
+  const k = Math.min(TUNING.spin.magCap, Math.max(0, spinMag != null ? spinMag : 1));
+  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
+  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
+  return { friction, restitution };
+}
+
+// バウンド前速度→バウンド後速度への変換（bounceCoeffsの係数を使う）。
+export function bounceVelocity(vx, vy, vz, coeffs) {
+  return { vx: vx * coeffs.friction, vy: vy * coeffs.friction, vz: -vz * coeffs.restitution };
+}
+
+// ボール1ステップ分の物理（重力・回転による飛行中の沈み込み・空気抵抗）を
+// 副作用なく計算する。実際の更新処理(update()内)とデバッグ軌道予測
+// (simulateTrajectory)の両方がこの関数を使うことで、両者の挙動が一致する。
+//   flightSinkはアンダーカットサーブ専用の飛行中沈み込み設定
+//   （{ accel, startFrac, rampSec, T, elapsed, maxLandVz } / launchBallでのみセット）。
+//   非nullの間だけ効き、elapsedを内部で進めた新しいオブジェクトを返す
+//   （呼び出し元のオブジェクトは書き換えない）。
+export function stepBallState(s, dt) {
+  let { x, y, z, vx, vy, vz, flightSink } = s;
+  x += vx * dt;
+  y += vy * dt;
+  z += vz * dt;
+  vz -= G * dt;
+
+  // 回転による飛行中の沈み込み（アンダーカットサーブ専用）。launchBall()が
+  // 沈み込み込みの初速を計算した上で、飛行後半（startFrac以降）にのみ下向きの
+  // 追加加速度をランプさせる。マグヌス揚力で前半は平たく飛び、空気抵抗による
+  // 失速とともに後半で沈む下回転(カット)の体感を再現する。他の球種・ラリー
+  // 打球ではflightSinkがnullのため一切影響しない。
+  // maxLandVzで着地直前の落下速度に上限を掛ける: サーブのネット回避ループ
+  // (launchServeBall)でspeedが落とされて飛行時間Tが伸びた場合でも、絶対値の
+  // accelをそのまま積分すると着地直前の勢いが際限なく積み上がり、バウンドが
+  // 異常に高く跳ねてしまう（他のカット系サーブの着地直前vz -6〜-7m/s程度に
+  // 対し、-15〜-24m/sまで暴走することを実測で確認）。他のカット系サーブと
+  // 同水準の着地の勢いに収まるようクランプする。
+  let nextFlightSink = flightSink;
+  if (flightSink) {
+    const elapsed = flightSink.elapsed + dt;
+    const sinkStartT = flightSink.T * flightSink.startFrac;
+    if (elapsed > sinkStartT) {
+      const ramp = Math.min(1, (elapsed - sinkStartT) / flightSink.rampSec);
+      vz -= flightSink.accel * ramp * dt;
+    }
+    const maxLandVz = flightSink.maxLandVz != null ? flightSink.maxLandVz : Infinity;
+    if (vz < -maxLandVz) vz = -maxLandVz;
+    nextFlightSink = Object.assign({}, flightSink, { elapsed });
+  }
+
+  // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
+  // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
+  const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
+  vx *= drag;
+  vy *= drag;
+
+  return { x, y, z, vx, vy, vz, flightSink: nextFlightSink };
+}
+
 export function handleBounce() {
   ball.z = 0;
   ball.bounces++;
@@ -613,17 +680,11 @@ export function handleBounce() {
     return;
   }
 
-  // 反発は回転の種類と強さで変わる:
-  //   slice: 止まる・低く滑る / drive: 食い込んで伸びる / flat: 中間
-  //   spinMagが大きいほど flat からの差が強調される
-  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
-  const flat = TUNING.spin.flat;
-  const k = Math.min(TUNING.spin.magCap, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
-  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
-  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
-  ball.vz = -ball.vz * restitution;
-  ball.vx *= friction;
-  ball.vy *= friction;
+  const coeffs = bounceCoeffs(ball.spin, ball.spinMag);
+  const out = bounceVelocity(ball.vx, ball.vy, ball.vz, coeffs);
+  ball.vz = out.vz;
+  ball.vx = out.vx;
+  ball.vy = out.vy;
 }
 
 export function checkNet(prevY, prevZ) {
@@ -662,11 +723,7 @@ export function predictHighContact() {
   const L = predictLanding();
   if (!L) return null;
   const vzLand = Math.abs(ball.vz - G * L.t); // 着地時の落下速度の大きさ
-  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
-  const flat = TUNING.spin.flat;
-  const k = Math.min(TUNING.spin.magCap, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
-  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
-  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
+  const { friction, restitution } = bounceCoeffs(ball.spin, ball.spinMag);
   const vzOut = vzLand * restitution;       // バウンド後の上向き初速
   const tApex = vzOut / G;                   // 頂点までの時間
   return {
@@ -687,11 +744,7 @@ export function predictHighContact() {
 // バウンド後の軌道上で、ストロークしやすい高さまで落ちてくる位置を予測する。
 export function predictStrokeContact(contactZ) {
   const targetZ = Math.max(0.35, contactZ == null ? 1.15 : contactZ);
-  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
-  const flat = TUNING.spin.flat;
-  const k = Math.min(TUNING.spin.magCap, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
-  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
-  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
+  const { friction, restitution } = bounceCoeffs(ball.spin, ball.spinMag);
 
   if (ball.bounces >= 1) {
     const disc = ball.vz * ball.vz - 2 * G * (targetZ - Math.max(ball.z, 0));
@@ -743,6 +796,67 @@ export function predictedContactX() {
   const landing = predictLanding();
   if (landing) return landing.x;
   return ball.x;
+}
+
+// デバッグ軌道予測（render.jsのdrawDebugTrajectory）用。現在のボール状態から
+// stepBallState()を細かい刻み(既定1/240秒)で積分し、地面通過時のx・y・zは
+// 実際の更新処理(update()内)と同じ「前フレームのzで線形補間」で求める。
+// バウンド係数もbounceCoeffs/bounceVelocityで実際のhandleBounceと揃えているため、
+// 実飛跡と食い違わない。予測を細かい刻みで行うことで、開始時刻がフレームごとに
+// わずかにズレても着地点の推定が安定する（粗い刻みだと、地面通過までの
+// ステップ数が切り替わるたびに最後の1ステップ分(旧実装ではvx/vy×0.055秒相当)
+// 着地点が前後していた）。
+// ballStateには { x, y, z, vx, vy, vz, spin, spinMag, flightSink, bounces } を渡す
+// （引数名をゲーム状態("rally"等、このファイルのimportしているstateと同名)と
+// 混同しないようballStateにしている）。
+export function simulateTrajectory(ballState, opts) {
+  const o = opts || {};
+  const physicsDt = o.physicsDt || 1 / 240;
+  const stride = o.stride || 4; // 描画点の間引き（物理精度には影響しない、見た目のなめらかさ用）
+  const maxBounces = o.maxBounces != null ? o.maxBounces : 2;
+  const maxTime = o.maxTime != null ? o.maxTime : 6;
+  const startBounces = ballState.bounces || 0;
+
+  let cur = {
+    x: ballState.x, y: ballState.y, z: Math.max(0, ballState.z),
+    vx: ballState.vx, vy: ballState.vy, vz: ballState.vz,
+    flightSink: ballState.flightSink ? Object.assign({}, ballState.flightSink) : null,
+  };
+  let bounces = startBounces;
+  const pts = [{ x: cur.x, y: cur.y, z: cur.z, bounces: bounces }];
+
+  let elapsed = 0;
+  let stepIdx = 0;
+  while (elapsed < maxTime) {
+    const prevX = cur.x, prevY = cur.y, prevZ = cur.z;
+    const next = stepBallState(cur, physicsDt);
+    elapsed += physicsDt;
+    stepIdx++;
+
+    if (next.z <= 0 && next.vz < 0) {
+      // 実際の更新処理と同じく、地面を通過したフレームのx・yは前後の高さの比で
+      // 線形補間する（通り過ぎた分の誤差を消す）。
+      let bx = next.x, by = next.y;
+      if (prevZ > 0) {
+        const t = prevZ / (prevZ - next.z);
+        bx = prevX + (next.x - prevX) * t;
+        by = prevY + (next.y - prevY) * t;
+      }
+      bounces++;
+      pts.push({ x: bx, y: by, z: 0, bounces: bounces });
+      if (bounces - startBounces >= maxBounces) break;
+      const coeffs = bounceCoeffs(ballState.spin, ballState.spinMag);
+      const bounced = bounceVelocity(next.vx, next.vy, next.vz, coeffs);
+      cur = { x: bx, y: by, z: 0, vx: bounced.vx, vy: bounced.vy, vz: bounced.vz, flightSink: null };
+      continue;
+    }
+
+    cur = next;
+    if (stepIdx % stride === 0) {
+      pts.push({ x: cur.x, y: cur.y, z: Math.max(0, cur.z), bounces: bounces });
+    }
+  }
+  return pts;
 }
 
 // 早めのテイクバック準備（pose="idle"→"prep"）の共通判定（見た目のみ・打球判定には無関係）。
@@ -990,37 +1104,20 @@ export function update(dt) {
     const prevX = ball.x;
     const prevY = ball.y;
     const prevZ = ball.z;
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
-    ball.z += ball.vz * dt;
-    ball.vz -= G * dt;
-    // 回転による飛行中の沈み込み（アンダーカットサーブ専用、ball.flightSink参照）。
-    // launchBall()が沈み込み込みの初速を計算した上で、飛行後半（startFrac以降）
-    // にのみ下向きの追加加速度をランプさせる。マグヌス揚力で前半は平たく飛び、
-    // 空気抵抗による失速とともに後半で沈む下回転(カット)の体感を再現する。
-    // 他の球種・ラリー打球ではflightSinkがnullのため一切影響しない。
-    // maxLandVzで着地直前の落下速度に上限を掛ける: サーブのネット回避ループ
-    // (launchServeBall)でspeedが落とされて飛行時間Tが伸びた場合でも、絶対値の
-    // accelをそのまま積分すると着地直前の勢いが際限なく積み上がり、バウンドが
-    // 異常に高く跳ねてしまう（他のカット系サーブの着地直前vz -6〜-7m/s程度に
-    // 対し、-15〜-24m/sまで暴走することを実測で確認）。他のカット系サーブと
-    // 同水準の着地の勢いに収まるようクランプする。
-    if (ball.flightSink) {
-      const fs = ball.flightSink;
-      fs.elapsed += dt;
-      const sinkStartT = fs.T * fs.startFrac;
-      if (fs.elapsed > sinkStartT) {
-        const ramp = Math.min(1, (fs.elapsed - sinkStartT) / fs.rampSec);
-        ball.vz -= fs.accel * ramp * dt;
-      }
-      const maxLandVz = fs.maxLandVz != null ? fs.maxLandVz : Infinity;
-      if (ball.vz < -maxLandVz) ball.vz = -maxLandVz;
-    }
-    // 飛行中の空気抵抗（弱め）: 速度に比例して水平方向を毎フレーム減衰させ、
-    // 飛行が長いほど自然に失速する（ソフトテニス特有の減速感の一部）。
-    const drag = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
-    ball.vx *= drag;
-    ball.vy *= drag;
+    // 実際のボール1ステップ分の物理（重力・回転による沈み込み・空気抵抗）は
+    // stepBallState()に集約している。デバッグ軌道予測(render.jsのdrawDebugTrajectory
+    // →simulateTrajectory)も同じ関数を使うため、予測と実際の飛び方がズレない。
+    const next = stepBallState(
+      { x: ball.x, y: ball.y, z: ball.z, vx: ball.vx, vy: ball.vy, vz: ball.vz, flightSink: ball.flightSink },
+      dt,
+    );
+    ball.x = next.x;
+    ball.y = next.y;
+    ball.z = next.z;
+    ball.vx = next.vx;
+    ball.vy = next.vy;
+    ball.vz = next.vz;
+    ball.flightSink = next.flightSink;
 
     ball.trail.push({ x: ball.x, y: ball.y, z: ball.z });
     // トレイルを少し長めに保持し、速球ほど尾を引く見た目（render.js側でspeedKにより
