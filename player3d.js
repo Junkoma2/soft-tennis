@@ -20,7 +20,7 @@ import {
   applyPose, poseNameForPlayer, applyLeftHandGrip,
   swingPhaseOf, applySwingPhase, applyServeSwingPhase,
 } from "./animation3d.js";
-import { baseYawFor, ballFacingYaw } from "./geometry.js";
+import { baseYawFor, ballFacingYaw, headTrackTarget, smoothHeadAngle } from "./geometry.js";
 import { tunedValue } from "./viewTuning.js";
 
 let renderer = null, scene = null, camera = null, char = null;
@@ -40,9 +40,16 @@ function getBlend(pl) {
 const motionState = new Map();
 function getMotion(pl) {
   let m = motionState.get(pl);
-  if (!m) { m = { yaw: null, runPhase: 0, bodyLateral: false, gaitLateral: false }; motionState.set(pl, m); }
+  if (!m) { m = { yaw: null, runPhase: 0, bodyLateral: false, gaitLateral: false, headYaw: 0, headPitch: 0 }; motionState.set(pl, m); }
   return m;
 }
+
+// 頭部のボール追従（見た目専用）。目標角度・クランプはgeometry.jsを単一の真実とし、
+// ここでは (1) スイング中に既存の打撃ポーズを崩さないよう追従量を落とすスケール調整と
+// (2) フレームごとの補間のみを行う。
+const HEAD_APPROX_HEIGHT = 1.6;      // 頭部のワールドy概算（simpleCharacter3d.jsの寸法から近似）
+const HEAD_LOOK_RATE = 9;            // 頭部追従の補間速度（体のsmoothYawForよりやや速め）
+const HEAD_LOOK_SWING_SCALE = 0.35;  // スイング中（打撃モーション）は追従量を抑える
 
 // 横方向優位（サイドステップ/走りターン、ボール正対/進行方向）の判定は、瞬間の
 // 速度ベクトルに閾値を1回だけ当てると、比率が境界付近で揺れたときに毎フレーム
@@ -317,6 +324,25 @@ function poseNameFor3D(pl, isFront) {
   return poseNameForPlayer(pl, isFront);
 }
 
+// 各ポーズ（構え・走行・スイング・サーブトス等）を適用し終えた後に、頭部関節へ
+// ボール方向の左右・上下回転を加算する。目標角度・可動域クランプはgeometry.js
+// （単一の真実）が計算し、ここではスイング中に既存の打撃ポーズを崩さないための
+// スケール調整と、急な切り替えを抑える補間だけを行う。
+// ポイント終了・ボール非表示・追従対象が無効な状態は headTrackTarget 側が
+// {yaw:0, pitch:0} を返すため、補間により自然に正面へ戻る。
+function applyHeadLook(pl, joints, bodyYaw, dt) {
+  if (!joints.head) return;
+  const m = getMotion(pl);
+  const raw = headTrackTarget(pl, bodyYaw, HEAD_APPROX_HEIGHT);
+  // 振り抜き中は肩・首の実際の姿勢が大きく変わるため、追従量を落として
+  // 既存のフォア/バック/ボレー/スマッシュ/サーブのポーズを崩さないようにする。
+  const scale = pl.pose === "swing" ? HEAD_LOOK_SWING_SCALE : 1;
+  m.headYaw = smoothHeadAngle(m.headYaw, raw.yaw * scale, dt, HEAD_LOOK_RATE);
+  m.headPitch = smoothHeadAngle(m.headPitch, raw.pitch * scale, dt, HEAD_LOOK_RATE);
+  joints.head.rotation.y += m.headYaw;
+  joints.head.rotation.x += m.headPitch;
+}
+
 // char.group（ポーズ適用後）のワールド包囲箱をカメラのビュー空間へ変換し、
 // 基準フラスタム上端(BASE_FRUST_TOP)・左右端(±BASE_FRUST_HALF_X)をそれぞれ
 // どれだけ超えているかを実測する。超えていない軸は 0 を返す
@@ -426,6 +452,9 @@ export function render3D() {
       }
       applyRunMotion(pl, char.joints, renderYaw, dt);
     }
+
+    // 各ポーズ適用後に、頭部だけボール方向へ追従させる（見た目専用・当たり判定には無関係）。
+    applyHeadLook(pl, char.joints, renderYaw, dt);
 
     // ポーズ適用後の実形状を計測し、基準フラスタム上端・左右端を超える分だけ
     // camera.top / camera.left / camera.right を一時的に拡張する
