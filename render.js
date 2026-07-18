@@ -1,5 +1,5 @@
 import {
-  TUNING, COURT, W, H, G, HIT_REACH, CPU_REACH, VOLLEY_REACH, SHOT_FAMILY_META,
+  TUNING, COURT, W, H, HIT_REACH, CPU_REACH, VOLLEY_REACH, SHOT_FAMILY_META,
 } from "./config.js";
 
 import {
@@ -20,7 +20,7 @@ import {
 } from "./serve.js";
 
 import { pointLabel } from "./main.js";
-import { insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount } from "./matchLoop.js";
+import { insideCourt, insideBox, predictLanding, predictHighContact, chargeAmount, simulateTrajectory } from "./matchLoop.js";
 import { canPlayerHit, ballIncomingToPlayer } from "./input.js";
 import { hitLineInfo } from "./hit-detection.js";
 import { coverageGeom, idealPosition, netPlayerOf, basePlayerOf } from "./aiPositioning.js";
@@ -773,15 +773,6 @@ function drawDebugParams() {
   ctx.restore();
 }
 
-function bouncePreviewVelocity(vx, vy, vz) {
-  const sp = TUNING.spin[ball.spin] || TUNING.spin.flat;
-  const flat = TUNING.spin.flat;
-  const k = Math.min(1.3, Math.max(0, ball.spinMag != null ? ball.spinMag : 1));
-  const friction = Math.max(0.3, Math.min(0.97, flat.friction + (sp.friction - flat.friction) * k));
-  const restitution = Math.max(0.12, Math.min(0.78, flat.restitution + (sp.restitution - flat.restitution) * k));
-  return { vx: vx * friction, vy: vy * friction, vz: -vz * restitution };
-}
-
 function drawDebugTrajectory() {
   if (!debugDraw.trajectory) return;
   if (state === "ready") return;
@@ -800,35 +791,18 @@ function drawDebugTrajectory() {
     ctx.stroke();
   }
 
-  const pts = [];
-  let x = ball.x;
-  let y = ball.y;
-  let z = ball.z;
-  let vx = ball.vx;
-  let vy = ball.vy;
-  let vz = ball.vz;
-  let bounces = ball.bounces;
-  const dt = 0.055;
-  const dragPerStep = Math.max(0, 1 - (TUNING.airDrag || 0) * dt);
-
-  for (let i = 0; i < 120; i++) {
-    pts.push({ x, y, z: Math.max(0, z), bounces });
-    x += vx * dt;
-    y += vy * dt;
-    z += vz * dt;
-    vz -= G * dt;
-    vx *= dragPerStep;
-    vy *= dragPerStep;
-    if (z <= 0 && vz < 0) {
-      bounces++;
-      z = 0;
-      if (bounces > 2) break;
-      const bounced = bouncePreviewVelocity(vx, vy, vz);
-      vx = bounced.vx;
-      vy = bounced.vy;
-      vz = bounced.vz;
-    }
-  }
+  // 実際のボール更新(matchLoop.jsのupdate())と同じ物理(stepBallState)・
+  // バウンド係数(bounceCoeffs/bounceVelocity)・地面通過時の補間方法を使って
+  // 予測する（simulateTrajectory参照）。粗い刻みで再計算していた旧実装は、
+  // 地面通過までのステップ数がフレームごとに切り替わるたびに着地点が
+  // 前後にぶれる問題があった。
+  const pts = simulateTrajectory({
+    x: ball.x, y: ball.y, z: ball.z,
+    vx: ball.vx, vy: ball.vy, vz: ball.vz,
+    spin: ball.spin, spinMag: ball.spinMag,
+    flightSink: ball.flightSink,
+    bounces: ball.bounces,
+  });
 
   ctx.strokeStyle = ball.trailColor || "rgba(251,146,60,0.95)";
   ctx.lineWidth = 2.5;
