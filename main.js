@@ -276,8 +276,20 @@ retryBtn.addEventListener("click", function () {
   setState("ready");
 });
 
+// ブラウザの実際の表示可能高さ（アドレスバー等の分を除いた高さ）をCSS変数 --app-vh
+// へ反映する。style.css側は `var(--app-vh, 100dvh)` としてこれを優先利用する。
+// スマホを横向きにした瞬間はアドレスバーの表示/収縮アニメーションが完了する前に
+// resize/orientationchangeが発火する機種があり、dvh単体だと追従が一瞬遅れて画面
+// 全体が潰れて見えることがあるため、visualViewport（無ければinnerHeight）の実測値
+// で上書きする。
+function syncViewportHeight() {
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  document.documentElement.style.setProperty("--app-vh", `${h}px`);
+}
+
 // 画面向きに応じてcanvas内部解像度・カメラを同期する（横画面はワイドビュー）。
 function syncViewport() {
+  syncViewportHeight();
   // 描画領域＝court-wrap の実ピクセルサイズに合わせる（取得できなければウィンドウ）。
   const wrap = canvas.parentElement;
   let availW = window.innerWidth, availH = window.innerHeight;
@@ -290,8 +302,18 @@ function syncViewport() {
   if (canvas.height !== H) canvas.height = H;
   draw();
 }
+// 横向き切替直後はブラウザUIの収縮アニメーションが遅れて完了する機種があるため、
+// アニメーション後にも再計測して画面の潰れを解消する。
+function syncViewportAfterOrientationSettle() {
+  syncViewport();
+  setTimeout(syncViewport, 120);
+  setTimeout(syncViewport, 400);
+}
 window.addEventListener("resize", syncViewport);
-window.addEventListener("orientationchange", syncViewport);
+window.addEventListener("orientationchange", syncViewportAfterOrientationSettle);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncViewport);
+}
 syncViewport();
 
 // 開発モードでなければ開始画面の開発用調整機能（デバッグ表示トグル・選手ステータス調整・
