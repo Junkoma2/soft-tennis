@@ -14,10 +14,16 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* --app-vh はJS(main.js)がvisualViewport/innerHeightの実測値(px)から設定する
+ * カスタムプロパティ。端末を横向きにしたときブラウザのアドレスバーが表示された
+ * まま縮まらない/収縮アニメーションが遅延する機種があり、dvh単体では追従が一瞬
+ * 遅れて画面全体が潰れて見えることがあるため、実測ベースの値で上書きして補正する。
+ * JS未実行時（初回描画の一瞬）は100dvhへフォールバックする。 */
+
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  min-height: 100dvh;
+  min-height: var(--app-vh, 100dvh);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,7 +35,7 @@ body {
   padding: 16px 16px;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  min-height: var(--app-vh, 100dvh);
 }
 
 /* 開始/結果画面は読み物中心なので幅を抑えて中央寄せのままにする */
@@ -42,7 +48,7 @@ body:has(#screen-result:not([hidden])) #app {
  * 抑止して、スワイプ操作が誤ってスクロールにならないようにする。 */
 html:has(#screen-game:not([hidden])),
 body:has(#screen-game:not([hidden])) {
-  height: 100dvh;
+  height: var(--app-vh, 100dvh);
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: none;
@@ -419,7 +425,7 @@ main {
   position: relative;
   flex-shrink: 0;
   /* 縦長(2:3)。利用可能な高さから幅を逆算（2/3倍）し、画面幅も超えない範囲で最大化 */
-  width: min(540px, 100%, calc((100dvh - 220px) * 2 / 3));
+  width: min(540px, 100%, calc((var(--app-vh, 100dvh) - 220px) * 2 / 3));
   aspect-ratio: 2 / 3;
   border-radius: 12px;
   overflow: hidden;
@@ -456,7 +462,7 @@ body:has(#screen-game:not([hidden])) footer { display: none; }
  * ビューポートより高く育つと、body(align-items:center)の中央寄せで
  * 上下が均等にはみ出し、overflow:hiddenで上端・下端（操作説明など）が
  * 見切れる。試合中はheightを明示してビューポート内に収める。 */
-body:has(#screen-game:not([hidden])) #app { padding: 0; max-width: none; height: 100dvh; min-height: 0; }
+body:has(#screen-game:not([hidden])) #app { padding: 0; max-width: none; height: var(--app-vh, 100dvh); min-height: 0; }
 body:has(#screen-game:not([hidden])) main {
   /* 既定のalign-items:centerのままだと#screen-gameが内容分の高さ(コート+操作
    * パネル)まで伸びて中央寄せされ、はみ出した分（操作パネル等）が見切れる。
@@ -930,7 +936,7 @@ footer a:hover { color: var(--color-text); }
   h1 { font-size: 16px; }
   .kicker { margin-bottom: 2px; }
   .screen { gap: 8px; }
-  .court-wrap { width: min(540px, 100%, calc((100dvh - 220px) * 2 / 3)); }
+  .court-wrap { width: min(540px, 100%, calc((var(--app-vh, 100dvh) - 220px) * 2 / 3)); }
   footer { padding-top: 4px; }
 }
 
@@ -953,7 +959,7 @@ footer a:hover { color: var(--color-text); }
   body:has(#screen-game:not([hidden])) #app {
     padding: 4px 6px;
     max-width: none;
-    height: 100dvh;
+    height: var(--app-vh, 100dvh);
     overflow: hidden;
   }
 
