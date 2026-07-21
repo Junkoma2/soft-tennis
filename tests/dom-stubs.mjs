@@ -8,7 +8,7 @@
 // 実行されるため）。
 function stubElement() {
   const el = {
-    style: {},
+    style: { setProperty() {}, removeProperty() {} },
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     dataset: {},
     hidden: false,
@@ -35,6 +35,7 @@ function stubElement() {
 }
 
 globalThis.document = {
+  documentElement: stubElement(),
   getElementById() { return stubElement(); },
   createElement() { return stubElement(); },
   addEventListener() {},
