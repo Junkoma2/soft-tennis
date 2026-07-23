@@ -1068,7 +1068,22 @@ footer a:hover { color: var(--color-text); }
   #screen-game #shot-controls { flex: 1 1 120px; }
 }
 
-/* ---- バーチャルスティック（スマホの移動操作） ---- */
+/* ---- バーチャルスティック（スマホの移動操作） ----
+ * #move-stick-zone: 実際にタップを受け付ける当たり判定（見た目の円より広い）。
+ *   最初にタップした座標を起点にして #move-stick をその位置へ動かす（フローティング方式）ため、
+ *   円のど真ん中を正確に狙わなくても、この範囲内のタップなら移動操作を開始できる。
+ * #move-stick: 見た目の円（起点＝タップ位置に合わせて input.js がleft/topを書き換える）。
+ * #move-stick-knob: 中の丸（指の動きに追従、input.js が transform で動かす）。 */
+.move-stick-zone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 55%;
+  height: 48%;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .move-stick {
   position: absolute;
   left: 14px;
@@ -1078,11 +1093,10 @@ footer a:hover { color: var(--color-text); }
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.18);
   border: 2px solid rgba(255, 255, 255, 0.4);
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  pointer-events: none;
 }
 
 .move-stick-knob {
@@ -1100,7 +1114,7 @@ footer a:hover { color: var(--color-text); }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .move-stick { display: none; }
+  .move-stick-zone { display: none; }
 }
 
 /* ---- 打球操作ボタン ---- */

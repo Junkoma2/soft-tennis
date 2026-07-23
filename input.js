@@ -18,7 +18,7 @@ import {
   setPlayerPosition, formationControls, setFormation, formation,
   setDebugHitboxes, setDebugTrajectory, setDebugParams, setDebugCoverage, setDebugClipbox,
   handedControls, setPlayerHanded,
-  setSpectatorMode, startBtn, moveStick, moveStickKnob,
+  setSpectatorMode, startBtn, moveStickZone, moveStick, moveStickKnob,
   playerPicker, pickerPlayerBack, pickerPlayerFront, pickerCpuBack, pickerCpuFront, playerPosition,
   canvas, back, front, setBallHittableSince, appRoot,
   inputMode, setInputMode, inputModeControls,
@@ -473,7 +473,12 @@ export function setActiveButton(group, activeBtn) {
   activeBtn.classList.add("is-active");
 }
 
-/* ---- バーチャルスティック（スマホの移動操作） ---- */
+/* ---- バーチャルスティック（スマホの移動操作） ----
+ * #move-stick-zone が実際にタップ/ドラッグを受け付ける当たり判定で、見た目の円
+ * #move-stick より広く取ってある。以前は#move-stick自体（見た目の円＝狭い固定位置）
+ * でしか判定しておらず、円のど真ん中を正確にタップしないと反応しづらかったため、
+ * 「最初にタップした座標」を起点(中心)としてそこからの相対ドラッグで移動する
+ * フローティング方式にした（zone内のどこをタップしても、その位置が新しい中心になる）。 */
 
 export function stickVectorFromEvent(e) {
   const rect = moveStick.getBoundingClientRect();
@@ -493,16 +498,40 @@ export function updateStickKnob(dx, dy) {
     "translate(" + (dx * radius * 0.55) + "px, " + (dy * radius * 0.55) + "px)";
 }
 
-if (moveStick) {
-  moveStick.addEventListener("pointerdown", function (e) {
+// 最初にタップした座標へ見た目の円(#move-stick)を動かし、そこを新しい起点(中心)にする。
+// stickVectorFromEventは#move-stickの現在位置を中心として計算するため、ここで動かすだけで
+// 以降のpointermoveは「タップした位置からの相対ドラッグ」として扱われる。
+function positionStickAt(clientX, clientY) {
+  const zoneRect = moveStickZone.getBoundingClientRect();
+  const size = moveStick.getBoundingClientRect().width || moveStick.offsetWidth || 84;
+  const half = size / 2;
+  let left = clientX - zoneRect.left - half;
+  let top = clientY - zoneRect.top - half;
+  // 当たり判定(zone)自体はそのままに、見た目の円がzoneから大きくはみ出さない程度にクランプする
+  left = Math.max(-half, Math.min(zoneRect.width - half, left));
+  top = Math.max(-half, Math.min(zoneRect.height - half, top));
+  moveStick.style.left = left + "px";
+  moveStick.style.top = top + "px";
+  moveStick.style.bottom = "auto";
+}
+
+// 指を離したら、タップ前の既定位置（CSS指定の左下）へ戻す
+function resetStickPosition() {
+  moveStick.style.left = "";
+  moveStick.style.top = "";
+  moveStick.style.bottom = "";
+}
+
+if (moveStickZone && moveStick) {
+  moveStickZone.addEventListener("pointerdown", function (e) {
     stick.active = true;
-    moveStick.setPointerCapture(e.pointerId);
-    const v = stickVectorFromEvent(e);
-    stick.dx = v.dx; stick.dy = v.dy;
-    updateStickKnob(stick.dx, stick.dy);
+    moveStickZone.setPointerCapture(e.pointerId);
+    positionStickAt(e.clientX, e.clientY);
+    stick.dx = 0; stick.dy = 0;
+    updateStickKnob(0, 0);
     e.preventDefault();
   });
-  moveStick.addEventListener("pointermove", function (e) {
+  moveStickZone.addEventListener("pointermove", function (e) {
     if (!stick.active) return;
     const v = stickVectorFromEvent(e);
     stick.dx = v.dx; stick.dy = v.dy;
@@ -513,10 +542,11 @@ if (moveStick) {
     stick.active = false;
     stick.dx = 0; stick.dy = 0;
     updateStickKnob(0, 0);
+    resetStickPosition();
   }
-  moveStick.addEventListener("pointerup", releaseStick);
-  moveStick.addEventListener("pointercancel", releaseStick);
-  moveStick.addEventListener("pointerleave", function () {
+  moveStickZone.addEventListener("pointerup", releaseStick);
+  moveStickZone.addEventListener("pointercancel", releaseStick);
+  moveStickZone.addEventListener("pointerleave", function () {
     if (stick.active) releaseStick();
   });
 }
@@ -544,7 +574,7 @@ if (controlsPanel) {
 // 打点ゾーン中も自動でため済みのため、クリック=即スイング。
 //
 // スマホ（タッチ/ペン）はラリー中のみ「スワイプ＝狙い＋打球」（右手・二本目の指）。
-// 左手は #move-stick で移動専用のまま。サーブ中（serve-stance/serve-toss）の
+// 左手は #move-stick-zone で移動専用のまま。サーブ中（serve-stance/serve-toss）の
 // タッチ操作は #app 側の専用ハンドラ（画面どこタップ/スワイプ）で処理する。
 canvas.addEventListener("pointerdown", function (e) {
   if (e.pointerType === "mouse") {
@@ -623,7 +653,7 @@ canvas.addEventListener("pointercancel", function (e) {
 });
 
 /* ---- スマホ: サーブ中（serve-stance/serve-toss）のタッチ操作 ----
- * serve-stance: 画面のどこをタップ（.ctrl-btn・#move-stick以外）してもトスする。
+ * serve-stance: 画面のどこをタップ（.ctrl-btn・#move-stick-zone以外）してもトスする。
  * serve-toss:   コート上のスワイプでコース（serveAimCursor）を指定し、
  *               指を離した瞬間にサーブを打つ（ラリーのスワイプ打球と統一）。
  */
@@ -636,7 +666,7 @@ const serveSwipe = {
 };
 
 function isServeUiTarget(target) {
-  return !!(target.closest && (target.closest(".ctrl-btn") || target.closest("#move-stick")));
+  return !!(target.closest && (target.closest(".ctrl-btn") || target.closest("#move-stick-zone")));
 }
 
 if (appRoot) {
