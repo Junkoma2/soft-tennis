@@ -1041,6 +1041,45 @@ footer a:hover { color: var(--color-text); }
   #screen-game .hint { display: none; }
 }
 
+/* 横画面のメニュー画面（試合前の設定画面）。単純な縦一列のままだと丈の低い横画面
+ * （スマホ横向き等）では大きくスクロールしないと試合開始ボタンに届かず、横幅も
+ * 使い切れないため「横画面に対応していない」ように見える。内容を2列に折り返して
+ * 合計の高さを抑え、横幅を活かす。試合画面(#screen-game)は専用レイアウトが別に
+ * あるため対象外。結果画面(#screen-result)は項目数が少なく縦一列のままで収まる
+ * ため対象外とする。 */
+@media (orientation: landscape) {
+  body:has(#screen-ready:not([hidden])) #app {
+    max-width: 760px;
+  }
+
+  #screen-ready {
+    display: block;
+    column-count: 2;
+    column-gap: 24px;
+  }
+
+  #screen-ready > * {
+    break-inside: avoid;
+    margin: 0 0 10px;
+  }
+
+  #screen-ready > *:last-child { margin-bottom: 0; }
+
+  /* 元のflexレイアウト(align-items:center)が担っていた中央寄せを、
+   * 幅が内容に合わせて縮む要素にだけ個別に付け直す。 */
+  #screen-ready .primary-btn,
+  #screen-ready .tutorial-replay-link,
+  #screen-ready .model-viewer-link {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  #screen-ready .tutorial-replay-note {
+    text-align: center;
+  }
+}
+
 /* 縦画面（スマホ）。コートは縦長(2:3)で奥行きを広く見せ、操作パネルはコート下の
  * 専用帯（ベースルールと同じ構造）に画面幅いっぱいで並べる。 */
 @media (orientation: portrait) {
