@@ -9,7 +9,7 @@ import {
   screens, startBtn, retryBtn, canvas, messageOverlay, messageText,
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
   chargeBtn, serveCategoryControls, aggressionControls,
-  moveStick, controlsPanel, mouseAim, makeStats, cpuStats,
+  moveStickZone, controlsPanel, mouseAim, makeStats, cpuStats,
   state, player, cpu, rafId,
   setState, setServeFaults, setRafId, setLastTime, setMatchTime,
   playerPosition, formation, spectatorMode, devMode,
@@ -123,7 +123,7 @@ export function startMatch() {
   assignReceiverSides();
   setRallyControlled((playerPosition === "front") ? front : back);
   if (controlsPanel) controlsPanel.hidden = spectatorMode;
-  if (moveStick) moveStick.hidden = spectatorMode;
+  if (moveStickZone) moveStickZone.hidden = spectatorMode;
   if (spectatorMode) {
     back.label = "後衛";
     front.label = "前衛";

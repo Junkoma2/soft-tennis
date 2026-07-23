@@ -28,6 +28,7 @@ export const chargeBtn     = document.getElementById("charge-btn");
 export const serveCategoryControls = document.getElementById("serve-category-controls");
 export const aggressionControls = document.getElementById("aggression-controls");
 export const shotSelectControls = document.getElementById("shot-select-controls");
+export const moveStickZone = document.getElementById("move-stick-zone");
 export const moveStick     = document.getElementById("move-stick");
 export const moveStickKnob = document.getElementById("move-stick-knob");
 export const formationControls = document.getElementById("formation-controls");
