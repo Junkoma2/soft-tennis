@@ -410,8 +410,10 @@ export const swipe = {
   active: false,
   pointerId: null,
   startX: 0, startY: 0,     // スワイプ開始のクライアント座標（しきい値判定用）
+  startTime: 0,             // スワイプ開始時刻(performance.now()、速さ計算用)
   aimX: 0, aimY: -9.0,      // スワイプ量から計算した狙い（プレビュー用・ワールド座標）
   moved: false,             // しきい値を超えて「スワイプ」と確定したか
+  power: 0,                 // スワイプの速さから求めた威力(0..1)。深さ上乗せ・打球威力に反映
 };
 
 // Space = ロブ修飾キー。押している間にクリックすると球種がロブになる。
