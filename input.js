@@ -34,6 +34,7 @@ import {
 } from "./serve.js";
 
 import { hitLineInfo } from "./hit-detection.js";
+import { clamp01 } from "./math.js";
 
 /* ===========================================================
  * プレイヤー操作
@@ -48,7 +49,9 @@ import { hitLineInfo } from "./hit-detection.js";
  *   適正打点の高さで左クリック=フラットサーブ、右クリック=カットサーブ。
  *   マウスで対角サービスコート内の狙いを指す
  * - スマホ: 左スティックで移動専用。右手はコート上のスワイプで狙い＋打球
- *   （タップ＝デフォルト狙いでスイング、スワイプ＝その方向ベクトルの狙いでスイング）。
+ *   （タップ＝デフォルト狙いでスイング、スワイプ＝その方向＋速さの狙いでスイング）。
+ *   スワイプの生ベクトルをそのまま座標に変換するのではなく、速さ由来の威力を使って
+ *   方向は雑でも大きく外さないよう丸め、強く振るほど深く飛ぶようにする（computeSwipeAim参照）。
  *   球種は下部3ボタンの選択（selectedShot）。サーブはタップでトス/フラットサーブのまま。
  * =========================================================== */
 
@@ -70,6 +73,19 @@ const SWIPE_AIM_CURVE_POWER = 1.8;
 // カーブを通してから再スケールする。
 const SWIPE_AIM_CURVE_RANGE = 2.4;
 
+// スワイプの平均速度(px/ms)→威力(0..1)の正規化範囲。
+// 移動距離だけでなく速さを見ることで、狙いの位置は動かさない「速いだけの短いスワイプ」
+// でも威力を出せる（強く振ったら深く飛んでほしい、という操作感のため）。
+const SWIPE_POWER_MIN_PXMS = 0.35; // これ未満の速さは威力0（タップに近い弱いスワイプ）
+const SWIPE_POWER_MAX_PXMS = 1.6;  // これ以上の速さで威力1（振り切ったスワイプ）
+// 威力が最大のとき、狙いの深さ(コート奥行き)に追加で足す量（ワールドm）。
+// 強く振るほど、方向(dy成分)による深さとは別に、追加でより深くまで飛ばせるようにする。
+const SWIPE_POWER_DEPTH_BONUS = 1.6;
+// 方向(左右のコース取り)への反映度。威力が低い(=ゆっくり/雑に触れただけ)ほど
+// 中心寄りに丸め、威力が高い(=はっきり振り切った)ほど狙った角度をそのまま活かす。
+// これにより「方向が多少雑でも、弱いスワイプなら大きく外さない」を実現する。
+const SWIPE_DIRECTION_TRUST_MIN = 0.4;
+
 // 小さいスワイプ＝小さい角度変化、大きいスワイプ＝大きい角度変化となるよう、
 // 線形のスワイプ換算量に非線形カーブをかける（符号は保持）。
 function applySwipeAimCurve(linearDelta) {
@@ -77,6 +93,30 @@ function applySwipeAimCurve(linearDelta) {
   const norm = Math.min(1, Math.abs(linearDelta) / SWIPE_AIM_CURVE_RANGE);
   const curved = Math.pow(norm, SWIPE_AIM_CURVE_POWER);
   return sign * curved * SWIPE_AIM_CURVE_RANGE;
+}
+
+// スワイプの移動距離(px)と経過時間(ms)から威力(0..1)を求める。
+// 距離ではなく速さ(px/ms)を見ているため、狙いをあまり動かさない短く鋭いスワイプでも
+// 十分な威力になる（=「強くスワイプ」＝速く振ること、として扱う）。
+export function swipePowerFromMotion(distancePx, elapsedMs) {
+  const speed = distancePx / Math.max(1, elapsedMs);
+  return clamp01((speed - SWIPE_POWER_MIN_PXMS) / (SWIPE_POWER_MAX_PXMS - SWIPE_POWER_MIN_PXMS));
+}
+
+// スワイプの生の移動量(dx,dy・画面px)から、狙い(コース=x・深さ=y、ワールドm)を計算する。
+// 生ベクトルをそのまま座標に変換するのではなく、速さ由来の威力(power)を
+// (1)方向への信頼度: 威力が低い(=雑・弱いスワイプ)ほど中心寄りに丸めて大きく外さないようにする
+// (2)深さへの上乗せ: 威力が高い(=強く振った)ほど、方向(dy成分)による深さとは別に、より深くまで飛ばす
+// の両方に使うことで、「方向が多少雑でも、速さに応じてうまく打ち分けられる」操作感にする。
+export function computeSwipeAim(baseAimX, baseAimY, dx, dy, worldPerPxX, worldPerPxY, power) {
+  const lateralWorld = applySwipeAimCurve(dx * worldPerPxX * SWIPE_AIM_SENSITIVITY);
+  const directionTrust = SWIPE_DIRECTION_TRUST_MIN + (1 - SWIPE_DIRECTION_TRUST_MIN) * power;
+  const depthFromDrag = dy * worldPerPxY * SWIPE_AIM_SENSITIVITY;
+  const depthPowerBonus = -power * SWIPE_POWER_DEPTH_BONUS; // 深いほど負方向（相手ベースライン側）
+  return {
+    x: baseAimX + lateralWorld * directionTrust,
+    y: baseAimY + depthFromDrag + depthPowerBonus,
+  };
 }
 
 export function setControlledX(p, x) {
@@ -152,9 +192,10 @@ export function startCharge(source) {
 // マウスボタン（左=シュート/右=カット、Space併用でロブ）でスイング。
 // ・打点ゾーン内（canPlayerHit）なら即スイング
 // ・ゾーン手前で早めにクリックしたときは予約スイング（ゾーン到達時に同じ球種で自動スイング）
-export function attemptSwing(family) {
+// extraPower: スマホのスワイプの速さ由来の追加威力(0..1)。マウス操作やタップでは0のまま。
+export function attemptSwing(family, extraPower) {
   if (state !== "rally" || spectatorMode) return;
-  const power = chargeAmount();
+  const power = Math.min(1, chargeAmount() + (extraPower || 0));
   if (canPlayerHit(rallyControlled)) {
     charge.active = false;
     charge.source = null;
@@ -598,7 +639,9 @@ canvas.addEventListener("pointerdown", function (e) {
   swipe.pointerId = e.pointerId;
   swipe.startX = e.clientX;
   swipe.startY = e.clientY;
+  swipe.startTime = performance.now();
   swipe.moved = false;
+  swipe.power = 0;
   swipe.aimX = aim.x;
   swipe.aimY = aim.y;
   canvas.setPointerCapture(e.pointerId);
@@ -620,28 +663,33 @@ canvas.addEventListener("pointermove", function (e) {
   const c = TUNING.aim;
   const worldPerPxX = (COURT.halfW * 2) / rect.width;
   const worldPerPxY = (COURT.halfL * 2) / rect.height;
-  // 横方向（左右の角度）は非線形カーブを通し、中央付近の小さいスワイプでは
-  // 角度がほとんどつかず直進しやすく、大きくスワイプしたときだけ角度がつくようにする。
-  swipe.aimX = aim.x + applySwipeAimCurve(dx * worldPerPxX * SWIPE_AIM_SENSITIVITY);
-  swipe.aimY = aim.y + dy * worldPerPxY * SWIPE_AIM_SENSITIVITY; // 上スワイプ(dy<0)で奥(より負のy)へ
+
+  // スワイプの速さ(px/ms)→威力(0..1)。生ベクトルをそのまま座標に変換するのではなく、
+  // 威力を(1)方向への信頼度(雑なスワイプほど中心寄りに丸める) (2)深さへの上乗せ
+  // (強く振るほど深く飛ぶ)の両方に使う（computeSwipeAim参照）。
+  const elapsedMs = Math.max(1, performance.now() - swipe.startTime);
+  swipe.power = swipePowerFromMotion(Math.hypot(dx, dy), elapsedMs);
+  const nextAim = computeSwipeAim(aim.x, aim.y, dx, dy, worldPerPxX, worldPerPxY, swipe.power);
+  swipe.aimX = nextAim.x;
+  swipe.aimY = nextAim.y;
 
   // 既存のクランプ（updateAimInputsと同じマージン）に収める（プレビュー段階でも見た目を合わせる）
   swipe.aimX = Math.max(-(COURT.halfW - c.sideMargin), Math.min(COURT.halfW - c.sideMargin, swipe.aimX));
   swipe.aimY = Math.max(-(COURT.halfL - c.depthMargin), Math.min(-c.minDepth, swipe.aimY));
-  // パワー（ため）は今回スワイプ長さに連動させない。既存の自動ため(chargeAmount)を流用。
-  // 将来拡張: スワイプの速さ/長さでパワーを上乗せする余地あり。
 });
 
 function endSwipe(e) {
   if (!swipe.active || e.pointerId !== swipe.pointerId) return;
   swipe.active = false;
+  let swingPower = 0;
   if (swipe.moved) {
-    // スワイプ確定: そのベクトルから決めた狙いでスイング
+    // スワイプ確定: そのベクトルから決めた狙いでスイング。速さ由来の威力も打球へ反映する。
     aim.x = swipe.aimX;
     aim.y = swipe.aimY;
+    swingPower = swipe.power;
   }
-  // しきい値未満（タップ）は従来通りデフォルト狙いでスイング
-  attemptSwing(selectedShot);
+  // しきい値未満（タップ）は従来通りデフォルト狙い・威力0でスイング
+  attemptSwing(selectedShot, swingPower);
 }
 canvas.addEventListener("pointerup", function (e) {
   if (e.pointerType === "mouse") return;
