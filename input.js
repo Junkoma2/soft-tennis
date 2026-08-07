@@ -565,7 +565,9 @@ function resetStickPosition() {
 
 if (moveStickZone && moveStick) {
   moveStickZone.addEventListener("pointerdown", function (e) {
+    if (stick.active) return;
     stick.active = true;
+    stick.pointerId = e.pointerId;
     moveStickZone.setPointerCapture(e.pointerId);
     positionStickAt(e.clientX, e.clientY);
     stick.dx = 0; stick.dy = 0;
@@ -573,22 +575,24 @@ if (moveStickZone && moveStick) {
     e.preventDefault();
   });
   moveStickZone.addEventListener("pointermove", function (e) {
-    if (!stick.active) return;
+    if (!stick.active || e.pointerId !== stick.pointerId) return;
     const v = stickVectorFromEvent(e);
     stick.dx = v.dx; stick.dy = v.dy;
     updateStickKnob(stick.dx, stick.dy);
     e.preventDefault();
   });
   function releaseStick(e) {
+    if (e && e.pointerId !== stick.pointerId) return;
     stick.active = false;
+    stick.pointerId = null;
     stick.dx = 0; stick.dy = 0;
     updateStickKnob(0, 0);
     resetStickPosition();
   }
   moveStickZone.addEventListener("pointerup", releaseStick);
   moveStickZone.addEventListener("pointercancel", releaseStick);
-  moveStickZone.addEventListener("pointerleave", function () {
-    if (stick.active) releaseStick();
+  moveStickZone.addEventListener("pointerleave", function (e) {
+    if (stick.active && !moveStickZone.hasPointerCapture(e.pointerId)) releaseStick(e);
   });
 }
 
@@ -635,6 +639,7 @@ canvas.addEventListener("pointerdown", function (e) {
   // タッチ/ペン: サーブ中は #app 側のハンドラに委ねる（ここでは何もしない）
   if (state === "serve-stance" || state === "serve-toss") return;
   if (state !== "rally") return;
+  if (swipe.active) return;
   swipe.active = true;
   swipe.pointerId = e.pointerId;
   swipe.startX = e.clientX;
@@ -681,6 +686,7 @@ canvas.addEventListener("pointermove", function (e) {
 function endSwipe(e) {
   if (!swipe.active || e.pointerId !== swipe.pointerId) return;
   swipe.active = false;
+  swipe.pointerId = null;
   let swingPower = 0;
   if (swipe.moved) {
     // スワイプ確定: そのベクトルから決めた狙いでスイング。速さ由来の威力も打球へ反映する。
@@ -697,7 +703,10 @@ canvas.addEventListener("pointerup", function (e) {
 });
 canvas.addEventListener("pointercancel", function (e) {
   if (e.pointerType === "mouse") return;
+  if (!swipe.active || e.pointerId !== swipe.pointerId) return;
   swipe.active = false;
+  swipe.pointerId = null;
+  swipe.moved = false;
 });
 
 /* ---- スマホ: サーブ中（serve-stance/serve-toss）のタッチ操作 ----
@@ -730,6 +739,7 @@ if (appRoot) {
     }
 
     // serve-toss: スワイプでコースを決め、離した瞬間にサーブ
+    if (serveSwipe.active) return;
     if (!serveAimCursor.set) resetServeAimCursor();
     serveSwipe.active = true;
     serveSwipe.pointerId = e.pointerId;
@@ -760,6 +770,7 @@ if (appRoot) {
   function endServeSwipe(e) {
     if (!serveSwipe.active || e.pointerId !== serveSwipe.pointerId) return;
     serveSwipe.active = false;
+    serveSwipe.pointerId = null;
     // 離した瞬間＝打点タイミング。コースはスワイプで決めた serveAimCursor のまま。
     playerServeAction(0);
   }
@@ -769,7 +780,10 @@ if (appRoot) {
   });
   appRoot.addEventListener("pointercancel", function (e) {
     if (e.pointerType === "mouse") return;
+    if (!serveSwipe.active || e.pointerId !== serveSwipe.pointerId) return;
     serveSwipe.active = false;
+    serveSwipe.pointerId = null;
+    serveSwipe.moved = false;
   });
 }
 
