@@ -575,6 +575,55 @@ body:has(#screen-game:not([hidden])) .court-wrap {
   color: #fff;
 }
 
+/* ---- 縦画面での横向き案内 ----
+ * スマホの縦持ちで試合開始を押したときだけ、横向きへの回転を促す全画面モーダル。
+ * main.jsのshouldWaitForLandscape()がtrueの間だけ表示し、横向きに変わると
+ * 自動で試合が始まって非表示になる（ボタン操作は不要）。 */
+.orientation-guide {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(30, 27, 75, .82);
+}
+
+.orientation-guide[hidden] { display: none; }
+
+.orientation-guide-card {
+  width: min(100%, 320px);
+  padding: 28px 24px;
+  border-radius: 20px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .35);
+}
+
+.orientation-guide-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.orientation-guide-card h2 {
+  margin: 12px 0 8px;
+  font-size: 1.3rem;
+}
+
+.orientation-guide-card p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
+
 #message-text {
   color: #fff;
   font-size: 24px;

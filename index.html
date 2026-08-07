@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <meta name="apple-mobile-web-app-title" content="ソフトテニス" />
-  <link rel="stylesheet" href="style.css?v=20260723-01" />
+  <link rel="stylesheet" href="style.css?v=20260807-01" />
 </head>
 <body>
   <div id="app">
@@ -206,6 +206,14 @@
         <p id="result-detail" class="result-detail"></p>
         <button id="retry-btn" class="primary-btn" type="button">もう一度遊ぶ</button>
       </div>
+
+      <div id="orientation-guide" class="orientation-guide" role="dialog" aria-modal="true" aria-labelledby="orientation-guide-title" hidden>
+        <div class="orientation-guide-card">
+          <span class="orientation-guide-icon" aria-hidden="true">↻</span>
+          <h2 id="orientation-guide-title">横向きにしてください</h2>
+          <p>画面を横向きにすると、そのまま試合が始まります。</p>
+        </div>
+      </div>
     </main>
 
     <footer>
@@ -214,7 +222,7 @@
     </footer>
   </div>
 
-  <script type="module" src="main.js?v=20260711-01"></script>
+  <script type="module" src="main.js?v=20260807-01"></script>
   <script src="version.js?v=20260626-21"></script>
 </body>
 </html>

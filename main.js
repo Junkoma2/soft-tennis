@@ -6,7 +6,7 @@ import {
 import { unproject, clientToCanvas } from "./math.js";
 
 import {
-  screens, startBtn, retryBtn, canvas, messageOverlay, messageText,
+  screens, startBtn, retryBtn, canvas, messageOverlay, messageText, orientationGuide,
   playerScoreEl, cpuScoreEl, playerGamesEl, cpuGamesEl, resultTitle, resultDetail,
   chargeBtn, serveCategoryControls, aggressionControls,
   moveStickZone, controlsPanel, mouseAim, makeStats, cpuStats,
@@ -249,13 +249,15 @@ export function endMatch(playerWon) {
  * =========================================================== */
 
 
-function beginMatchFromStartButton(e) {
-  if (e) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-  if (screens.ready.hidden) return;
-  unlockAudio(); // ユーザー操作起点でAudioContextを解禁（打球/ミス/得点等の効果音用）
+// 縦画面のスマホで試合開始を押されたら、横向きへの回転を案内してから開始する。
+// コートは横画面のほうが広く見やすい（開始画面の案内文言「PC・横画面推奨」と揃える）。
+// PCの縦長ウィンドウ等（幅768px超）は対象外とし、これまで通りすぐ試合を開始する。
+let landscapeStartPending = false;
+export function shouldWaitForLandscape() {
+  return window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
+}
+
+function beginMatch() {
   startMatch();
   if (!rafId) {
     setLastTime(performance.now());
@@ -264,10 +266,36 @@ function beginMatchFromStartButton(e) {
   }
 }
 
+export function beginMatchFromStartButton(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  if (screens.ready.hidden) return;
+  unlockAudio(); // ユーザー操作起点でAudioContextを解禁（打球/ミス/得点等の効果音用）
+  if (shouldWaitForLandscape()) {
+    landscapeStartPending = true;
+    if (orientationGuide) orientationGuide.hidden = false;
+    return;
+  }
+  beginMatch();
+}
+
+// 回転案内の表示中に横向きへ変わったら、案内を消して待たせていた試合を開始する。
+export function continueMatchAfterRotation() {
+  if (!landscapeStartPending || shouldWaitForLandscape()) return;
+  landscapeStartPending = false;
+  if (orientationGuide) orientationGuide.hidden = true;
+  beginMatch();
+}
+
 startBtn.addEventListener("pointerdown", beginMatchFromStartButton);
 startBtn.addEventListener("click", beginMatchFromStartButton);
 startBtn.onclick = beginMatchFromStartButton;
 window.__softTennisStartReady = true;
+
+window.addEventListener("resize", continueMatchAfterRotation);
+window.addEventListener("orientationchange", continueMatchAfterRotation);
 
 retryBtn.addEventListener("click", function () {
   showScreen("ready");
