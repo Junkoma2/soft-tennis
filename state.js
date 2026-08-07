@@ -14,6 +14,7 @@ export const canvas     = document.getElementById("court");
 export const ctx        = canvas.getContext("2d");
 export const messageOverlay = document.getElementById("message-overlay");
 export const messageText    = document.getElementById("message-text");
+export const orientationGuide = document.getElementById("orientation-guide");
 
 export const playerScoreEl = document.getElementById("player-score");
 export const cpuScoreEl    = document.getElementById("cpu-score");
