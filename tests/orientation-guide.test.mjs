@@ -89,3 +89,51 @@ test("PC横長(1280x720)では案内を出さずにすぐ試合を開始する",
   assert.equal(orientationGuide.hidden, true, "回転案内は出ない");
   assert.equal(screens.game.hidden, false, "試合画面がすぐ表示される");
 });
+
+test("起動直後（試合開始を押す前）でも縦画面なら開始画面ごと回転案内で覆う", () => {
+  resetReady();
+  setViewport(390, 844);
+
+  // beginMatchFromStartButton は呼ばない＝「試合を始める」を押す前の起動直後を再現する。
+  continueMatchAfterRotation();
+
+  assert.equal(orientationGuide.hidden, false, "試合開始前でも縦画面なら案内が出る");
+  assert.equal(screens.ready.hidden, false, "開始画面自体は裏でそのまま（案内が覆う）");
+  assert.equal(screens.game.hidden, true, "試合はまだ始まらない");
+});
+
+test("起動直後の縦画面案内は、横向きに変わると試合を自動開始せず案内だけ消える", () => {
+  resetReady();
+  setViewport(390, 844);
+  continueMatchAfterRotation();
+  assert.equal(orientationGuide.hidden, false, "前提: 案内が出ている");
+
+  setViewport(844, 390);
+  continueMatchAfterRotation();
+
+  assert.equal(orientationGuide.hidden, true, "横向きになれば案内は消える");
+  assert.equal(screens.game.hidden, true, "試合開始ボタンを押していないので試合は始まらない");
+  assert.equal(screens.ready.hidden, false, "開始画面が引き続き表示される");
+});
+
+test("試合中に縦へ回転すると案内が出てシミュレーションが一時停止し、横向きに戻すと再開する", () => {
+  resetReady();
+  setViewport(1280, 720);
+  beginMatchFromStartButton();
+  assert.equal(screens.game.hidden, false, "前提: 試合画面が表示されている");
+  const runningRafId = state.rafId;
+  assert.notEqual(runningRafId, null, "前提: 試合ループが起動している");
+
+  setViewport(390, 844);
+  continueMatchAfterRotation();
+
+  assert.equal(orientationGuide.hidden, false, "試合中に縦へ回転すると案内が出る");
+  assert.equal(state.rafId, null, "試合ループが一時停止する（裏で進行しない）");
+  assert.equal(screens.game.hidden, false, "試合画面自体は表示されたまま（案内が覆う）");
+
+  setViewport(1280, 720);
+  continueMatchAfterRotation();
+
+  assert.equal(orientationGuide.hidden, true, "横向きに戻ると案内が消える");
+  assert.notEqual(state.rafId, null, "試合ループが再開する");
+});

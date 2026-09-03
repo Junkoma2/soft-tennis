@@ -249,17 +249,26 @@ export function endMatch(playerWon) {
  * =========================================================== */
 
 
-// 縦画面のスマホで試合開始を押されたら、横向きへの回転を案内してから開始する。
-// コートは横画面のほうが広く見やすい（開始画面の案内文言「PC・横画面推奨」と揃える）。
-// PCの縦長ウィンドウ等（幅768px超）は対象外とし、これまで通りすぐ試合を開始する。
-let landscapeStartPending = false;
+// 強制横画面化: スマホ幅（768px以下）で縦向きの間は、開始画面・試合画面のどちらも
+// #orientation-guide で覆って縦画面仕様の表示を一切見せない。横向きに戻るまで
+// 案内を出し続け、試合中に縦へ回転された場合はシミュレーションも一時停止する
+// （裏でラリー・スコアが進んでしまうのを防ぐ）。
+// PCの縦長ウィンドウ等（幅768px超）は対象外とし、これまで通り常に表示する
+// （style.cssの `@media (orientation: portrait) and (min-width: 769px)` が担当）。
+let landscapeStartPending = false; // 縦画面で「試合を始める」を押し、横向き待ちになっている間true
+let matchPausedForPortrait = false; // 試合中に縦へ回転してループを一時停止した間true
 export function shouldWaitForLandscape() {
   return window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
 }
 
 function beginMatch() {
+  // 試合が始まる経路（縦画面の待ち解除に限らず、PCの横長ですぐ開始する場合も含む）
+  // では毎回クリアしておく。そうしないと、一度縦画面で待ちになった後に別の
+  // タイミングで試合が始まった場合、古いpendingフラグが残り続けて次にたまたま
+  // 縦→横へ回転しただけで意図せず試合が自動開始してしまう。
+  landscapeStartPending = false;
   startMatch();
-  if (!rafId) {
+  if (rafId === null) {
     setLastTime(performance.now());
     setMatchTime(0);
     setRafId(requestAnimationFrame(loop));
@@ -281,12 +290,32 @@ export function beginMatchFromStartButton(e) {
   beginMatch();
 }
 
-// 回転案内の表示中に横向きへ変わったら、案内を消して待たせていた試合を開始する。
+// resize/orientationchange・起動直後のたびに呼ぶ、向き判定と案内表示の一元入口。
+// - 縦画面（スマホ幅）: 案内を表示する。試合が進行中なら、シミュレーションを止めて
+//   一時停止する（進行中でなければ何もしない＝開始画面もこの案内の下に隠れたまま）。
+// - 横向きに戻った: 案内を消す。試合開始待ちだった場合は試合を開始し、
+//   一時停止中だった場合はループを再開する。
 export function continueMatchAfterRotation() {
-  if (!landscapeStartPending || shouldWaitForLandscape()) return;
-  landscapeStartPending = false;
+  if (shouldWaitForLandscape()) {
+    if (orientationGuide) orientationGuide.hidden = false;
+    if (!screens.game.hidden && rafId !== null && !matchPausedForPortrait) {
+      matchPausedForPortrait = true;
+      cancelAnimationFrame(rafId);
+      setRafId(null);
+    }
+    return;
+  }
   if (orientationGuide) orientationGuide.hidden = true;
-  beginMatch();
+  if (landscapeStartPending) {
+    landscapeStartPending = false;
+    beginMatch();
+    return;
+  }
+  if (matchPausedForPortrait) {
+    matchPausedForPortrait = false;
+    setLastTime(performance.now()); // 一時停止していた時間ぶんdtが飛ばないようにする
+    setRafId(requestAnimationFrame(loop));
+  }
 }
 
 startBtn.addEventListener("pointerdown", beginMatchFromStartButton);
@@ -296,9 +325,12 @@ window.__softTennisStartReady = true;
 
 window.addEventListener("resize", continueMatchAfterRotation);
 window.addEventListener("orientationchange", continueMatchAfterRotation);
+// 起動直後（開始画面を最初に開いた瞬間）も、縦画面なら即座に案内を出す。
+continueMatchAfterRotation();
 
 retryBtn.addEventListener("click", function () {
   showScreen("ready");
+  matchPausedForPortrait = false;
   cancelAnimationFrame(rafId);
   setRafId(null);
   setState("ready");
