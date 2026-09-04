@@ -1006,7 +1006,8 @@ export function drawBallShadow() {
   // 影のサイズ/濃さだけでも「今どのくらいの高さにあるか」が伝わり、
   // 着地点の予測しやすさ＝ボールの視認性向上につながる。
   const heightK = Math.min(1, ball.z / 4.2);
-  const r = Math.max(2, 0.17 * p.s * (1 - heightK * 0.5));
+  // 2026-09: コートを相対的に広く見せるためボール本体と同率(-15%)で縮小
+  const r = Math.max(1.7, 0.145 * p.s * (1 - heightK * 0.5));
   const alpha = 0.36 * (1 - heightK * 0.6);
   ctx.fillStyle = "rgba(10,20,10," + alpha.toFixed(3) + ")";
   ctx.beginPath();
@@ -1026,13 +1027,16 @@ export function drawBall() {
     ctx.globalAlpha = (0.16 + 0.36 * speedK) * k;
     ctx.fillStyle = ball.trailColor || "#DFFF4F";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, Math.max(1.5, (0.12 + 0.05 * speedK) * p.s) * (0.6 + 0.4 * k), 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, Math.max(1.3, (0.10 + 0.04 * speedK) * p.s) * (0.6 + 0.4 * k), 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.globalAlpha = 1;
 
   const p = project(ball.x, ball.y, ball.z);
-  const r = Math.max(3, 0.175 * p.s);
+  // 2026-09: コートを相対的に広く見せるためボールの描画サイズを一回り縮小(-15%)。
+  // 当たり判定（hit-detection.js のreach/zone）はこの描画半径を参照していないため、
+  // 見た目のみの変更でプレイ感・判定への影響はない。
+  const r = Math.max(2.6, 0.15 * p.s);
 
   if (ball.flashT > 0) {
     ctx.fillStyle = "rgba(255,255,255," + (ball.flashT / 0.22) * 0.8 + ")";

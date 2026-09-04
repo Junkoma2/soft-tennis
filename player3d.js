@@ -66,8 +66,8 @@ function withHysteresis(current, ratio, enterAt, exitAt) {
 // 見た目チューニング
 const FRUST_H = 2.4;     // カメラが収める縦範囲(m)（構え等、通常ポーズ基準）
 const ASPECT = 0.62;     // ビューポート横/縦比
-// キャラの大きさ（旧VH_K・標準2.5）は「表示の調整」パネルで変更できる
-// → viewTuning.js の charSize（0〜100、50=2.5）
+// キャラの大きさ（旧VH_K・標準2.13。2026-09にコートを広く見せるため2.5→約2.13(-15%)へ縮小）
+// は「表示の調整」パネルで変更できる → viewTuning.js の charSize（0〜100、50=標準値）
 const FEET_FRAC = 0.06;  // 足元がビューポート下から何割の位置に出るか
 const TOP_PAD = 8;       // Keep far-side players from clipping against the canvas top edge.
 const D = Math.PI / 180;
@@ -77,7 +77,7 @@ const D = Math.PI / 180;
 // だけなので、体感では奥の選手が小さく見えすぎる。手前ベースライン付近の
 // 大きさは変えず、奥へ行くほど同率縮小との差が開く（=奥の選手が相対的に
 // 大きくなる）。1.0でコートと同率、小さいほど奥が大きい。
-// 指数（標準0.75）とキャラの大きさ係数（標準2.5）は「表示の調整」パネルの値を使う。
+// 指数（標準0.75）とキャラの大きさ係数（標準約2.13）は「表示の調整」パネルの値を使う。
 function scaledVh(s) {
   const sRef = project(0, COURT.halfL, 0).s; // 手前ベースラインの縮尺を基準に固定
   return tunedValue("charSize") * sRef * Math.pow(s / sRef, tunedValue("farSize"));
