@@ -532,7 +532,7 @@ export function startSwing(p, side, kind) {
 // animation3d.js の swingPhaseOf と同じ式（THREE.js依存のanimation3d.jsを
 // ここ（常時ロードされるゲームループ）からは読み込まないため、式のみ複製する）。
 function currentSwingPhase(p) {
-  const dur = (TUNING.tempo && TUNING.tempo.swingDuration) || 0.42;
+  const dur = (TUNING.tempo && TUNING.tempo.swingDuration) || 0.30;
   return Math.max(0, Math.min(1, 1 - (p.swingT || 0) / dur));
 }
 

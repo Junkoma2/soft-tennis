@@ -188,10 +188,10 @@ function setColors(pl) {
 function updateBlend(pl, targetName, dt) {
   const b = getBlend(pl);
   if (targetName !== b.b) { b.a = b.b; b.b = targetName; b.t = 0; }
-  // 補間速度。スイング自体はswingDuration(既定0.42秒)でゆっくり振り抜くため、
-  // 構え・待機・回復側の遷移が速すぎるとスイングだけ間延びして見える。
-  // 全体のテンポ感を揃えるため、遷移を少し引き延ばす（旧: dt*6 ≒0.17秒で完了）。
-  b.t = Math.min(1, b.t + dt * 4.2);
+  // 補間速度。スイング自体はswingDuration(既定0.30秒。2026-09に0.42から短縮)で
+  // 振り抜くため、構え・待機・回復側の遷移速度もスイングと同じ比率で速めて揃える
+  // （旧: swingDuration0.42秒に対しdt*4.2 ≒0.238秒で完了。0.30秒基準に比例させ直す）。
+  b.t = Math.min(1, b.t + dt * 5.9);
   return b;
 }
 

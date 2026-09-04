@@ -1641,7 +1641,7 @@ export function applyLeftHandGrip(joints, dims, root3D) {
 
 /** swingT(残り時間) → phase 0..1（0=テイクバック開始, 1=振り抜き終了）。 */
 export function swingPhaseOf(pl) {
-  const dur = (TUNING.tempo && TUNING.tempo.swingDuration) || 0.42;
+  const dur = (TUNING.tempo && TUNING.tempo.swingDuration) || 0.30;
   return Math.max(0, Math.min(1, 1 - (pl.swingT || 0) / dur));
 }
 
