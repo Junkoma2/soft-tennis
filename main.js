@@ -257,7 +257,13 @@ export function endMatch(playerWon) {
 // （style.cssの `@media (orientation: portrait) and (min-width: 769px)` が担当）。
 let landscapeStartPending = false; // 縦画面で「試合を始める」を押し、横向き待ちになっている間true
 let matchPausedForPortrait = false; // 試合中に縦へ回転してループを一時停止した間true
+export function isNativeAppRuntime() {
+  return Boolean(window.Capacitor?.isNativePlatform?.());
+}
 export function shouldWaitForLandscape() {
+  // ネイティブ版はAndroid/iOS側が起動前から横画面へ固定する。WebViewの初期計測が
+  // 一瞬だけ縦長でも案内を重ねず、OSの回転完了に任せる。
+  if (isNativeAppRuntime()) return false;
   return window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
 }
 

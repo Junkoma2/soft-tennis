@@ -1,0 +1,20 @@
+{
+  "name": "soft-tennis",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build:mobile": "node scripts/build-mobile.mjs",
+    "sync:android": "npm run build:mobile && npx cap sync android",
+    "sync:ios": "npm run build:mobile && npx cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.4.3",
+    "@capacitor/core": "8.4.3",
+    "@capacitor/ios": "8.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.4.3"
+  }
+}
