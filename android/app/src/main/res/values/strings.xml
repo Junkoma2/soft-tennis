@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ソフトテニス</string>
+    <string name="title_activity_main">ソフトテニス</string>
+    <string name="package_name">com.nonsensicalnook.softtennis</string>
+    <string name="custom_url_scheme">com.nonsensicalnook.softtennis</string>
+</resources>

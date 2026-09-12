@@ -15,7 +15,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.join(here, "main-stub-loader.mjs")).href, pathToFileURL(here + path.sep).href);
 
 const state = await import("../state.js");
-const { shouldWaitForLandscape, beginMatchFromStartButton, continueMatchAfterRotation } = await import("../main.js");
+const {
+  isNativeAppRuntime,
+  shouldWaitForLandscape,
+  beginMatchFromStartButton,
+  continueMatchAfterRotation,
+} = await import("../main.js");
 
 const { screens, orientationGuide } = state;
 
@@ -136,4 +141,21 @@ test("試合中に縦へ回転すると案内が出てシミュレーション�
 
   assert.equal(orientationGuide.hidden, true, "横向きに戻ると案内が消える");
   assert.notEqual(state.rafId, null, "試合ループが再開する");
+});
+
+test("ネイティブ版はWebViewが一時的に縦長でも回転案内を出さず試合を開始する", () => {
+  resetReady();
+  setViewport(390, 844);
+  window.Capacitor = { isNativePlatform: () => true };
+
+  assert.equal(isNativeAppRuntime(), true, "Capacitorのネイティブ実行環境を検出する");
+  assert.equal(shouldWaitForLandscape(), false, "画面方向はOS側へ任せ、Webの回転待ちにしない");
+
+  continueMatchAfterRotation();
+  assert.equal(orientationGuide.hidden, true, "起動時の横向き案内を表示しない");
+
+  beginMatchFromStartButton();
+  assert.equal(screens.game.hidden, false, "試合開始操作を待たせない");
+
+  delete window.Capacitor;
 });

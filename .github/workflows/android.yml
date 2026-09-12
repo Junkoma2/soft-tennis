@@ -1,0 +1,39 @@
+name: Android
+
+on:
+  pull_request:
+    paths:
+      - "android/**"
+      - "scripts/build-mobile.mjs"
+      - "capacitor.config.json"
+      - "package.json"
+      - "package-lock.json"
+      - "*.html"
+      - "*.css"
+      - "*.js"
+      - "vendor/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - run: npm run sync:android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
