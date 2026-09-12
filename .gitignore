@@ -3,6 +3,7 @@
 AGENTS.md
 CLAUDE.md
 node_modules/
+mobile-dist/
 .env
 .env.local
 .env.*.local

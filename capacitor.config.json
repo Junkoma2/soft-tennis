@@ -1,0 +1,8 @@
+{
+  "appId": "com.nonsensicalnook.softtennis",
+  "appName": "ソフトテニス",
+  "webDir": "mobile-dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
