@@ -37,8 +37,25 @@ test("横画面メニュー: #screen-readyを2列に折り返す規則が存在�
   const blocks = landscapeBlocks(css);
   const menuBlock = blocks.find((b) => b.includes("#screen-ready") && b.includes("column-count"));
   assert.ok(menuBlock, "#screen-readyをcolumn-countで折り返す横画面用の規則が見つからない");
-  assert.match(menuBlock, /#screen-ready\s*\{[^}]*column-count:\s*2/);
+  assert.match(menuBlock, /#screen-ready:not\(\[hidden\]\)\s*\{[^}]*column-count:\s*2/);
   assert.match(menuBlock, /break-inside:\s*avoid/);
+});
+
+test("横画面で試合開始後はhidden属性が表示指定より優先される", () => {
+  assert.match(
+    css,
+    /\.screen\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/,
+    "画面遷移後の旧画面を確実に消す共通ルールが見つからない",
+  );
+
+  const blocks = landscapeBlocks(css);
+  const menuBlock = blocks.find((b) => b.includes("#screen-ready") && b.includes("column-count"));
+  assert.ok(menuBlock, "横画面メニュー用ブロックが見つからない");
+  assert.doesNotMatch(
+    menuBlock,
+    /#screen-ready\s*\{[^}]*display:\s*block/,
+    "hidden状態にも適用されるdisplay:blockを指定してはいけない",
+  );
 });
 
 test("横画面メニュー: #appの横幅が縦画面時の480pxより広く拡張される", () => {
