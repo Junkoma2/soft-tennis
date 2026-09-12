@@ -104,7 +104,7 @@ main {
   gap: 14px;
 }
 
-.screen[hidden] { display: none; }
+.screen[hidden] { display: none !important; }
 
 /* 試合画面はコートを主役にして余白を詰める。
  * 操作パネルはコート上に重ねず、下部の専用帯に配置する（縦横画面共通の基本形）。
@@ -1121,7 +1121,7 @@ footer a:hover { color: var(--color-text); }
     max-width: 760px;
   }
 
-  #screen-ready {
+  #screen-ready:not([hidden]) {
     display: block;
     column-count: 2;
     column-gap: 24px;
